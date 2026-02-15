@@ -1,0 +1,669 @@
+{% extends "base.html" %}
+{% block title %}Ticket #{{ ticket.id }}{% endblock %}
+
+{% block content %}
+<style>
+  .page-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:14px}
+  @media(max-width:1024px){.page-grid{grid-template-columns:1fr}}
+
+  .card{background:#fff;border-radius:14px;box-shadow:0 14px 28px rgba(0,0,0,.18);padding:10px 14px}
+  .card h3{margin:0 0 10px 0;font-size:18px}
+  .card > :last-child{margin-bottom:0 !important}
+  .card form{margin:0}
+  .mb0{margin-bottom:0}
+
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:6px 10px;font-size:14px;align-items:center}
+  .kv > div{min-height:22px}
+  .muted{color:#667085}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;background:#f2f4f7;font-size:12px}
+  .badge{padding:2px 6px;border-radius:6px;font-size:12px}
+  .badge-ok{background:#e8f7ee}
+  .badge-near{background:#fff7e6}
+  .badge-overdue{background:#ffefef}
+
+  .mini-table{width:100%;border-collapse:collapse}
+  .mini-table th,.mini-table td{padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:left}
+
+  .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .input, select, textarea{width:100%;padding:10px;border:1px solid #d8b4fe;border-radius:10px;background:#fff}
+  .input:focus, select:focus, textarea:focus{outline:2px solid #e9d5ff;box-shadow:0 0 0 3px rgba(217,180,255,.25)}
+  textarea{min-height:70px}
+  .btn{padding:10px 14px;border-radius:10px;border:0;background:#0d6efd;color:#fff;cursor:pointer}
+  .btn.secondary{background:#475569}
+  .btn.orange{background:#c2410c;color:#fff}
+  .cols-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cols-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .mb8{margin-bottom:8px}.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}
+  .divider{height:1px;background:#eef2f7;margin:10px 0}
+
+  /* ===== Searchable staff picker (Tag -> Add New) ===== */
+  .search-wrap{position:relative}
+  .search-input{width:100%;padding:10px;border:1px solid #d8b4fe;border-radius:10px;background:#fff}
+  .search-results{position:absolute;top:100%;left:0;right:0;z-index:15;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(16,24,40,.08);max-height:240px;overflow:auto;margin-top:6px}
+  .search-item{padding:10px 12px;font-size:14px;cursor:pointer}
+  .search-item:hover,.search-item.active{background:#f3f4f6}
+
+  /* ==== LEFT COLUMN: compact size only on left ==== */
+  .left-col .card{padding:8px 10px}
+  .left-col .card h3{font-size:16px}
+  .left-col .kv{grid-template-columns:130px 1fr;font-size:13px;gap:4px 8px}
+  .left-col .mini-table th,.left-col .mini-table td{padding:6px 8px;font-size:12px}
+  .left-col{align-content:start; grid-auto-rows:max-content}
+  .left-col > .card{align-self:start; height:auto}
+
+  /* ===== Modal (single) ===== */
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(16,24,40,.5); z-index:1000;
+  }
+  .modal-card{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+    background:#fff; border-radius:14px; box-shadow:0 24px 48px rgba(0,0,0,.24);
+    width:min(520px, 92vw); padding:14px; z-index:1001;
+  }
+  .modal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px}
+  .modal-head h3{margin:0;font-size:18px}
+  .modal-x{border:0; background:transparent; font-size:24px; line-height:1; cursor:pointer}
+  .modal-body{padding:6px 2px}
+  /* === VIEW mode: right column hide === */
+.hide-right .right-col{ display:none !important; }
+
+</style>
+
+<div id="pageRoot"
+     data-commitment="{{ ticket.commitment_at or '' }}"
+     data-assignee-id="{{ current_assignee.id or '' }}"
+     data-assignee-name="{{ current_assignee.name or '' }}"
+     data-me-id="{{ session.get('user_id') or '' }}"
+     data-me-name="{{ session.get('username') or '' }}"
+></div>
+<div class="page-head"><h2>🎫 Ticket #{{ ticket.id }}</h2></div>
+
+{# ---------- helper macro: render a key/value row only when value is present ---------- #}
+{% macro kv_row(label, value, allow_false=false) %}
+  {% set show = (value is not none and value != '' and value != '-') or (allow_false and value in [0, False]) %}
+  {% if show %}
+    <div class="muted">{{ label }}</div><div>{{ value }}</div>
+  {% endif %}
+{% endmacro %}
+
+<div class="page-grid">
+  <!-- LEFT COLUMN (compact) -->
+  <div class="left-col" style="display:grid;gap:12px">
+    <!-- Box 1: Ticket Details -->
+    <div class="card">
+      <h3>Ticket Details</h3>
+      <div class="kv">
+        {{ kv_row('Form Source', ticket.source) }}
+        {{ kv_row('Mobile', (ticket.country_code ~ ' ' ~ ticket.mobile_number) if ticket.mobile_number else '') }}
+        {{ kv_row('Patient', ticket.patient_name) }}
+        {{ kv_row('Labmate ID', ticket.patient_labmate_id) }}
+        {{ kv_row('Client Name', ticket.client_name) }}
+        {{ kv_row('Priority', ticket.priority) }}
+        {# WhatsApp Opt-in is meaningful even if false → force show #}
+        <div class="muted">WhatsApp Opt-in</div><div>{{ 'Yes' if ticket.whatsapp_opt_in==1 else 'No' }}</div>
+        <div class="muted">Ticket Category</div><div>{{ ticket.ticket_category }}</div>
+        {# Commitment row shows when there is either a display string or a state #}
+        {% set has_commit = commitment.display %}
+{% if has_commit %}
+  <div class="muted">Commitment At</div>
+  <div>
+    {{ commitment.display }}
+    {# sirf OPEN tickets ke liye badge dikhao #}
+    {% if (not is_closed) and commitment.state %}
+      <span class="badge {% if commitment.state=='ok' %}badge-ok{% elif commitment.state=='near' %}badge-near{% else %}badge-overdue{% endif %}">
+        {{ commitment.text }}
+      </span>
+    {% endif %}
+  </div>
+{% endif %}
+
+        {{ kv_row('Status', ticket.status) }}
+        {{ kv_row('Created By', ticket.created_by) }}
+        {{ kv_row('Created At', ticket.created_at) }}
+        {{ kv_row('Additional Info', ticket.additional_info) }}
+      </div>
+    </div>
+
+    <!-- Box 2: Tagged Staff & Updates -->
+    <div class="card">
+      <h3>Tagged Staff (Name + Latest Remark)</h3>
+      {% if tags|length == 0 %}
+        <div class="muted">No tags added yet.</div>
+      {% else %}
+      <table class="mini-table">
+        <thead><tr><th>Staff</th><th>Reason</th><th>Due</th><th>Last Update</th></tr></thead>
+        <tbody>
+          {% for row in tags %}
+            <tr>
+              <td>{{ row.staffName }}</td>
+              <td>{{ row.reason or '-' }}</td>
+              <td>{{ row.dueAt_display or '-' }}</td>
+              <td>{{ row.last_remark or '-' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+
+    <!-- Box 3: Assignment Updates (history) -->
+    <div class="card">
+      <h3>Assignment Updates (History)</h3>
+      {% if assign_updates|length == 0 %}
+        <div class="muted">No assignment updates yet.</div>
+      {% else %}
+      <table class="mini-table">
+        <thead><tr><th>When</th><th>From → To</th><th>Reason</th><th>Remark</th><th>By</th></tr></thead>
+        <tbody>
+          {% for a in assign_updates %}
+          <tr>
+            <td>{{ a.created_at }}</td>
+            <td>{{ a.from_name or '-' }} → {{ a.to_name or '-' }}</td>
+            <td>{{ a.reason or '-' }}</td>
+            <td>{{ a.remark or '-' }}</td>
+            <td>{{ a.updated_by or '-' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- RIGHT COLUMN (order updated) -->
+  <div class="right-col" style="display:grid;gap:16px">
+
+    <!-- 1) Tag: Add New (SEARCHABLE staff) -->
+    <div class="card">
+      <h3>Tag</h3>
+      <form method="post" action="{{ url_for('ticket_detail.ticket_tag_update', ticket_id=ticket.id) }}" id="addTagForm" class="mb0">
+        <div class="cols-3 mb12">
+          <div>
+            <label class="muted mb8">Add New Tag</label>
+            <div class="search-wrap">
+              <input type="text" id="new_staff_search" class="search-input" placeholder="Type staff name..." autocomplete="off">
+              <div id="new_staff_results" class="search-results" style="display:none"></div>
+              <input type="hidden" id="new_staff_id" name="new_staff_id" value="">
+            </div>
+          </div>
+
+          <div>
+            <label class="muted mb8">Reason (optional)</label>
+            <input class="input" name="new_reason" placeholder="e.g. Sample Collection"/>
+          </div>
+          <div>
+            <label class="muted mb8">Due In</label>
+            <select class="input" id="new_due" name="new_due">
+              <option value="">-- Select --</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex">
+          <button class="btn orange" type="submit" name="action" value="add_only">Add Tag</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 2) Assign / Shift -->
+    <div class="card">
+      <h3>Assignment</h3>
+      <form id="assignShiftForm" class="mb0" method="post" action="{{ url_for('ticket_detail.ticket_assign_shift', ticket_id=ticket.id) }}">
+        <div class="mb12">
+          <label class="muted mb8">Current Assignee</label>
+          <div>{{ current_assignee.name or '-' }}</div>
+        </div>
+
+        <div class="mb12">
+          <label class="muted mb8">Shift To</label>
+          <select id="shift_to_user_id" name="to_user_id" required>
+            <option value="">-- Select Customer Care --</option>
+          </select>
+        </div>
+
+        <div class="mb12">
+          <label class="muted mb8">Reason</label>
+          <select name="reason" required>
+            <option value="">-- Select Reason --</option>
+            <option>End of Shift</option>
+            <option>Knowledge Gap – Seeking Guidance</option>
+            <option>Patient Request</option>
+            <option>Load Balancing</option>
+          </select>
+        </div>
+
+        <div class="mb12">
+          <label class="muted mb8">Remark (optional)</label>
+          <textarea name="remark" placeholder="Add a small note..."></textarea>
+        </div>
+
+        <div class="flex">
+          <button class="btn" type="submit">Shift Assignment</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 3) Tag Update (Existing Tag) - DROPDOWN -->
+    <div class="card">
+      <h3>Tag Update</h3>
+      <form method="post" action="{{ url_for('ticket_detail.ticket_tag_update', ticket_id=ticket.id) }}" id="tagUpdateForm" class="mb0">
+        <div class="mb12">
+          <label class="muted mb8">Select Tagged Staff</label>
+          <select id="tag_staff_id" name="tag_staff_id" required>
+            <option value="">-- Select Existing Tag --</option>
+            {% for t in tags_for_user %}
+              {% if t.staffId %}
+                <option value="{{ t.staffId }}">{{ t.staffName }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="mb12">
+          <label class="muted mb8">Remark</label>
+          <textarea name="remark" required placeholder="Write your update..."></textarea>
+        </div>
+
+        <div class="flex">
+          <button class="btn" type="submit">Submit Update</button>
+        </div>
+
+        {% if (tags_for_user|length) == 0 %}
+          <div class="muted" style="margin-top:8px">No tag assigned to you for this ticket.</div>
+        {% endif %}
+      </form>
+    </div>
+
+    <!-- 4) Update (Quick Remark) / Close -->
+    <div class="card">
+      <h3>Update / Close Tickets</h3>
+      <form id="quickRemarkForm" class="mb0" method="post" action="{{ url_for('ticket_detail.ticket_quick_remark', ticket_id=ticket.id) }}">
+        <input type="hidden" name="closure_mood" id="closure_mood" value="">
+        <input type="hidden" name="confirm_cross_close" id="confirm_cross_close" value="0">
+        <input type="hidden" name="close_ticket" id="close_ticket_hidden" value="0">
+        <div class="mb12">
+          <label class="muted mb8">Remark</label>
+          <textarea name="remark" placeholder="Write your update..."></textarea>
+        </div>
+        <div class="flex">
+          <button class="btn" type="submit">Submit Remark</button>
+          <button class="btn secondary" type="submit" name="close_ticket" value="1" formaction="{{ url_for('ticket_detail.ticket_quick_remark', ticket_id=ticket.id) }}">
+            Close Ticket
+          </button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== Single Modal for Close Ticket (Confirm + Mood) ===== -->
+<div id="closeModal" style="display:none">
+  <div class="modal-backdrop"></div>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Close Ticket</h3>
+      <button type="button" class="modal-x" id="cm_btn_x" aria-label="Close">×</button>
+    </div>
+
+    <!-- Step 1: Cross-assignee confirmation -->
+    <div id="cm_step_confirm" class="modal-body">
+      <p id="cm_confirm_text" style="margin:0 0 12px 0; font-size:14px;"></p>
+      <div class="flex">
+        <button type="button" class="btn" id="cm_btn_continue">Yes, Continue</button>
+        <button type="button" class="btn secondary" id="cm_btn_cancel_1">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Mood selection -->
+    <div id="cm_step_mood" class="modal-body" style="display:none">
+      <label class="muted mb8" style="display:block">Select closure type</label>
+      <div class="flex" style="gap:16px">
+        <label><input type="radio" name="cm_mood" value="happy"> Happy Closure</label>
+        <label><input type="radio" name="cm_mood" value="sad"> Sad Closure</label>
+      </div>
+      <div class="flex" style="margin-top:12px">
+        <button type="button" class="btn" id="cm_btn_done">Done</button>
+        <button type="button" class="btn secondary" id="cm_btn_cancel_2">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---------- Helpers ----------
+  function parseISO(dt){ try{ return dt ? new Date(dt) : null; }catch(e){ return null; } }
+  function minutesBetween(a,b){ return Math.floor((b - a)/60000); }
+  const debounce = (fn,delay=180)=>{ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args),delay); }; };
+  const pad = n => String(n).padStart(2,'0');
+
+  // ---------- Populate ONLY CCE for Shift To ----------
+  async function populateCCE(){
+    try{
+      const res = await fetch('/api/users/customer-care');
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data.users || []);
+      const shiftSel = document.getElementById('shift_to_user_id');
+      if (shiftSel){
+        shiftSel.innerHTML = '<option value="">-- Select Customer Care --</option>';
+        list.forEach(u => {
+          const o = document.createElement('option');
+          o.value = u.id;
+          o.textContent = u.name;
+          shiftSel.appendChild(o);
+        });
+      }
+    }catch(err){ console.error('Failed to load CCE users', err); }
+  }
+
+  // ---------- Searchable staff list (Tag -> Add New) ----------
+  let allStaff = [];
+  let activeIndex = -1;
+
+  async function loadAllStaff(){
+    try{
+      const res = await fetch('/api/users/all-staff');
+      const data = await res.json();
+      allStaff = Array.isArray(data) ? data : (data.users || []);
+    }catch(e){
+      console.error('Load staff failed', e); allStaff = [];
+    }
+  }
+
+  const searchEl   = document.getElementById('new_staff_search');
+  const resultsEl  = document.getElementById('new_staff_results');
+  const hiddenIdEl = document.getElementById('new_staff_id');
+
+  function hideResults(){ resultsEl.style.display='none'; resultsEl.innerHTML=''; activeIndex=-1; }
+  function showResults(){ resultsEl.style.display='block'; }
+
+  function highlight(name, q){
+    const i = name.toLowerCase().indexOf(q.toLowerCase());
+    if (i < 0) return name;
+    return name.slice(0,i) + '<strong>' + name.slice(i,i+q.length) + '</strong>' + name.slice(i+q.length);
+  }
+
+  function renderResults(list, q){
+    resultsEl.innerHTML='';
+    activeIndex = -1;
+    if (!list.length){ hideResults(); return; }
+    list.forEach((u, i)=>{
+      const div = document.createElement('div');
+      div.className = 'search-item';
+      div.innerHTML = highlight(u.name, q);
+      div.dataset.id = u.id;
+      div.dataset.name = u.name;
+      div.addEventListener('click', ()=> chooseStaff(u));
+      resultsEl.appendChild(div);
+    });
+    setActive(0);
+    showResults();
+  }
+
+  function setActive(idx){
+    Array.from(resultsEl.children).forEach(c=>c.classList.remove('active'));
+    activeIndex = Math.max(0, Math.min(idx, resultsEl.children.length-1));
+    const el = resultsEl.children[activeIndex];
+    if (el){ el.classList.add('active'); el.scrollIntoView({block:'nearest'}); }
+  }
+
+  function chooseStaff(u){
+    searchEl.value = u.name;
+    hiddenIdEl.value = u.id;
+    hideResults();
+  }
+
+  if (searchEl){
+    searchEl.addEventListener('input', debounce(()=>{
+      const q = searchEl.value.trim();
+      hiddenIdEl.value = '';
+      if (!q){ hideResults(); return; }
+      const filtered = allStaff
+        .filter(u => (u.name||'').toLowerCase().includes(q.toLowerCase()))
+        .slice(0, 30);
+      renderResults(filtered, q);
+    }, 160));
+
+    searchEl.addEventListener('keydown', (e)=>{
+      const open = resultsEl.style.display==='block';
+      if (e.key === 'Enter'){
+        e.preventDefault();
+        if (open && activeIndex >= 0){
+          const el = resultsEl.children[activeIndex];
+          if (el) chooseStaff({ id: el.dataset.id, name: el.dataset.name });
+        }
+      } else if (open && e.key === 'ArrowDown'){
+        e.preventDefault(); setActive(activeIndex + 1);
+      } else if (open && e.key === 'ArrowUp'){
+        e.preventDefault(); setActive(activeIndex - 1);
+      } else if (e.key === 'Escape'){
+        hideResults();
+      }
+    });
+
+    document.addEventListener('click', (e)=>{
+      if (!resultsEl.contains(e.target) && e.target !== searchEl) hideResults();
+    });
+  }
+
+  // Guard: ensure a valid staff is selected before submit
+  const addTagForm = document.getElementById('addTagForm');
+  if (addTagForm){
+    addTagForm.addEventListener('submit', (e)=>{
+      if (!hiddenIdEl.value){
+        e.preventDefault();
+        alert('Please select a staff from the suggestions.');
+        searchEl.focus();
+      }
+    });
+  }
+
+  // ---------- Tag Due dropdown cap: commitmentRemaining − 20 min ----------
+  function refreshDueDropdown(){
+    const root = document.getElementById('pageRoot');
+    const iso  = root ? root.dataset.commitment : '';
+    const commitmentAt = parseISO(iso);
+    const dueSel = document.getElementById('new_due');
+    if (!dueSel) return;
+
+    dueSel.innerHTML = '<option value="">-- Select --</option>';
+
+    if (!commitmentAt || isNaN(commitmentAt.getTime())){
+      [20,40,60,120].forEach(m=>{
+        const o=document.createElement('option'); o.value=m; o.textContent=`${m} min`; dueSel.appendChild(o);
+      });
+      return;
+    }
+
+    const now = new Date();
+    let remaining = minutesBetween(now, commitmentAt);
+    const cap = Math.max(0, remaining - 20);
+
+    if (cap <= 0){
+      dueSel.disabled = true;
+      return;
+    }
+
+    dueSel.disabled = false;
+    for (let m = 20; m <= cap; m += 20){
+      const o = document.createElement('option');
+      o.value = m;
+      o.textContent = (m % 60 === 0) ? `${m/60} hour` : `${m} min`;
+      dueSel.appendChild(o);
+    }
+    if (cap % 20 !== 0){
+      const o = document.createElement('option');
+      o.value = cap;
+      const h = Math.floor(cap/60), r = cap%60;
+      o.textContent = h ? (r ? `${h}h ${r}m` : `${h} hour`) : `${cap} min`;
+      dueSel.appendChild(o);
+    }
+  }
+
+  setInterval(refreshDueDropdown, 60*1000);
+
+  // ---------- NEW: Auto-select current user's tag in dropdown ----------
+  function autoSelectOwnTag(){
+    const sel = document.getElementById('tag_staff_id');
+    if (!sel) return;
+    const realOptions = Array.from(sel.options).filter(o => o.value && o.value.trim() !== '');
+    if (realOptions.length === 1){ sel.value = realOptions[0].value; }
+  }
+
+  document.addEventListener('DOMContentLoaded', async ()=>{
+    await populateCCE();
+    await loadAllStaff();
+    refreshDueDropdown();
+    autoSelectOwnTag();
+  });
+
+  // ========= Close flow (single modal: confirm -> mood) =========
+  (function(){
+    const root = document.getElementById('pageRoot');
+    const meId = (root?.dataset.meId || '').trim();
+    const meName = (root?.dataset.meName || '').trim();
+    const assigneeId = (root?.dataset.assigneeId || '').trim();
+    const assigneeName = (root?.dataset.assigneeName || '').trim();
+
+    const form = document.getElementById('quickRemarkForm');
+    if (!form) return;
+
+    // Buttons inside form (to know if it's a close attempt)
+    const btns = form.querySelectorAll('button[type="submit"]');
+    let isClosingAttempt = false;
+
+    btns.forEach(b => {
+      b.addEventListener('click', ev => {
+        const isCloseBtn = (b.name === 'close_ticket' && String(b.value) === '1');
+        isClosingAttempt = !!isCloseBtn;
+      });
+    });
+
+    // Modal parts
+    const modal      = document.getElementById('closeModal');
+    const stepConfirm= document.getElementById('cm_step_confirm');
+    const stepMood   = document.getElementById('cm_step_mood');
+    const txtConfirm = document.getElementById('cm_confirm_text');
+
+    const btnX       = document.getElementById('cm_btn_x');
+    const btnCont    = document.getElementById('cm_btn_continue');
+    const btnCancel1 = document.getElementById('cm_btn_cancel_1');
+    const btnDone    = document.getElementById('cm_btn_done');
+    const btnCancel2 = document.getElementById('cm_btn_cancel_2');
+
+    const hfMood     = document.getElementById('closure_mood');
+    const hfConfirm  = document.getElementById('confirm_cross_close');
+
+    function show(el){ el.style.display = 'block'; }
+    function hide(el){ el.style.display = 'none'; }
+    function openModal(){ show(modal); }
+    function closeModal(){ hide(modal); }
+
+    function resetModal(){
+      // default: confirm first, mood hidden
+      show(stepConfirm);
+      hide(stepMood);
+      // reset hidden fields
+      hfMood.value = '';
+      hfConfirm.value = '0';
+      // clear radio selection
+      const radios = document.querySelectorAll('input[name="cm_mood"]');
+      radios.forEach(r => r.checked = false);
+    }
+
+    function startCloseFlow(){
+      resetModal();
+      const isCross = (assigneeId && meId && assigneeId !== meId);
+      if (isCross){
+        const name = assigneeName || 'the current assignee';
+        txtConfirm.textContent = `Are you sure you are closing a ticket assigned to ${name}?`;
+        show(stepConfirm);
+        hide(stepMood);
+      } else {
+        hide(stepConfirm);
+        show(stepMood);
+      }
+      openModal();
+    }
+
+    // Modal controls
+    [btnX, btnCancel1, btnCancel2].forEach(btn => {
+      if (!btn) return;
+      btn.addEventListener('click', () => { closeModal(); });
+    });
+
+    if (btnCont){
+      btnCont.addEventListener('click', () => {
+        hfConfirm.value = '1';
+        hide(stepConfirm);
+        show(stepMood);
+      });
+    }
+
+    if (btnDone){
+      btnDone.addEventListener('click', () => {
+        const selected = document.querySelector('input[name="cm_mood"]:checked');
+        if (!selected){
+          alert('Please select Happy or Sad closure.');
+          return;
+        }
+        hfMood.value = selected.value; // "happy" or "sad"
+        document.getElementById('close_ticket_hidden').value = "1";
+        closeModal();
+        form.submit();
+      });
+    }
+
+    // Intercept submit: only when it's a close attempt
+    form.addEventListener('submit', function(e){
+      if (!isClosingAttempt) return; // simple remark
+
+      e.preventDefault();
+
+      const remark = (form.querySelector('textarea[name="remark"]').value || '').trim();
+      if (!remark){
+        alert('Remark is required');
+        return;
+      }
+
+      startCloseFlow();
+      isClosingAttempt = false;
+    });
+  })();
+
+  // ========= Frontend-only mode toggle (view / tag / full) =========
+  (function(){
+    function getMode(){
+      try { return new URLSearchParams(window.location.search).get('mode') || 'full'; }
+      catch(e){ return 'full'; }
+    }
+
+    function disableFormById(formId){
+      const form = document.getElementById(formId);
+      if (!form) return;
+      const controls = form.querySelectorAll('input, select, textarea, button');
+      controls.forEach(el => { el.disabled = true; el.classList && el.classList.add('is-disabled'); });
+      form.closest('.card')?.setAttribute('style', (form.closest('.card').getAttribute('style')||'') + ';opacity:.85;');
+    }
+
+    const mode = getMode();
+
+    // NEW: pure view mode -> right column hide + disable all right forms
+    if (mode === 'view'){
+      document.documentElement.classList.add('hide-right'); // <html> pe class
+      ['addTagForm','assignShiftForm','tagUpdateForm','quickRemarkForm'].forEach(disableFormById);
+      return; // view me aur kuch toggle nahi chahiye
+    }
+
+    // Existing behavior
+    if (mode === 'tag'){
+      disableFormById('quickRemarkForm');
+      disableFormById('assignShiftForm');
+      disableFormById('addTagForm');
+    } else {
+      disableFormById('tagUpdateForm');
+    }
+  })();
+</script>
+
+{% endblock %}

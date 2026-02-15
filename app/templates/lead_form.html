@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lead Capture – Dr. Bhasin's Lab</title>
+    <style>
+      body { margin: 0; background: #fff; color: #111; font: 16px/1.45 "Segoe UI", sans-serif; }
+      .wrap { max-width: 720px; margin: 0 auto; }
+      header { display: flex; align-items: center; justify-content: center; gap: 12px; font-weight: bold; font-size: 22px; text-align: center; }
+      header img.logo { width: 40px; height: 40px; object-fit: contain; }
+      .card { background: #ebeaea; border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 16px 0; }
+      label { font-weight: bold; font-size: 17px; margin-bottom: 1px; display: block; color: #1a1a1a; }
+      .muted { color: #555; font-size: 14px; margin-top: 6px; }
+      input, textarea, select { width: 100%; padding: 12px 14px; margin-top: 6px; margin-bottom: 16px; border: 1px solid #ccc; border-radius: 10px; font-size: 16px; box-sizing: border-box; }
+      input:focus, textarea:focus { border-color: #007bff; box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.12); }
+      .phone-row { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; }
+      .phone-row input[type="tel"] { flex: 1; min-width: 0; }
+      .wa-only { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 14px; }
+      .wa-only label { font-weight: bold; font-size: 17px; color: #015722; margin-bottom: 10px; }
+      .wa-only-icon { color: #1bc75a; font-weight: bold; font-size: 24px; }
+      .wa-only input[type="checkbox"] { width: 24px; height: 24px; accent-color: #25d366; cursor: pointer; }
+      .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; margin-bottom: 16px; }
+      .chip { background: #eee; border: 1px solid #ccc; border-radius: 999px; padding: 8px 14px; cursor: pointer; user-select: none; font-size: 14px; }
+      .chip.active { background: #007bff; color: #fff; border-color: #007bff; }
+      .btn { width: 100%; padding: 14px; background: #0a66c2; color: #fff; border: none; border-radius: 10px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 20px; }
+      @media (max-width: 480px) {
+        .wrap { padding: 12px; }
+        .phone-row { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+        .wa-only { font-size: 13px; }
+      }
+
+      /* ===== Success Toast (centered modal-lite) ===== */
+      .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); display: none; align-items: center; justify-content: center; z-index: 9999; }
+      .modal { width: min(440px, 92vw); background: #fff; border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); padding: 22px 20px; text-align: center; border: 1px solid #e6e6e6; }
+      .modal .icon { width: 64px; height: 64px; margin: 0 auto 10px; border-radius: 50%; display: grid; place-items: center; background: #e8f7ee; border: 1px solid #b9ebc9; }
+      .modal .icon svg { width: 34px; height: 34px; fill: #168a3a; }
+      .modal h3 { margin: 8px 0 0; font-size: 20px; }
+
+      /* entry/exit micro-anim */
+      .fade-in { animation: fadeIn 0.18s ease-out; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+      /* ===== Added: compact alt phone row + swap button ===== */
+      .phone-row.compact input[type="tel"] { flex: 1; min-width: 0; }
+      .swap-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; margin-top: -8px; margin-bottom: 8px; border: 1px solid #cfd8dc; background: #6acbfc; border-radius: 10px; font-weight: 600; cursor: pointer; transition: transform .06s ease, background .2s ease; }
+      .swap-btn:active { transform: scale(0.98); }
+      .swap-btn i { font-size: 16px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <img src="{{ url_for('static', filename='Logoicon - Copy.png') }}" alt="Lab Logo" class="logo" />
+        Lead Capture Form
+      </header>
+
+      <form action="/submit-lead" method="POST" enctype="multipart/form-data" id="leadForm">
+        <!-- Lead ID: label retained, input removed (backend auto-generates) -->
+        <section class="card">
+          <label>Lead ID (auto-generated)</label>
+          <div class="muted">Will be assigned automatically after you submit.</div>
+        </section>
+
+        <section class="card">
+          <label>Patient Name <span style="color: red">*</span></label>
+          <input type="text" name="name" placeholder="Enter patient name" required />
+
+          <label>Patient Phone <i class="fa-solid fa-phone"></i><span style="color: red">*</span></label>
+          <div class="phone-row">
+            <input type="tel" name="phone" maxlength="16" required placeholder="10 digits or +91…" inputmode="tel" pattern="^(?:\+91)?\d{10}$" title="Enter 10 digits or +91 followed by 10 digits" />
+            <div class="wa-only">
+              <input type="checkbox" id="waOnly" name="wa_only" />
+              <label for="waOnly"><i class="fab fa-whatsapp wa-only-icon"></i> Only</label>
+            </div>
+          </div>
+
+          <label>Alternate Number</label>
+          <div class="phone-row compact">
+            <input type="tel" name="alt_phone" id="altPhone" placeholder="Optional" inputmode="tel" pattern="^(?:\+91)?\d{10}$" title="Enter 10 digits or +91 followed by 10 digits" />
+            <div class="wa-only">
+              <input type="checkbox" id="altWaOnly" name="alt_wa_only" />
+              <label for="altWaOnly"><i class="fab fa-whatsapp wa-only-icon"></i> Only</label>
+            </div>
+          </div>
+
+          <button type="button" class="swap-btn" id="swapBtn" aria-label="Swap numbers">
+            <i class="fa-solid fa-arrows-rotate"></i>
+            Swap Numbers
+          </button>
+
+          <label>Preferred Visit Window</label>
+          <div class="chips" id="visitChips">
+            <div class="chip active" data-value="Today">Today</div>
+            <div class="chip" data-value="Tomorrow">Tomorrow</div>
+            <div class="chip" data-value="Flexible">Flexible</div>
+          </div>
+          <input type="hidden" name="visit_window" id="visitWindow" value="Today" />
+
+          <label>Prescription / Photo (Max 6)</label>
+          <input type="file" name="prescription[]" id="prescription" accept="image/*,application/pdf" multiple />
+
+          <label>Remarks <span style="color: red">*</span></label>
+          <textarea name="remarks" placeholder="Enter remarks..." required></textarea>
+
+          <label>Patient Tags</label>
+          <div class="chips" id="tagChips">
+            <div class="chip" data-value="VIP">VIP</div>
+            <div class="chip" data-value="High Value">High Value</div>
+            <div class="chip" data-value="Previous Complaint">Previous Complaint</div>
+            <div class="chip" data-value="Sr.Executive Call">Sr.Executive Call</div>
+          </div>
+          <input type="hidden" name="tags" id="tags" />
+
+          <label>No. of Patients</label>
+          <div class="chips" id="numChips">
+            <div class="chip active" data-value="1">1</div>
+            <div class="chip" data-value="2">2</div>
+            <div class="chip" data-value=">2">&gt;2</div>
+          </div>
+          <input type="hidden" name="num_patients" id="numPatients" value="1" />
+        </section>
+
+        <button class="btn" type="submit">Submit Lead</button>
+      </form>
+    </div>
+
+    <!-- ===== Success Popup (only message, auto-hide in 2s) ===== -->
+    <div id="successWrap" class="modal-backdrop" aria-live="polite" aria-atomic="true">
+      <div class="modal fade-in" role="status" aria-label="Lead submitted successfully">
+        <div class="icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4.3 6.7-5.2 6a1 1 0 0 1-1.5.06l-2.1-2.1a1 1 0 1 1 1.4-1.42l1.36 1.36 4.53-5.2a1 1 0 1 1 1.52 1.3z"/>
+          </svg>
+        </div>
+        <h3 id="successTitle">Lead submitted successfully</h3>
+      </div>
+    </div>
+
+    <script>
+  // ===== Chips helpers =====
+  function activateChip(groupId, hiddenFieldId) {
+    const chips = document.querySelectorAll(`#${groupId} .chip`);
+    chips.forEach((chip) => {
+      chip.addEventListener("click", () => {
+        chips.forEach((c) => c.classList.remove("active"));
+        chip.classList.add("active");
+        document.getElementById(hiddenFieldId).value = chip.dataset.value;
+      });
+    });
+  }
+  activateChip("visitChips", "visitWindow");
+  activateChip("numChips", "numPatients");
+
+  // Multi-select chips for tags
+  const tagChips = document.querySelectorAll("#tagChips .chip");
+  const tagsInput = document.getElementById("tags");
+  tagChips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      chip.classList.toggle("active");
+      const selected = Array.from(tagChips)
+        .filter((c) => c.classList.contains("active"))
+        .map((c) => c.dataset.value.trim());
+      const uniq = Array.from(new Set(selected));
+      tagsInput.value = uniq.join(",");
+    });
+  });
+
+  // File limit: max 6
+  const fileInput = document.getElementById("prescription");
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files && fileInput.files.length > 6) {
+      alert("You can upload a maximum of 6 files.");
+      fileInput.value = "";
+    }
+  });
+
+  // ===== Success popup control =====
+  const form = document.getElementById("leadForm");
+  const successWrap = document.getElementById("successWrap");
+
+  // Reset chips to defaults
+  function resetChips() {
+    // visitChips default = Today
+    document.querySelectorAll("#visitChips .chip").forEach((c, i) => c.classList.toggle("active", i === 0));
+    document.getElementById("visitWindow").value = "Today";
+    // numChips default = 1
+    document.querySelectorAll("#numChips .chip").forEach((c, i) => c.classList.toggle("active", i === 0));
+    document.getElementById("numPatients").value = "1";
+    // tag chips clear
+    document.querySelectorAll("#tagChips .chip").forEach((c) => c.classList.remove("active"));
+    document.getElementById("tags").value = "";
+    // checkbox clear
+    const waOnly = document.getElementById("waOnly");
+    if (waOnly) waOnly.checked = false;
+    // NOTE: alt checkbox intentionally not reset to avoid changing original logic
+  }
+
+  function openPopup() {
+    successWrap.style.display = "flex";
+    // Auto-close after 2 seconds, then hard refresh
+    setTimeout(() => {
+      closePopup();
+      window.location.reload();
+    }, 2000);
+  }
+
+  function closePopup() { successWrap.style.display = "none"; }
+
+  // Allow click outside to dismiss early (optional)
+  successWrap.addEventListener("click", (e) => { if (e.target === successWrap) closePopup(); });
+
+  // ===== Submit handler (AJAX first, fallback safe) =====
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Submitting…"; }
+
+    const fd = new FormData(form);
+    try {
+      const res = await fetch(form.action, { method: "POST", body: fd, headers: { "X-Requested-With": "fetch" } });
+
+      if (!res.ok && res.status !== 302) throw new Error("Network/Server error");
+
+      // We don't need next_lead_id preview anymore; just show success and refresh
+      form.reset();
+      resetChips();
+      openPopup();
+    } catch (err) {
+      console.warn("Fetch failed, falling back to normal submit:", err);
+      form.submit();
+      return;
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Submit Lead"; }
+    }
+  });
+
+  // ===== Swap Numbers (Phone <-> Alternate) =====
+  const swapBtn = document.getElementById("swapBtn");
+  if (swapBtn) {
+    swapBtn.addEventListener("click", () => {
+      const phoneEl = document.querySelector('input[name="phone"]');
+      const altEl = document.getElementById("altPhone");
+      const waOnlyEl = document.getElementById("waOnly");
+      const altWaOnlyEl = document.getElementById("altWaOnly");
+
+      if (!phoneEl || !altEl) return;
+
+      // Swap values
+      const tempVal = phoneEl.value;
+      phoneEl.value = altEl.value;
+      altEl.value = tempVal;
+
+      // Swap WA-only toggles if both exist
+      if (waOnlyEl && altWaOnlyEl) {
+        const tempChk = waOnlyEl.checked;
+        waOnlyEl.checked = altWaOnlyEl.checked;
+        altWaOnlyEl.checked = tempChk;
+      }
+
+      // Visual feedback
+      [phoneEl, altEl].forEach((el) => {
+        el.style.transition = "background 0.3s ease";
+        el.style.background = "#fff7e6";
+        setTimeout(() => (el.style.background = ""), 280);
+      });
+    });
+  }
+</script>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+  </body>
+</html>

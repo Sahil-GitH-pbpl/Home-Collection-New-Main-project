@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Leads Dashboard{% endblock %}
+
+{% block content %}
+<style>
+  body { font-family: sans-serif; background: linear-gradient(135deg,#E9E8E8 0%,#ffffff 60%,#E9E8E8 100%); color:#000 }
+  .topbar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:16px; gap:12px; }
+  .top-buttons { display:flex; gap:10px }
+  .btn { background: linear-gradient(90deg,#054e5d,#206b4d); color:white; padding:8px 14px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; transition:0.2s ease; box-shadow: 0 4px 10px rgba(0,0,0,.15) }
+  .btn:hover { transform: translateY(-2px); background:#863d2c }
+  .btn.active { background:#0537be; color: #ffffff; }
+  .btn.disabled { opacity:.6; cursor:not-allowed; }
+  .link-disabled { pointer-events:none; }
+
+  .counter-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .chip { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; border:1px solid #ddd; font-weight:700; font-size:13px; background:#f6f6f6; min-width:110px; justify-content:center; }
+  .chip .count { font-size:15px; font-weight:800 }
+  .chip.received { border-color:#8fb4c7; background:#eef7ff }
+  .chip.followup { border-color:#f5b76a; background:#fff6e0 }
+  .chip.booked { border-color:#8fd3a8; background:#e8fff1 }
+  .chip.canceled { border-color:#e0a0a0; background:#ffe8e8 }
+  .last-upd { font-size:11px; color:#555 }
+
+  table { border-collapse: collapse; width: 100%; margin-top: 10px; border: 1px solid #948777; border-radius: 10px; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,.12) }
+  th, td { padding: 5px 14px; border-bottom: 1px solid #ccc; text-align: center; font-size: 14px;}
+  th { background: linear-gradient(90deg,#054e5d,#25694f); color:#fff;  letter-spacing:0.5px }
+  tr:nth-child(even){ background:#e0dbdb }
+  tr:hover{ background:#c0e2d5 }
+  .tag-badge { background: rgb(255, 168, 6); padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; display: inline-block; }
+  .due-row { background: linear-gradient(90deg,#fababa, #ff9797, #a1ffda) !important; }
+  .timer-badge { display:inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; background:#ffe7c2; border:1px solid #f5b76a; min-width: 70px; }
+  .sla-badge { display:inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; border:1px solid #e67e22; background:#ffe6cc; margin-left: 6px; }
+
+  .lock-indicator { font-size:12px; font-weight:700; display:inline-flex; gap:6px; align-items:center; }
+  .lock-dot { width:8px; height:8px; border-radius:999px; display:inline-block; background:#bbb }
+  .lock-dot.locked { background:#e67e22 }
+  .lock-dot.free { background:#2ecc71 }
+  .btn.pick { background: linear-gradient(90deg,#3f51b5,#2196f3); }
+  .btn.pick[disabled] { opacity: .6; cursor:not-allowed; }
+  .btn.giveup { background: linear-gradient(90deg,#b53f3f,#f32121); }
+</style>
+
+<div class="topbar">
+  <div class="top-buttons">
+    <a href="{{ url_for('leads_list.leads', view='new') }}">
+      <button class="btn {{ 'active' if view == 'new' else '' }}">New Leads</button>
+    </a>
+    <a href="{{ url_for('leads_list.leads', view='followup') }}">
+      <button class="btn {{ 'active' if view == 'followup' else '' }}">Follow-up Leads</button>
+    </a>
+  </div>
+
+  <div class="counter-bar" id="counterBar">
+    <div class="chip received">Received: <span class="count" id="c-received">0</span></div>
+    <div class="chip followup">Follow-up: <span class="count" id="c-followup">0</span></div>
+    <div class="chip booked">Booked: <span class="count" id="c-booked">0</span></div>
+    <div class="chip canceled">Canceled: <span class="count" id="c-canceled">0</span></div>
+    <div class="last-upd" id="lastUpd">Updating…</div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>S.No.</th>
+      <th>Lead ID</th>
+      <th>Patient Name</th>
+      <th>Phone</th>
+      <th>Visit Window</th>
+      <th>No. of Patients</th>
+      <th>Created By</th>
+      <th>Tags</th>
+      <th>Next Action</th>
+      <th>Waiting (mins)</th>
+      <th>Update</th>
+      <th>Counter with Name</th>
+      <th>Pick</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for lead in leads %}
+    <tr class="{{ 'due-row' if (view == 'followup' and lead['due_flag'] == 1) else '' }}"
+        data-due-flag="{{ 1 if lead['due_flag'] == 1 else 0 }}"
+        data-lead-id="{{ lead['lead_id'] }}">
+      <td>{{ loop.index }}</td>
+      <td>{{ lead['lead_id'] }}</td>
+      <td>{{ lead['name'] }}</td>
+      <td>{{ lead['phone'] }}</td>
+      <td>{{ lead['visit_window'] or '-' }}</td>
+      <td>{{ lead['num_patients'] or '-' }}</td>
+      <td>{{ lead['created_by'] or '-' }}</td>
+      <td>{% if lead['tags'] %}<span class="tag-badge">{{ lead['tags'] }}</span>{% else %}-{% endif %}</td>
+      <td class="next-action-cell">{{ lead['next_action'] or '-' }}</td>
+      <td>
+        {% if (view == 'new') or (lead['due_flag'] == 1) %}
+          <span class="timer-badge" data-lead-id="{{ lead['lead_id'] }}" data-created-at="{{ lead['created_at'] }}"></span>
+          <span class="sla-badge" style="display:none;">20 min+</span>
+        {% else %}-{% endif %}
+      </td>
+      <td>
+        <a href="{{ url_for('lead_detail.lead_detail', lead_id=lead['lead_id']) }}" class="update-link">
+          <button class="btn update-btn" data-lead-id="{{ lead['lead_id'] }}">Update</button>
+        </a>
+      </td>
+      <td>
+        <span class="lock-indicator" id="lock-ind-{{ lead['lead_id'] }}">
+          <span class="lock-dot free"></span>
+          <span class="lock-text">Free</span>
+        </span>
+      </td>
+      <td>
+        <button class="btn pick pick-btn" data-lead-id="{{ lead['lead_id'] }}" data-state="free">Pick</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+  /* timers + counters (same as your script) */
+  (function(){
+    const VIEW = "{{ view }}";
+    const START_HOUR=7, START_MINUTE=0, END_HOUR=22, END_MINUTE=0;
+    const monMap = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+
+    function parseDueAt(text){
+      if(!text) return null;
+      const m = text.match(/(?:Follow up at|Call back at)\s+(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{2}):(\d{2})/i);
+      if(!m) return null;
+      return new Date(parseInt(m[3],10), monMap[m[2].toLowerCase()], parseInt(m[1],10), parseInt(m[4],10), parseInt(m[5],10));
+    }
+    function parseCreatedAt(dtStr){ if(!dtStr) return null; return new Date(dtStr.replace(' ', 'T')); }
+    function dayWindow(date){
+      const y = date.getFullYear(), m = date.getMonth(), d = date.getDate();
+      return [new Date(y,m,d,START_HOUR,START_MINUTE), new Date(y,m,d,END_HOUR,END_MINUTE)];
+    }
+    function clampInterval(start, end, min, max){
+      const s = start > min ? start : min;
+      const e = end   < max ? end   : max;
+      if(e <= s) return null;
+      return [s, e];
+    }
+    function businessMinutesBetween(base, now){
+      if(!base || !now || now <= base) return 0;
+      let total = 0;
+      let cur = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+      const endDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      while(cur <= endDay){
+        const [winStart, winEnd] = dayWindow(cur);
+        const dayStart = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate(), 0,0,0,0);
+        const dayEnd   = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate(), 23,59,59,999);
+        const baseDay  = new Date(base.getFullYear(), base.getMonth(), base.getDate()).getTime();
+        const curDay   = new Date(cur.getFullYear(),  cur.getMonth(),  cur.getDate()).getTime();
+        const endDayT  = endDay.getTime();
+        const rangeStart = (curDay === baseDay) ? base : dayStart;
+        const rangeEnd   = (curDay === endDayT) ? now  : dayEnd;
+        const overlap = clampInterval(rangeStart, rangeEnd, winStart, winEnd);
+        if(overlap){ total += Math.floor((overlap[1] - overlap[0]) / 60000); }
+        cur.setDate(cur.getDate() + 1);
+      }
+      return total;
+    }
+    function formatHM(totalMinutes){
+      if (totalMinutes < 0) totalMinutes = 0;
+      const h = Math.floor(totalMinutes / 60);
+      const m = totalMinutes % 60;
+      return h > 0 ? (h + " h " + m + " m") : (m + " m");
+    }
+    function refreshTimers(){
+      const now = new Date();
+      document.querySelectorAll('.timer-badge[data-lead-id]').forEach(function(badge){
+        const row = badge.closest('tr');
+        const naCell = row ? row.querySelector('.next-action-cell') : null;
+        const naText = naCell ? naCell.textContent.trim() : '';
+        let baseTime = parseDueAt(naText) || parseCreatedAt(badge.getAttribute('data-created-at'));
+        if(!baseTime || isNaN(baseTime.getTime())){ badge.textContent = '-'; return; }
+        const elapsedMins = businessMinutesBetween(baseTime, now);
+        badge.textContent = formatHM(elapsedMins);
+
+        const slaChip = row.querySelector('.sla-badge');
+        if ("{{ view }}" === 'new') {
+          if (elapsedMins >= 20) {
+            row.classList.add('due-row');
+            if (slaChip) { slaChip.textContent = '20 min+'; slaChip.style.display = 'inline-block'; }
+          } else { if (slaChip) slaChip.style.display = 'none'; }
+        } else { if (slaChip) slaChip.style.display = 'none'; }
+      });
+    }
+    async function refreshCounters(){
+      try{
+        const resp = await fetch("{{ url_for('leads_list.counters') }}");
+        if(!resp.ok) throw new Error();
+        const data = await resp.json();
+        document.getElementById('c-received').textContent = data.received || 0;
+        document.getElementById('c-followup').textContent = data.followup || 0;
+        document.getElementById('c-booked').textContent   = data.booked   || 0;
+        document.getElementById('c-canceled').textContent = data.canceled || 0;
+        document.getElementById('lastUpd').textContent = "Last updated: " + new Date().toLocaleTimeString();
+      }catch(e){
+        document.getElementById('lastUpd').textContent = "Counters: retrying…";
+      }
+    }
+    refreshTimers(); setInterval(refreshTimers, 60000);
+    refreshCounters(); setInterval(refreshCounters, 300000);
+  })();
+</script>
+
+<script>
+  (function(){
+    function safeFetch(url, opts){ return fetch(url, opts).catch(()=>({ ok:false, json: async()=>({}) })); }
+    function toISO(dtStr){ if(!dtStr) return null; return new Date(dtStr.replace(' ', 'T')); }
+    function fmtLeft(ms){ if (ms < 0) ms = 0; const sec = Math.floor(ms/1000); const m = Math.floor(sec/60); const s = sec%60; return m.toString().padStart(2,'0')+":"+s.toString().padStart(2,'0'); }
+
+    function renderState(leadId, state){
+      const ind = document.getElementById('lock-ind-'+leadId);
+      const btn = document.querySelector('.pick-btn[data-lead-id="'+leadId+'"]');
+      const updBtn  = document.querySelector('.update-btn[data-lead-id="'+leadId+'"]');
+      const updLink = updBtn ? updBtn.closest('a') : null;
+      if(!ind || !btn) return;
+
+      const dot = ind.querySelector('.lock-dot');
+      const txt = ind.querySelector('.lock-text');
+
+      function setUpdateEnabled(enabled, title){
+        if (updBtn){
+          if (enabled){ updBtn.classList.remove('disabled'); updBtn.removeAttribute('disabled'); updBtn.removeAttribute('title'); }
+          else { updBtn.classList.add('disabled'); updBtn.setAttribute('disabled','disabled'); if (title) updBtn.title = title; }
+        }
+        if (updLink){ if (enabled){ updLink.classList.remove('link-disabled'); } else { updLink.classList.add('link-disabled'); } }
+      }
+
+      if(!state || state.locked === undefined){
+        dot.classList.remove('locked'); dot.classList.add('free'); txt.textContent = 'Free';
+        btn.textContent = 'Pick'; btn.classList.remove('giveup'); btn.classList.add('pick'); btn.dataset.state = 'free'; btn.disabled = false;
+        setUpdateEnabled(true); return;
+      }
+
+      if(state.locked){
+        dot.classList.remove('free'); dot.classList.add('locked');
+        const exp = toISO(state.expires_at);
+        const who = state.is_me ? 'You' : (state.user_name || 'Agent');
+        txt.textContent = who + ' (' + (exp?fmtLeft(exp - new Date()):'--:--') + ')';
+
+        if(state.is_me){
+          btn.textContent = 'Give Up'; btn.classList.remove('pick'); btn.classList.add('giveup'); btn.dataset.state = 'mine'; btn.disabled = false; setUpdateEnabled(true);
+        } else {
+          btn.textContent = 'Picked'; btn.classList.remove('giveup'); btn.classList.add('pick'); btn.dataset.state = 'locked'; btn.disabled = true;
+          setUpdateEnabled(false, `Picked by ${who} until ${state.expires_at}`);
+        }
+      } else {
+        dot.classList.remove('locked'); dot.classList.add('free'); txt.textContent = 'Free';
+        btn.textContent = 'Pick'; btn.classList.remove('giveup'); btn.classList.add('pick'); btn.dataset.state = 'free'; btn.disabled = false;
+        setUpdateEnabled(true);
+      }
+    }
+
+    let lastStates = null;
+
+    async function fetchStateForAll(){
+      const ids = Array.from(document.querySelectorAll('tr[data-lead-id]')).map(tr=>tr.getAttribute('data-lead-id'));
+      if(ids.length === 0) return;
+
+      let resp = await safeFetch('/leads/lock/state?ids='+encodeURIComponent(ids.join(',')));
+      let incomingStates = {};
+      if(resp.ok){
+        const data = await resp.json();
+        incomingStates = (data && data.states) ? data.states : {};
+      } else {
+        ids.forEach(id => incomingStates[id] = { locked:false, user_name:null, expires_at:null, is_me:false });
+      }
+
+      lastStates = incomingStates;
+      ids.forEach(id => renderState(id, incomingStates[id]));
+    }
+
+    async function actPick(leadId){
+      const r = await safeFetch('/leads/lock/pick', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ lead_id: leadId }) });
+      const d = r.ok ? await r.json() : null;
+      renderState(leadId, d);
+      setTimeout(fetchStateForAll, 3000);
+    }
+
+    async function actGiveUp(leadId){
+      const r = await safeFetch('/leads/lock/giveup', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ lead_id: leadId }) });
+      const d = r.ok ? await r.json() : null;
+      renderState(leadId, d);
+      setTimeout(fetchStateForAll, 3000);
+    }
+
+    document.addEventListener('click', function(e){
+      const btn = e.target.closest('.pick-btn');
+      if(!btn) return;
+      const id = btn.getAttribute('data-lead-id');
+      const state = btn.dataset.state;
+      if (state === 'free') { actPick(id); }
+      else if (state === 'mine') { if (window.confirm('Are you sure you want to give up this lead?')) actGiveUp(id); }
+    });
+
+    fetchStateForAll();
+  })();
+</script>
+{% endblock %}

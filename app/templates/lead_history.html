@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Lead {{ master.lead_id if master else '-' }} — History{% endblock %}
+
+{% block content %}
+<style>
+  :root{
+    --grad1:#054e5d;
+    --grad2:#25694f;
+    --bg1:#E9E8E8;
+    --bg2:#ffffff;
+    --border:#948777;
+    --hover:#c0e2d5;
+    --row-alt:#e0dbdb;
+    --text:#000;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji", "Segoe UI Symbol";
+    color:var(--text);
+    background: linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 60%, var(--bg1) 100%);
+  }
+
+  .topbar{
+    background:#fff;
+    border-radius: 14px;
+    box-shadow: 0 10px 20px rgba(0,0,0,.08);
+    padding:16px 18px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:16px;
+  }
+  .title{ margin:0; font-weight:700; letter-spacing:.2px }
+  .meta{ font-size:.92rem; color:#333; margin-top:6px }
+  .meta .spaced { display: flex; flex-wrap: wrap; gap: 20px; }
+  .meta .pill{ border-radius: 999px; padding:.2rem .6rem; background: #eef2ff; font-weight:600; display:inline-block }
+  .muted{ color:#666; font-size:.9rem }
+
+  .btn{
+    background: linear-gradient(90deg, var(--grad1), var(--grad2));
+    color:#fff;
+    padding:6px 12px;
+    border:none;
+    border-radius:10px;
+    cursor:pointer;
+    font-weight:700;
+    box-shadow:0 4px 10px rgba(0,0,0,.15);
+    transition:.2s ease;
+    text-decoration:none;
+    display:inline-block
+  }
+  .btn:hover{ transform: translateY(-2px); }
+
+  .card{
+    background:#fff;
+    border-radius:14px;
+    box-shadow:0 10px 20px rgba(0,0,0,.08);
+    padding: 14px;
+  }
+  .table-wrap{
+    width:100%;
+    overflow:auto;
+    max-height:72vh;
+    border:1px solid var(--border);
+    border-radius:10px;
+    box-shadow:0 6px 18px rgba(0,0,0,.12);
+  }
+
+  table{
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: fixed;
+    min-width: 980px;
+  }
+  thead th{
+    position: sticky; top: 0; z-index: 2;
+    background: linear-gradient(90deg, var(--grad1), var(--grad2));
+    color:#fff; letter-spacing:.5px; font-size:14px;
+  }
+  th, td{ padding: 10px 14px; border-bottom:1px solid #ccc; text-align: center; vertical-align: top }
+  tbody tr:nth-child(even){ background: var(--row-alt) }
+  tbody tr:hover{ background: var(--hover) }
+
+  thead th:nth-child(1){ width:80px }
+  thead th:nth-child(2){ width:140px }
+  thead th:nth-child(4){ width:160px }
+  thead th:nth-child(7){ width:140px }
+  thead th:nth-child(8){ width:180px }
+  td:nth-child(3), td:nth-child(5), td:nth-child(6){ text-align:left }
+
+  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+  .row .spaced > span{ margin-right:14px }
+  .muted-right{ text-align:right }
+</style>
+
+<div class="topbar">
+  <div>
+    <h2 class="title">Lead: {{ master.lead_id if master else '-' }}</h2>
+    <div class="meta">
+      <span class="spaced">
+        <span class="me-3">Patient: <strong>{{ master.name or '-' }}</strong></span>
+        <span class="me-3">Contact: <a href="tel:{{ master.phone }}">{{ master.phone or '-' }}</a></span>
+        <span class="me-3">Booked By: {{ master.created_by or '-' }}</span>
+        <span>Status: <span class="pill">{{ master.status or '-' }}</span></span>
+      </span>
+    </div>
+  </div>
+  <div class="muted-right">
+    <div class="muted">Created: {{ master.created_at.strftime('%d-%b-%Y %I:%M %p') if master and master.created_at else '-' }}</div>
+    {% if master %}
+    <a class="btn" href="{{ url_for('lead_detail.lead_detail', lead_id=master.lead_id) }}">View Lead</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  {% if history|length == 0 %}
+    <div class="muted">No history snapshots found for this lead.</div>
+  {% else %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Sr. No</th>
+            <th>Status</th>
+            <th>Reason</th>
+            <th>Callback</th>
+            <th>CCE Remarks</th>
+            <th>Next Action</th>
+            <th>Booked By</th>
+            <th>Updated At</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in history %}
+          <tr>
+            <td class="text-muted">{{ loop.index }}</td>
+            <td class="fw-semibold">{{ h.status or '-' }}</td>
+            <td>{{ h.reason or '-' }}</td>
+            <td>{{ h.callback or '-' }}</td>
+            <td>{{ h.cce_remarks or '-' }}</td>
+            <td>{{ h.next_action or '-' }}</td>
+            <td>{{ h.created_by or '-' }}</td>
+            <td>{{ h.created_at.strftime('%d-%b-%Y %I:%M %p') if h.created_at else '-' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

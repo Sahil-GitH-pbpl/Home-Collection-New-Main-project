@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}My Leads{% endblock %}
+
+{% block content %}
+<style>
+  body { font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Inter,Arial;
+         background: linear-gradient(135deg,#E9E8E8 0%,#ffffff 60%,#E9E8E8 100%); color:#000 }
+  .toolbar {
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    margin-bottom:14px; padding:10px 12px; border:1px solid #948777; border-radius:12px;
+    background:#fff; box-shadow:0 6px 18px rgba(0,0,0,.08);
+  }
+  .btn {
+    background: linear-gradient(90deg,#054e5d,#247053); color:#fff;
+    padding:8px 14px; border:none; border-radius:10px; cursor:pointer; font-weight:700;
+    box-shadow:0 4px 10px rgba(0,0,0,.15); transition:.18s ease;
+  }
+  .btn:hover { transform: translateY(-1px) }
+  input[type="date"]{
+    padding:8px 10px; border:1px solid #948777; border-radius:10px; outline:none;
+    box-shadow: inset 0 0 0 0 rgba(5,78,93,.2);
+  }
+  table { width:100%; border-collapse:collapse; border:1px solid #948777; border-radius:12px;
+          overflow:hidden; box-shadow:0 6px 18px rgba(0,0,0,.12) }
+  th, td { padding:8px 14px; border-bottom:1px solid #ddd; text-align:center; font-size:14px }
+  th { background: linear-gradient(90deg,#054e5d,#247053); color:#fff; letter-spacing:.3px }
+  tr:nth-child(even){ background:#eee9e9 }
+
+  .tag-badge{
+    background: rgb(255,168,6); padding:4px 10px; border-radius:12px; font-size:12px; font-weight:700;
+    display:inline-block;
+  }
+  .status-chip{
+    display:inline-block; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:800; border:1px solid #ccc;
+  }
+  .Booked{ background:#e8fff1; border-color:#8fd3a8 }
+  .Canceled{ background:#ffe8e8; border-color:#e0a0a0 }
+  .NoResponse{ background:#fff6e0; border-color:#e8c27a }
+  .CallBackLater{ background:#e8f2ff; border-color:#a3c9ff }
+</style>
+
+<div class="toolbar">
+  <form method="get" action="{{ url_for('my_leads.my_leads') }}" style="display:flex; gap:12px; align-items:center;">
+    <label for="d"><strong>Select Date:</strong></label>
+    <input id="d" name="d" type="date" value="{{ selected_date }}">
+    <button class="btn" type="submit">Apply</button>
+  </form>
+  <div style="margin-left:auto; font-size:12px; color:#555">
+    Showing <strong>your</strong> leads for <strong>{{ selected_date }}</strong>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>S.No.</th>
+      <th>Lead ID</th>
+      <th>Patient Name</th>
+      <th>Phone</th>
+      <th>Tags</th>
+      <th>No. of Patients</th>
+      <th>Created At</th>
+      <th>Status</th>
+      <th>Update</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% if rows %}
+      {% for r in rows %}
+        {% set st = r['status'] or '-' %}
+        {% set cls = 'Booked' if st=='Booked' else
+                     'Canceled' if st=='Canceled' else
+                     'NoResponse' if st=='No Response' else
+                     'CallBackLater' if st=='Call Back Later' else '' %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ r['lead_id'] }}</td>
+          <td>{{ r['name']|default('-', true) }}</td>
+          <td>
+            {% if r['phone'] %}
+              <a href="tel:{{ r['phone'] }}">{{ r['phone'] }}</a>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>
+            {% if r['tags'] %}
+              <span class="tag-badge">{{ r['tags'] }}</span>
+            {% else %}-{% endif %}
+          </td>
+          <td>{{ r['num_patients']|default('-', true) }}</td>
+          <td>{{ r['created_at_fmt']|default('-', true) }}</td>
+          <td><span class="status-chip {{ cls }}">{{ st }}</span></td>
+          <td>
+            <a href="{{ url_for('lead_detail.lead_detail', lead_id=r['lead_id']) }}">
+              <button class="btn" type="button" aria-label="Update lead {{ r['lead_id'] }}">Update</button>
+            </a>
+          </td>
+        </tr>
+      {% endfor %}
+    {% else %}
+      <tr><td colspan="9" style="padding:18px">No leads found for this date.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+{% endblock %}

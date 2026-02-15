@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Lead History{% endblock %}
+
+{% block content %}
+<style>
+  :root {
+    --grad1:#054e5d; --grad2:#25694f;
+    --bg1:#E9E8E8; --bg2:#ffffff;
+    --border:#948777; --hover:#c0e2d5; --rowalt:#e0dbdb; --text:#000;
+    --active-bg:#1223bb; --active-text:#fff;
+  }
+  body { /* body styles kept but base already sets body; harmless override */
+    font-family: sans-serif;
+    background: linear-gradient(135deg,var(--bg1) 0%,var(--bg2) 60%,var(--bg1) 100%);
+    color: var(--text);
+  }
+  .controls-box { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; background:#ddfaeb; padding:12px; border-radius:12px; box-shadow:1px 2px 5px 1px #487c7a; margin-bottom:16px; margin-top:-15px; }
+  .controls-left { display:flex; gap:10px; flex-wrap:wrap; }
+  .controls-right { display:flex; gap:10px; align-items:center; }
+  .btn { background:#d8d7d7; color:#0b3b36; padding:6px 14px; border:1px solid var(--border); border-radius:10px; cursor:pointer; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,.08); transition:.2s ease; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+  .btn:hover { transform: translateY(-2px); }
+  .btn.active { background: var(--active-bg); color: var(--active-text); box-shadow:0 6px 14px rgba(0,0,0,.18); }
+  .label { font-weight:700; opacity:.9; }
+  input[type="date"]{ padding:6px 10px; border:1px solid #bdb6ae; border-radius:10px; outline:none; background:#fff; }
+  table { border-collapse: collapse; width:100%; border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:0 6px 18px rgba(0,0,0,.12); table-layout:fixed; min-width:960px; background:#fff; }
+  th, td { padding:8px 14px; border-bottom:1px solid #ccc; text-align:center; font-size:14px; vertical-align:top; }
+  th { background: linear-gradient(90deg,var(--grad1),var(--grad2)); color:#fff; letter-spacing:.5px; position:sticky; top:0; z-index:1; }
+  tbody tr:nth-child(even){ background:var(--rowalt) }
+  tbody tr:hover{ background:var(--hover) }
+  td.col-text { text-align:left }
+  .pill { display:inline-block; padding:4px 12px; border-radius:999px; background:#ced2df; font-weight:600; font-size:.85rem; }
+  .hidden{ display:none; }
+</style>
+
+<!-- ONE unified top box: left = tabs, right = date filter (only for completed) -->
+<div class="controls-box">
+  <div class="controls-left">
+    <a class="btn {{ 'active' if view=='completed' else '' }}" href="{{ url_for('lead_history_list.lead_history_list', view='completed') }}">Completed Leads</a>
+    <a class="btn {{ 'active' if view=='running' else '' }}" href="{{ url_for('lead_history_list.lead_history_list', view='running') }}">Running Leads</a>
+  </div>
+
+  <form class="controls-right {{ '' if view=='completed' else 'hidden' }}" method="get" action="{{ url_for('lead_history_list.lead_history_list') }}">
+    <input type="hidden" name="view" value="completed" />
+    <span class="label">Status:</span>
+    {% set sf = request.args.get('status_filter', 'all') %}
+    <select id="status_filter" name="status_filter">
+      <option value="all"      {{ 'selected' if sf=='all' else '' }}>All</option>
+      <option value="Booked"   {{ 'selected' if sf=='Booked' else '' }}>Booked</option>
+      <option value="Canceled" {{ 'selected' if sf=='Canceled' else '' }}>Canceled</option>
+    </select>
+    <span class="label">From:</span>
+    <input type="date" id="from_date" name="from_date" value="{{ request.args.get('from_date','') }}" />
+    <span class="label">To:</span>
+    <input type="date" id="to_date" name="to_date" value="{{ request.args.get('to_date','') }}" />
+    <button class="btn" type="submit">Apply</button>
+  </form>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:80px">S.No.</th>
+      <th style="width:120px">Lead ID</th>
+      <th>Patient Name</th>
+      <th style="width:140px">Phone</th>
+      <th style="width:160px">Status</th>
+      <th>Next Action</th>
+      <th style="width:110px">View</th>
+      <th style="width:120px">History</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% set ns = namespace(count=0) %}
+
+    {% for row in leads %}
+      {% set status = (row.status or 'Open') %}
+      {% set is_completed = status in ['Booked','Canceled'] %}
+      {% set is_running   = status in ['No Response','Call Back Later'] %}
+
+      {% if (view == 'completed' and is_completed) or (view == 'running' and is_running) %}
+        {% set ns.count = ns.count + 1 %}
+        <tr>
+          <td>{{ ns.count }}</td>
+          <td>{{ row.lead_id or '-' }}</td>
+          <td class="col-text">{{ row.name or '-' }}</td>
+          <td><a href="tel:{{ row.phone }}">{{ row.phone or '-' }}</a></td>
+          <td><span class="pill">{{ status }}</span></td>
+          <td class="col-text">{{ row.next_action or '-' }}</td>
+          <td>
+            <a href="{{ url_for('lead_detail.lead_detail', lead_id=row.lead_id) }}">
+              <button class="btn" type="button">View</button>
+            </a>
+          </td>
+          <td>
+            <a href="{{ url_for('lead_history_page.lead_history_page', lead_id=row.lead_id) }}">
+              <button class="btn" type="button">History</button>
+            </a>
+          </td>
+        </tr>
+      {% endif %}
+    {% endfor %}
+
+    {% if ns.count == 0 %}
+      <tr>
+        <td colspan="8" style="text-align:center; padding:18px;">
+          {% if view=='completed' %}
+            No completed leads found for selected date(s).
+          {% else %}
+            No running leads found (No Response / Call Back Later).
+          {% endif %}
+        </td>
+      </tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<script>
+(function(){
+  function todayISO(){ const d=new Date(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return `${d.getFullYear()}-${m}-${day}`; }
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get('view') || 'completed';
+  const fromEl = document.getElementById('from_date');
+  const toEl   = document.getElementById('to_date');
+  if (view === 'completed' && fromEl && !fromEl.value) { fromEl.value = todayISO(); }
+})();
+</script>
+{% endblock %}

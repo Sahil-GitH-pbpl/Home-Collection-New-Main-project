@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+{% block title %}Open Tickets{% endblock %}
+
+{% block content %}
+<style>
+.table-container { margin-top:5px; background:#fff; border-radius:12px; box-shadow:0 6px 16px rgba(0,0,0,0.08); overflow-x:auto; padding:8px; }
+.tickets-table { width:100%; border-collapse:collapse; font-size:14px; table-layout:auto; }
+.tickets-table th, .tickets-table td { padding:6px 10px; border-bottom:1px solid #e5e7eb; text-align:center; vertical-align:middle; }
+.tickets-table th { background:#012769; font-weight:700; color:#ffffff; }
+th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
+.tickets-table > tbody > tr:nth-child(even) { background:#dddddd; }
+.tickets-table tr:hover { background:inherit; }
+.action-buttons-container {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+.btn-action { 
+  display: inline-block;
+  text-decoration: none;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  text-align: center;
+  min-width: 80px;
+  flex: 1;
+} 
+.btn-view { 
+  background-color:#3a485a;
+}
+.btn-pick { 
+  background-color:#047857;
+}
+.btn-update { background-color:#0c52c4; }
+.btn-action:hover { background:#000; }
+.btn-disabled { opacity:0.5; pointer-events:none; }
+.tag-mini-table { width:100%; border-collapse:separate; border-spacing:0 6px; }
+.tag-mini-table td { border:none !important; padding:5px 8px; font-size:12px; vertical-align:middle; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.50); text-align:center; }
+.tag-row { display:flex; align-items:center; justify-content: space-between; gap:10px; }
+.tag-name { white-space:nowrap; color:#111827; }
+.tag-update-btn { display:inline-block; text-decoration:none; padding:3px 8px; font-size:11px; border:none; border-radius:4px; background:#001f54; color:#fff; cursor:pointer; line-height:1.2; }
+.tag-update-btn:hover{background:#0080b3;}
+.badge { display:inline-block; padding:2px 6px; font-size:11px; border-radius:999px; font-weight:600; white-space:nowrap; }
+.badge-ok { background:#d1fae5; color:#065f46; }
+.badge-near { background:#fef3c7; color:#92400e; }
+.badge-overdue { background:#fee2e2; color:#991b1b; }
+.commitment-wrap { display:flex; flex-direction:column; gap:2px; align-items:center; }
+.commitment-dt { font-size:12px; color:#6b7280; }
+.commitment-badge { align-self:center; }
+.section-head { display:flex; align-items:center; gap:8px; margin:10px 2px 6px 2px; }
+.section-head h2 { margin:0; font-size:18px; }
+.section-sub { color:#6b7280; font-size:12px; }
+.page-head { margin:10px 2px 6px 2px; }
+.page-head h2 { margin:0; font-size:18px; }
+.page-head-flex { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.toggle-group { display:flex; gap:8px; }
+.toggle-btn {
+  display:inline-block; padding:6px 12px; border-radius:6px;
+  background:#4f504f; color:#fff; text-decoration:none;
+  font-size:13px;
+}
+.toggle-btn.active { background:#014c69; }
+</style>
+{% if breach_pool and breach_pool|length > 0 %}
+  <div class="section-head">
+    <h2>🚨 Breach Pool (Available to Pick)</h2>
+    <span class="section-sub">Open + SLA breached + no active pick</span>
+  </div>
+
+  <div class="table-container">
+    <table class="tickets-table">
+      <thead>
+        <tr>
+          <th>Ticket No</th>
+          <th>Mobile No</th>
+          <th>Patient Name</th>
+          <th>Client Name</th>
+          <th>Ticket Category</th>
+          <th>Ticket Type</th>
+          <th>Commitment At</th>
+          <th>Assigned To</th>
+          <th class="actions-col">Actions</th> <!-- 🆕 Changed from "Pick" to "Actions" -->
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in breach_pool %}
+        <tr>
+          <td>{{ r.id }}</td>
+          <td>{{ r.mobile_number }}</td>
+          <td>{{ r.patient_name or '-' }}</td>
+          <td>{{ r.client_name or '-' }}</td>
+          <td>{{ r.ticket_category }}</td>
+          <td>{{ r.ticket_origin or 'CCE' }}</td>
+          <td>
+            <div class="commitment-wrap">
+              <div class="commitment-dt">{{ r.commitment_at_display or '-' }}</div>
+              {% if r.overdue_text %}
+                <span class="badge badge-overdue">{{ r.overdue_text }}</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>{{ r.assign_to_name or '-' }}</td>
+          <td class="actions-col">
+            <div class="action-buttons-container">
+              <!-- 🆕 VIEW BUTTON - Everyone can see -->
+              <a href="{{ url_for('ticket_detail.ticket_detail', ticket_id=r.id, mode='view') }}" 
+                 class="btn-action btn-view">
+                View
+              </a>
+              
+              <!-- PICK BUTTON - Only for special users -->
+              {% if is_special_user %}
+              <form method="post" action="{{ url_for('ticketlist.pick_ticket', ticket_id=r.id) }}" style="margin:0; flex:1;">
+                <button type="submit" class="btn-action btn-pick">Pick (30m)</button>
+              </form>
+              {% else %}
+              <button class="btn-action btn-pick btn-disabled" disabled>Pick (30m)</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{% if unassigned_odt_tickets and unassigned_odt_tickets|length > 0 %}
+  <div class="section-head">
+    <h2>📋 Unassigned ODT Tickets</h2>
+    <span class="section-sub">ODT tickets available for pick</span>
+  </div>
+
+  <div class="table-container">
+    <table class="tickets-table">
+      <thead>
+        <tr>
+          <th>Ticket No</th>
+          <th>Mobile No</th>
+          <th>Patient Name</th>
+          <th>Client Name</th>
+          <th>Ticket Category</th>
+          <th>Ticket Type</th>
+          <th>Commitment At</th>
+          <th>Assigned To</th>
+          <th>Tag To</th>
+          <th class="actions-col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in unassigned_odt_tickets %}
+        <tr>
+          <td>{{ t.id }}</td>
+          <td>{{ t.mobile_number }}</td>
+          <td>{{ t.patient_name or '-' }}</td>
+          <td>{{ t.client_name or '-' }}</td>
+          <td>{{ t.ticket_category }}</td>
+          <td>{{ t.ticket_origin or 'ODT' }}</td>
+          <td>
+            <div class="commitment-wrap">
+              <div class="commitment-dt">{{ t.commitment_at_display or '-' }}</div>
+              {% if t.commitment_countdown_text %}
+                <span class="badge commitment-badge {% if t.commitment_countdown_state == 'ok' %}badge-ok{% elif t.commitment_countdown_state == 'near' %}badge-near{% elif t.commitment_countdown_state == 'overdue' %}badge-overdue{% endif %}">
+                  {{ t.commitment_countdown_text }}
+                </span>
+              {% endif %}
+            </div>
+          </td>
+          <td>{{ t.assign_to_name or '-' }}</td>
+          <td>
+            {% if t.tags_for_user and t.tags_for_user|length > 0 %}
+            <table class="tag-mini-table">
+              <tbody>
+                {% for tag in t.tags_for_user %}
+                <tr>
+                  <td>
+                    <div class="tag-row">
+                      <span class="tag-name">{{ tag.staffName or tag.text or '-' }}</span>
+                      {% if tag.countdown_text %}
+                        <span class="badge {% if tag.countdown_state == 'ok' %}badge-ok{% elif tag.countdown_state == 'near' %}badge-near{% elif tag.countdown_state == 'overdue' %}badge-overdue{% endif %}">
+                          {{ tag.countdown_text }}
+                        </span>
+                      {% else %}
+                        <span class="badge">-</span>
+                      {% endif %}
+                      {% if not tag.ackedAt %}
+                        <a class="tag-update-btn" href="{{ url_for('ticket_detail.ticket_detail', ticket_id=t.id, mode='tag') }}">Update</a>
+                      {% else %}
+                        <button class="tag-update-btn btn-disabled" disabled>Update</button>
+                      {% endif %}
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td class="actions-col">
+            <div class="action-buttons-container">
+              <!-- 🆕 VIEW BUTTON - Everyone can see -->
+              <a href="{{ url_for('ticket_detail.ticket_detail', ticket_id=t.id, mode='view') }}" 
+                 class="btn-action btn-view">
+                View
+              </a>
+              
+              <!-- PICK BUTTON - Only for special users -->
+              {% if is_special_user %}
+              <form method="post" action="{{ url_for('ticketlist.pick_odt_ticket', ticket_id=t.id) }}" style="margin:0; flex:1;">
+                <button type="submit" class="btn-action btn-pick">Pick</button>
+              </form>
+              {% else %}
+              <button class="btn-action btn-pick btn-disabled" disabled>Pick</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+<div class="page-head page-head-flex">
+  <h2>🗂️ Open Tickets</h2>
+  <div class="toggle-group">
+    <a href="{{ url_for('ticketlist.tickets_list', view='my') }}" class="toggle-btn {% if view_mode == 'my' %}active{% endif %}">My Tickets</a>
+    <a href="{{ url_for('ticketlist.tickets_list', view='all') }}" class="toggle-btn {% if view_mode == 'all' %}active{% endif %}">All Tickets</a>
+  </div>
+</div>
+
+<div class="table-container">
+  <table class="tickets-table">
+    <thead>
+      <tr>
+        <th>Ticket No</th>
+        <th>Mobile No</th>
+        <th>Patient Name</th>
+        <th>Client Name</th>
+        <th>Ticket Category</th>
+        <th>Ticket Type</th>
+        <th>Commitment At</th>
+        <th>Assign To</th>
+        <th>Tag To</th>
+        <th class="actions-col">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tickets %}
+      <tr>
+        <td>{{ t.id }}</td>
+        <td>{{ t.mobile_number }}</td>
+        <td>{{ t.patient_name or '-' }}</td>
+        <td>{{ t.client_name or '-' }}</td>
+        <td>{{ t.ticket_category }}</td>
+        <td>{{ t.ticket_origin or 'CCE' }}</td>
+        <td>
+          <div class="commitment-wrap">
+            <div class="commitment-dt">{{ t.commitment_at_display or '-' }}</div>
+            {% if t.commitment_countdown_text %}
+              <span class="badge commitment-badge {% if t.commitment_countdown_state == 'ok' %}badge-ok{% elif t.commitment_countdown_state == 'near' %}badge-near{% elif t.commitment_countdown_state == 'overdue' %}badge-overdue{% endif %}">
+                {{ t.commitment_countdown_text }}
+              </span>
+            {% endif %}
+          </div>
+        </td>
+        <td>{{ t.assign_to_name_effective or t.assign_to_name or '-' }}</td>
+        <td>
+          {% if t.tags_for_user and t.tags_for_user|length > 0 %}
+          <table class="tag-mini-table">
+            <tbody>
+              {% for tag in t.tags_for_user %}
+              <tr>
+                <td>
+                  <div class="tag-row">
+                    <span class="tag-name">{{ tag.staffName or tag.text or '-' }}</span>
+                    {% if tag.countdown_text %}
+                      <span class="badge {% if tag.countdown_state == 'ok' %}badge-ok{% elif tag.countdown_state == 'near' %}badge-near{% elif tag.countdown_state == 'overdue' %}badge-overdue{% endif %}">
+                        {{ tag.countdown_text }}
+                      </span>
+                    {% else %}
+                      <span class="badge">-</span>
+                    {% endif %}
+                    {% if not tag.ackedAt %}
+                      <a class="tag-update-btn" href="{{ url_for('ticket_detail.ticket_detail', ticket_id=t.id, mode='tag') }}">Update</a>
+                    {% else %}
+                      <button class="tag-update-btn btn-disabled" disabled>Update</button>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            </table>
+          {% else %}
+            -
+          {% endif %}
+        </td>
+        <td class="actions-col">
+          {% if t.actions_enabled and is_special_user %}
+            <a class="btn-action btn-update" href="{{ url_for('ticket_detail.ticket_detail', ticket_id=t.id, mode='full') }}">Update</a>
+          {% else %}
+            <a class="btn-action btn-update btn-disabled" aria-disabled="true">Update</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

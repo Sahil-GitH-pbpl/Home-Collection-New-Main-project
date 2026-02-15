@@ -1,0 +1,744 @@
+{% extends "base.html" %}
+
+{% block title %}CCE Lead Workspace — {{ lead.lead_id or '-' }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+<style>
+  /* ------- Scope everything to this page to avoid clashing with base header ------- */
+  .lead-page { background:#fff; color:#111; font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; }
+  .lead-page .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  .lead-page .page-title { font-weight: 700; font-size: 22px; }
+
+  .lead-page .layout { display: flex; gap: 16px; }
+  .lead-page .card { background: #fafafa; border: 1px solid #e4e6ea; border-radius: 12px; padding: 14px; margin: 10px 0; }
+  .lead-page .left { flex: 2; }
+  .lead-page .page-right { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+  .lead-page label { display: block; font-size: 14px; margin-bottom: 4px; color: #333; }
+  .lead-page input, 
+  .lead-page textarea, 
+  .lead-page select { width: 100%; border-radius: 8px; border: 1px solid #cfd6dd; background: #fff; color: #111; padding: 8px; font-size: 14px; outline: 0; }
+  .lead-page textarea { min-height: 60px; resize: vertical; }
+  .lead-page .btn { padding: 10px 12px; border-radius: 8px; border: 1px solid #0a66c2; background: #0a66c2; color: #fff; cursor: pointer; font-weight: 600; font-size: 14px; width: 100%; }
+  .lead-page .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+  .lead-page .timeline { border-left: 3px solid #ccc; padding-left: 12px; margin-top: 8px; }
+  .lead-page .event { margin-bottom: 10px; }
+  .lead-page .event time { font-size: 12px; color: #666; display: block; }
+  .lead-page .event strong { color: #111; }
+  .lead-page img.thumb { max-width: 80px; max-height: 80px; border: 1px solid #ddd; border-radius: 6px; margin-right: 6px; cursor: default; }
+  .lead-page .pdf-thumb { width: 80px; height: 80px; border: 1px solid #ddd; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 40px; color: #d32f2f; background: #fff; }
+  .lead-page .flexrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .lead-page .highlight { color: #d9822b; font-weight: 600; }
+  .lead-page .hidden { display: none; }
+  .lead-page .row { display: flex; gap: 8px; }
+  .lead-page .row > div { flex: 1; }
+
+  /* Custom time dropdown */
+  .lead-page .time-picker { position: relative; }
+  .lead-page .time-picker input[readonly] { cursor: pointer; }
+  .lead-page .dropdown-panel { position: absolute; left: 0; right: 0; top: 100%; background: #fff; border: 1px solid #cfd6dd; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.06); max-height: 240px; overflow: auto; z-index: 9999; margin-top: 4px; }
+  .lead-page .time-option { padding: 8px 10px; font-size: 14px; }
+  .lead-page .time-option:hover { background: #f0f6ff; }
+
+  /* View-only banner */
+  .lead-page .banner { background: #fff7e6; border: 1px solid #ffe1b5; color: #8a5a0a; padding: 10px 12px; border-radius: 10px; font-weight: 600; margin-bottom: 10px; }
+  .lead-page .dimmed { opacity: 0.6; }
+
+  /* ===== Prescription layout ===== */
+  .lead-page .presc-row { display:flex; gap:12px; align-items:flex-start; }
+  .lead-page .presc-thumbs { display:flex; gap:6px; flex-wrap:wrap; max-width: 70%; }
+  .lead-page .presc-actions { display:flex; flex-direction:column; gap:8px; width:auto; }
+  .lead-page .btn-inline { display:inline-block; width:120px; padding:8px 10px; font-size:13px; margin:0; border-radius:8px; }
+  .lead-page .btn-secondary { border-color:#666; background:#666; }
+
+  /* ===== Prescription Modal ===== */
+  .lead-page .presc-modal.hidden{ display:none }
+  .lead-page .presc-modal{ position:fixed; inset:0; z-index:1000; }
+  .lead-page .presc-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,0.6); }
+  .lead-page .presc-dialog{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:#111; border-radius:12px; padding:12px; display:flex; align-items:center; justify-content:center; max-width:98vw; max-height:98vh; overflow: hidden; }
+  .lead-page .presc-dialog img{ max-width:100%; max-height:98vh; object-fit:contain; transition: transform 0.2s ease; cursor: crosshair; }
+  .lead-page .presc-close{ position:absolute; top:12px; right:12px; background:#ff0000; border:none; border-radius:999px; width:36px; height:36px; font-size:20px; cursor:pointer; color: white; }
+  .lead-page .presc-nav{ position:absolute; top:50%; transform:translateY(-50%); background:rgba(20, 167, 135, 0.9); border:none; width:30px; height:54px; font-size:22px; cursor:pointer; border-radius:6px; color: white; }
+  .lead-page .presc-prev{ left:5px; }
+  .lead-page .presc-next{ right:5px; }
+
+  /* Image container for zoom functionality */
+  .lead-page .image-container { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+
+  /* ===== WhatsApp Box ===== */
+  .lead-page .wa-box { background:#e9fff0; border:1px solid #bce5c9; border-radius:12px; padding:12px; margin-top:10px; }
+  .lead-page .wa-head { display:flex; align-items:center; gap:8px; font-weight:700; color:#0b6b2f; margin-bottom:8px; }
+  .lead-page .wa-actions { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap: wrap; }
+  .lead-page .wa-btn { border:1px solid #23a455; background:#23a455; color:#fff; font-weight:700; border-radius:8px; padding:8px 10px; cursor:pointer; }
+  .lead-page .wa-btn[disabled]{ opacity:.6; cursor:not-allowed; }
+  .lead-page .wa-preview { width:100%; min-height:120px; background:#fff; border:1px dashed #a3d3b4; border-radius:8px; padding:8px; font-size:13px; color:#0f5132; }
+  .lead-page .wa-small { font-size:12px; color:#0f5132; }
+  .lead-page .wa-chip { display:inline-flex; align-items:center; gap:6px; border:1px solid #a3d3b4; padding:4px 8px; border-radius:16px; background:#f6fff9; }
+  .lead-page .wa-success { color: #1b8a36; font-weight: 800; }
+</style>
+
+{% set is_view_only = lead.status in ['Booked','Canceled'] %}
+{% set files = lead.prescription.split(',') if lead.prescription else [] %}
+
+<div class="lead-page">
+  <div class="wrap">
+    <div class="page-title">CCE Lead Workspace</div>
+
+    {% if is_view_only %}
+    <div class="banner">This lead is <strong>Closed ({{ lead.status }})</strong>. Updates are disabled. View only.</div>
+    {% endif %}
+
+    <div class="layout">
+      <!-- Left: Lead Details -->
+      <div class="left">
+        <section class="card">
+          <h3>Lead Header</h3>
+          <div class="flexrow"><strong>Lead ID:</strong> {{ lead.lead_id }}</div>
+          <div class="flexrow"><strong>Created By (FSE):</strong> {{ lead.created_by }}</div>
+          <div class="flexrow"><strong>Created At:</strong> {{ lead.created_at }}</div>
+          <div class="flexrow"><strong>Status:</strong> <span class="highlight">{{ lead.status }}</span></div>
+        </section>
+
+        <section class="card">
+          <h3>Patient Info</h3>
+          <div><strong>Name:</strong> {{ lead.name }}</div>
+          <div><strong>Phone:</strong> {{ lead.phone }} {% if lead.wa_only == 1 %}(WhatsApp only){% else %}(Flexible){% endif %}</div>
+          <div>
+            <strong>Alt Phone:</strong>
+            {% if lead.alt_phone %}
+              {{ lead.alt_phone }} {% if lead.alt_wa_only == 1 %}(WhatsApp only){% else %}(Flexible){% endif %}
+            {% else %}
+              <em>Not provided</em>
+            {% endif %}
+          </div>
+
+          <div><strong>No. of Patients:</strong> {{ lead.num_patients }}</div>
+          <div><strong>Tags:</strong> {{ lead.tags }}</div>
+          <div><strong>Preferred Visit Window:</strong> {{ lead.visit_window }}</div>
+
+          <div>
+            <strong>Prescription:</strong>
+            <br/>
+            {% if files %}
+              <div class="presc-row">
+                <div class="presc-thumbs">
+                  {% for file in files %}
+                  <img src="{{ url_for('static', filename='uploads/' ~ file) }}" class="thumb" alt="Prescription" />
+                  {% endfor %}
+                </div>
+                <div class="presc-actions">
+                  <button type="button" class="btn btn-inline" id="btnViewPresc">View</button>
+                  <button type="button" class="btn btn-inline btn-secondary" id="btnDownloadPresc">Download</button>
+                </div>
+              </div>
+            {% else %}
+              <em>No prescription uploaded</em>
+            {% endif %}
+          </div>
+
+          <div><strong>Remarks (FSE):</strong> {{ lead.remarks }}</div>
+        </section>
+
+        <section class="card">
+          <h3>Lead History Timeline</h3>
+          <div class="timeline" id="history">
+            <div class="event"><time>{{ lead.created_at }}</time><strong>Lead Created</strong> by {{ lead.created_by }}</div>
+            {% for h in history %}
+            <div class="event">
+              <time>{{ h.created_at_fmt }}</time>
+              <strong>CCE Updated</strong> by {{ h.updated_by or h.created_by }} → {{ h.status }} | {{ h.reason or 'None' }} | {{ h.cce_remarks or '—' }}{% if h.callback %} | Callback: {{ h.callback }}{% endif %}{% if h.next_action %} | Next: {{ h.next_action }}{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+
+      <!-- Right: Update Panel -->
+      <div class="page-right">
+        <form class="card {% if is_view_only %}dimmed{% endif %}"
+              method="POST"
+              action="{{ url_for('lead_update.update_lead', lead_id=lead.lead_id) }}"
+              id="updateForm">
+
+          <h3>Update Lead</h3>
+          <fieldset {% if is_view_only %}disabled{% endif %}>
+            <label>Status</label>
+            <select name="status" id="updateStatus">
+              <option value="">-- Select --</option>
+              <option value="Booked">Booked</option>
+              <option value="Canceled">Canceled (Closed)</option>
+              <option value="No Response">No Response (Follow-up)</option>
+              <option value="Call Back Later">Call Back Later</option>
+            </select>
+
+            <div class="hidden" id="reasonWrap">
+              <label>Reason</label>
+              <select name="reason" id="reason">
+                <option value="">-- Select Reason --</option>
+                <option value="Looking for a specific time slot">Preferred Time Slot Not Available</option>
+                <option value="Charges are high">Looking for Discount</option>
+                <option value="Not interested in our lab">Not interested in our lab</option>
+                <option value="Not a good time to talk">Not a good time to talk</option>
+                <option value="Already tested somewhere else">Already tested somewhere else</option>
+              </select>
+            </div>
+
+            <div class="hidden" id="callbackDateTimeWrap">
+              <div class="row">
+                <div>
+                  <label>Call Back Date</label>
+                  <input type="date" id="callbackDate" />
+                </div>
+                <div>
+                  <label>Call Back Time (24h)</label>
+                  <div class="time-picker" id="timePicker">
+                    <input type="text" id="callbackTimeDisplay" readonly placeholder="Select time" />
+                    <input type="hidden" id="callbackTime" />
+                    <div class="dropdown-panel" id="timeDropdown"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <label>Remarks (CCE)</label>
+            <textarea name="remarks" id="remarks" placeholder="Enter remarks..."></textarea>
+            <input type="hidden" name="callback" id="callbackHidden" />
+          </fieldset>
+
+          <!-- ===== WhatsApp Send Box (appears for any status) ===== -->
+          <section id="waBox" class="wa-box hidden">
+            <div class="wa-head"><i class="fa-brands fa-whatsapp"></i> Send WhatsApp Message</div>
+            <div class="wa-small">Numbers selected:</div>
+            <div id="waNumbers" class="flexrow" style="margin:6px 0 8px 0;"></div>
+            <label for="waPreview">Preview (editable)</label>
+            <textarea id="waPreview" class="wa-preview" placeholder="Message will appear here. You can edit before sending..."></textarea>
+            <div class="wa-actions">
+              <button type="button" id="waSendBtn" class="wa-btn" disabled>Send message</button>
+              <span class="wa-small" id="waStatus"></span>
+            </div>
+          </section>
+
+          <button class="btn" type="submit" {% if is_view_only %}disabled title="Closed lead – updates disabled"{% endif %}>
+            {% if is_view_only %}Updates Disabled{% else %}Submit Update{% endif %}
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- JSON data blocks: keep JS 100% pure (no Jinja inside JS) -->
+<script type="application/json" id="presc-data">{ "files": {{ files | tojson }}, "baseUrl": "{{ url_for('static', filename='uploads/') }}" }</script>
+<script type="application/json" id="page-flags">{ "viewOnly": {{ is_view_only | tojson }} }</script>
+<!-- Lead basics for WA compose -->
+<script type="application/json" id="lead-data">{
+  "lead_id": {{ lead.lead_id | tojson }},
+  "name": {{ lead.name | tojson }},
+  "phone": {{ lead.phone | tojson }},
+  "wa_only": {{ (1 if lead.wa_only==1 else 0) | tojson }},
+  "alt_phone": {{ (lead.alt_phone or '') | tojson }},
+  "alt_wa_only": {{ (1 if lead.alt_wa_only==1 else 0) | tojson }},
+  "visit_window": {{ lead.visit_window | tojson }},
+  "num_patients": {{ lead.num_patients | tojson }},
+  "tags": {{ lead.tags | tojson }}
+}</script>
+
+<!-- Modal for Prescription Viewer -->
+<div id="prescModal" class="presc-modal hidden" aria-hidden="true">
+  <div class="presc-backdrop" id="prescBackdrop"></div>
+  <div class="presc-dialog" role="dialog" aria-modal="true" aria-label="Prescription Viewer">
+    <div class="image-container">
+      <img id="prescImg" alt="Prescription preview" />
+    </div>
+  </div>
+</div>
+
+
+
+<script>
+  // ===== Strictly pure JS below (no Jinja) =====
+
+  function readJson(id, fallback){ try { return JSON.parse(document.getElementById(id)?.textContent || fallback); } catch(e){ return JSON.parse(fallback); } }
+  const flags = readJson('page-flags', '{"viewOnly": false}');
+  const VIEW_ONLY = !!flags.viewOnly;
+  const presData = readJson('presc-data', '{"files": [], "baseUrl": ""}');
+  const presNames = Array.isArray(presData.files) ? presData.files : [];
+  const baseUrl   = typeof presData.baseUrl === 'string' ? presData.baseUrl : '';
+  const presFiles = presNames.map(n => baseUrl + n);
+
+  const statusEl = document.getElementById("updateStatus");
+  const reasonWrap = document.getElementById("reasonWrap");
+  const reasonSelect = document.getElementById("reason");
+  const wrap = document.getElementById("callbackDateTimeWrap");
+  const dateEl = document.getElementById("callbackDate");
+  const timeEl = document.getElementById("callbackTime");
+  const timeDisplay = document.getElementById("callbackTimeDisplay");
+  const timeDropdown = document.getElementById("timeDropdown");
+  const timePicker = document.getElementById("timePicker");
+  const hiddenCallback = document.getElementById("callbackHidden");
+  const form = document.getElementById("updateForm");
+
+  // WA elements
+  const waBox = document.getElementById('waBox');
+  const waPreview = document.getElementById('waPreview');
+  const waSendBtn = document.getElementById('waSendBtn');
+  const waStatus = document.getElementById('waStatus');
+  const waNumbers = document.getElementById('waNumbers');
+  const leadData = readJson('lead-data', '{"lead_id":"","name":"","phone":"","wa_only":0,"alt_phone":"","alt_wa_only":0,"visit_window":"","num_patients":"","tags":""}');
+
+  // Track if user manually edited the WA preview
+  let waDirty = false;
+
+  const pad = (n) => String(n).padStart(2, "0");
+
+  const REASONS_NOT_INTERESTED = [
+    "Preferred Time Slot Not Available",
+    "Charges are high",
+    "Not interested in our lab",
+    "Already tested somewhere else",
+    "Patient visit lab",
+    "Age less than 13 years",
+    "Documents not complete",
+    "Wrong phone number",
+  ];
+
+  const REASONS_CALLBACK_LATER = [
+    "Preferred Time Slot Not Available",
+    "Charges are high",
+    "Not at home",
+    "Wants to discuss with family",
+    "Unaware about our lab",
+  ];
+
+  function populateReasons(list) {
+    if (!reasonSelect) return;
+    reasonSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = ""; placeholder.textContent = "-- Select Reason --";
+    reasonSelect.appendChild(placeholder);
+    list.forEach((txt) => {
+      const opt = document.createElement("option");
+      opt.value = txt; opt.textContent = txt; reasonSelect.appendChild(opt);
+    });
+  }
+
+  function populateTimeOptions(container) {
+    if (!container) return;
+    container.innerHTML = "";
+    for (let h = 0; h <= 23; h++) {
+      for (let m of [0, 15, 30, 45]){
+          const value = `${pad(h)}:${pad(m)}`;
+          const div = document.createElement("div");
+          div.className = "time-option";
+          div.textContent = value;
+          div.dataset.value = value;
+          div.addEventListener("click", () => {
+            if (timeEl) timeEl.value = value;
+            if (timeDisplay) timeDisplay.value = value;
+            if (timeDropdown) timeDropdown.classList.add("hidden");
+            syncHidden();
+            refreshWaPreview();
+          });
+          container.appendChild(div);
+        }
+      }
+    }
+    function nextQuarterHHMM() {
+    const now = new Date();
+    const nextQuarter = (Math.floor(now.getMinutes() / 15) + 1) * 15;
+    if (nextQuarter >= 60) {
+      now.setHours(now.getHours() + 1, 0, 0, 0);
+    } else {
+      now.setMinutes(nextQuarter, 0, 0);
+    }
+    return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  }
+
+  function todayYMD() {
+    const now = new Date();
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+
+  function syncHidden() {
+    if (!hiddenCallback) return;
+    if (wrap && !wrap.classList.contains("hidden")) {
+      const d = dateEl ? dateEl.value : "";
+      const t = timeEl ? timeEl.value : "";
+      hiddenCallback.value = d && t ? `${d}T${t}` : "";
+    } else {
+      hiddenCallback.value = "";
+    }
+  }
+
+  function initDateTimeControls() {
+    populateTimeOptions(timeDropdown);
+    const next = nextQuarterHHMM();
+    if (timeEl) timeEl.value = next;
+    if (timeDisplay) timeDisplay.value = next;
+    const today = todayYMD();
+    if (dateEl) {
+      dateEl.value = today;
+      dateEl.min = today;
+    }
+    syncHidden();
+  }
+
+  function applyStatusVisibility() {
+    if (!statusEl || !reasonWrap || !wrap) return;
+    const val = statusEl.value || "";
+    reasonWrap.classList.add("hidden");
+    wrap.classList.add("hidden");
+
+    if (val === "Canceled") {
+      populateReasons(REASONS_NOT_INTERESTED);
+      reasonWrap.classList.remove("hidden");
+    }
+    if (val === "Call Back Later" || val === "No Response") {
+      wrap.classList.remove("hidden");
+      initDateTimeControls();
+      if (val === "Call Back Later") {
+        populateReasons(REASONS_CALLBACK_LATER);
+        reasonWrap.classList.remove("hidden");
+      }
+    }
+    // Show WA box for any status selection
+    toggleWaBox(!!val);
+    refreshWaPreview();
+    syncHidden();
+  }
+
+  if (statusEl) {
+    statusEl.addEventListener("change", () => {
+      if (VIEW_ONLY) return;
+      applyStatusVisibility();
+    });
+  }
+
+  if (timeDisplay) {
+    timeDisplay.addEventListener("click", () => {
+      if (!wrap || wrap.classList.contains("hidden") || !timeDropdown) return;
+      timeDropdown.classList.toggle("hidden");
+      const sel = Array.from(timeDropdown.children).find((c) => c.dataset.value === (timeEl ? timeEl.value : ""));
+      if (sel) sel.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  document.addEventListener("click", (e) => {
+    if (!timePicker || !timeDropdown) return;
+    if (!timePicker.contains(e.target) && !timeDropdown.classList.contains("hidden")) {
+      timeDropdown.classList.add("hidden");
+    }
+  });
+
+  if (dateEl) { dateEl.addEventListener("change", () => { syncHidden(); refreshWaPreview(); }); }
+  if (reasonSelect) { reasonSelect.addEventListener('change', refreshWaPreview); }
+
+  if (form) {
+    form.addEventListener("submit", (e) => {
+      if (VIEW_ONLY) {
+        e.preventDefault();
+        alert("This lead is closed. Updates are disabled.");
+        return;
+      }
+      if ((statusEl.value === "Canceled" || statusEl.value === "Call Back Later") && reasonSelect && !reasonSelect.value) {
+  e.preventDefault();
+  reasonSelect.focus();
+  alert("Please select a reason.");
+  return;
+}
+      if (!wrap || !statusEl) return;
+      if (!wrap.classList.contains("hidden")) {
+        const d = dateEl ? dateEl.value : "";
+        const t = timeEl ? timeEl.value : "";
+        if (d && t) {
+          if (hiddenCallback) hiddenCallback.value = `${d}T${t}`;
+        } else if (statusEl.value === "Call Back Later" || statusEl.value === "No Response") {
+          e.preventDefault();
+          if (dateEl && !d) dateEl.reportValidity();
+          if (timeDisplay && !t) {
+            timeDisplay.focus();
+            alert("Please select a callback time.");
+          }
+        }
+      }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    initDateTimeControls();
+    applyStatusVisibility();
+    initWaNumbers();
+    refreshWaPreview();
+  });
+
+  // ===== Prescription Viewer + PDF-in-new-tab & Smart Download (FontAwesome PDF icon) =====
+  (function(){
+    const viewBtn = document.getElementById('btnViewPresc');
+    const dlBtn = document.getElementById('btnDownloadPresc');
+    const modal = document.getElementById('prescModal');
+    const backdrop = document.getElementById('prescBackdrop');
+    const imgEl = document.getElementById('prescImg');
+    const imageContainer = imgEl.parentElement;
+    const thumbs = Array.from(document.querySelectorAll('img.thumb'));
+
+    const isPdf = (name) => /\.pdf(?:\?|#|$)/i.test(name || '');
+    const imageIndices = presNames.map((n,i) => !isPdf(n) ? i : -1).filter(i => i !== -1);
+    const pdfIndices = presNames.map((n,i) =>  isPdf(n) ? i : -1).filter(i => i !== -1);
+
+    // Image zoom functionality variables
+    let currentScale = 1;
+    let isZoomed = false;
+    let mouseX = 0;
+    let mouseY = 0;
+
+    // Replace PDF thumbnails with FontAwesome icon element
+    thumbs.forEach((el, i) => {
+      if (isPdf(presNames[i])) {
+        const icon = document.createElement('div');
+        icon.className = 'pdf-thumb';
+        icon.title = 'PDF File';
+        icon.innerHTML = '<i class="fa-solid fa-file-lines"></i>';
+        el.replaceWith(icon);
+      }
+    });
+
+    // Modal controls for images only
+    let imgIdxPos = 0; // position within imageIndices
+
+    function resetZoom() {
+      currentScale = 1;
+      isZoomed = false;
+      if (imgEl) {
+        imgEl.style.transform = 'scale(1)';
+        imgEl.style.transformOrigin = 'center center';
+      }
+    }
+
+    function showByPos(pos){
+      if (!imageIndices.length) return;
+      imgIdxPos = (pos + imageIndices.length) % imageIndices.length;
+      const absoluteIndex = imageIndices[imgIdxPos];
+      imgEl.src = presFiles[absoluteIndex];
+      resetZoom(); // Reset zoom when changing images
+    }
+
+    function openModalAtImagePos(pos){
+      if (!imageIndices.length) return;
+      showByPos(pos);
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden','false');
+    }
+
+    function closeModal(){
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden','true');
+      resetZoom();
+    }
+
+    // Zoom functionality
+    function handleMouseMove(e) {
+      if (!imgEl || !imageContainer) return;
+      const rect = imageContainer.getBoundingClientRect();
+      mouseX = (e.clientX - rect.left) / rect.width;
+      mouseY = (e.clientY - rect.top) / rect.height;
+      const originX = mouseX * 100;
+      const originY = mouseY * 100;
+      imgEl.style.transformOrigin = `${originX}% ${originY}%`;
+    }
+
+    function handleMouseEnter() {
+      if (!imgEl) return;
+      currentScale = 1.8; // Zoom level on hover
+      isZoomed = true;
+      imgEl.style.transform = `scale(${currentScale})`;
+    }
+
+    function handleMouseLeave() {
+      if (!imgEl) return;
+      currentScale = 1;
+      isZoomed = false;
+      imgEl.style.transform = 'scale(1)';
+      imgEl.style.transformOrigin = 'center center';
+    }
+
+    function handleWheel(e) {
+      if (!imgEl) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      const newScale = Math.max(0.5, Math.min(5, currentScale + delta));
+      if (newScale !== currentScale) {
+        currentScale = newScale;
+        isZoomed = currentScale !== 1;
+        imgEl.style.transform = `scale(${currentScale})`;
+        if (mouseX !== undefined && mouseY !== undefined) {
+          const originX = mouseX * 100;
+          const originY = mouseY * 100;
+          imgEl.style.transformOrigin = `${originX}% ${originY}%`;
+        }
+      }
+    }
+
+    // Add event listeners for zoom functionality
+    if (imgEl && imageContainer) {
+      imageContainer.addEventListener('mousemove', handleMouseMove);
+      imageContainer.addEventListener('mouseenter', handleMouseEnter);
+      imageContainer.addEventListener('mouseleave', handleMouseLeave);
+      imageContainer.addEventListener('wheel', handleWheel, { passive: false });
+    }
+
+    // Removed: prev/next/close button listeners per request
+    backdrop && backdrop.addEventListener('click', closeModal);
+
+    document.addEventListener('keydown', (e)=>{
+      if(modal.classList.contains('hidden')) return;
+      if(e.key==='Escape') closeModal();
+      if(e.key==='ArrowLeft') showByPos(imgIdxPos-1);
+      if(e.key==='ArrowRight') showByPos(imgIdxPos+1);
+      if(e.key==='r' || e.key==='R') resetZoom(); // Reset zoom with 'R' key
+    });
+
+    // View button: PDFs open first PDF in new tab; else open image modal
+    viewBtn && viewBtn.addEventListener('click', () => {
+      if (pdfIndices.length) {
+        const firstPdfHref = presFiles[pdfIndices[0]];
+        window.open(firstPdfHref, '_blank', 'noopener');
+        return;
+      }
+      if (imageIndices.length) {
+        openModalAtImagePos(0);
+      }
+    });
+
+    // Download button: if PDFs present, download all PDFs; else download all images
+    function downloadList(indices){
+      indices.forEach((absI) => {
+        const a = document.createElement('a');
+        a.href = presFiles[absI];
+        a.download = presNames[absI] || `file_${absI+1}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      });
+    }
+    dlBtn && dlBtn.addEventListener('click', () => {
+      if (pdfIndices.length) { downloadList(pdfIndices); }
+      else if (imageIndices.length) { downloadList(imageIndices); }
+    });
+  })();
+
+  // ===== WhatsApp Box JS =====
+  function toggleWaBox(show){
+    if (!waBox) return;
+    waBox.classList.toggle('hidden', !show || VIEW_ONLY);
+  }
+
+  function initWaNumbers(){
+    if (!waNumbers) return;
+    waNumbers.innerHTML = '';
+    const seen = new Set();
+    const addChip = (num,label) => {
+      if (!num) return;
+      const n = String(num).replace(/\n/g,'').replace(/\D/g,'');
+      if (!n || seen.has(n)) return;
+      seen.add(n);
+      const chip = document.createElement('span');
+      chip.className = 'wa-chip';
+      chip.innerHTML = `<i class="fa-brands fa-whatsapp"></i><span>${n}</span>`;
+      waNumbers.appendChild(chip);
+    };
+    addChip(leadData.phone, 'Primary');
+    addChip(leadData.alt_phone, 'Alt');
+    if (seen.size === 0) {
+      const none = document.createElement('span');
+      none.className = 'wa-small';
+      none.textContent = 'No patient numbers available';
+      waNumbers.appendChild(none);
+    }
+  }
+
+  function getCallbackText(){
+    if (wrap && !wrap.classList.contains('hidden')){
+      const d = dateEl ? dateEl.value : '';
+      const t = timeEl ? timeEl.value : '';
+      if (d && t) return `${d} ${t}`;
+    }
+    return '';
+  }
+
+  function buildWaMessage(){
+    const status = statusEl ? statusEl.value : '';
+    const name = leadData.name || '-';
+    const vw = leadData.visit_window || '-';
+    const cb = getCallbackText();
+    const rsn = reasonSelect ? (reasonSelect.value || '') : '';
+    const leadId = leadData.lead_id || '';
+    const header = `🧪 *Dr. Bhasin’s Lab*\nLead ${leadId ? '('+leadId+')' : ''}`.trim();
+    const footer = "\n\n— This is an automated update from our CCE team.";
+
+    let body = '';
+    if (status === 'Booked'){
+      body = `Hello ${name},\nYour home collection is *BOOKED*.\nPreferred window: *${vw}*.\nThank you for choosing us!`;
+    } else if (status === 'Canceled'){
+      body = `Hello ${name},\nYour request is *CANCELED*.${rsn ? `\nReason: *${rsn}*.` : ''}\nIf you need assistance later, just reply here.`;
+    } else if (status === 'No Response'){
+      body = `Hello ${name},\nWe tried reaching you for your test booking.\nPlease reply *YES* to proceed or call us.` + (cb ? `\nWe will retry around *${cb}*.` : '');
+    } else if (status === 'Call Back Later'){
+      body = `Hello ${name},\nAs requested, we will call you back at *${cb || 'the scheduled time'}*.\nReply *OK* to confirm or suggest another time.`;
+    } else {
+      body = `Hello ${name},\nWe are processing your request.`;
+    }
+    return `${header}\n\n${body}${footer}`;
+  }
+
+  function numbersToSend(){
+    const out = [];
+    const push = (n) => { const s = String(n||'').replace(/\D/g,''); if (s) out.push(s); };
+    push(leadData.phone);
+    push(leadData.alt_phone);
+    // de-dupe
+    return [...new Set(out)];
+  }
+
+  async function sendWa(){
+    if (VIEW_ONLY) return;
+    const nums = numbersToSend();
+    if (!nums.length){ waStatus.textContent = 'No numbers to send'; return; }
+    const msg = (waPreview && waPreview.value && waPreview.value.trim()) || buildWaMessage();
+    if (!msg){ waStatus.textContent = 'Message is empty'; return; }
+    waSendBtn.disabled = false; waStatus.textContent = 'Sending…';
+    try{
+      // Expect a backend route; implement separately in Flask:
+      // POST /lead/<lead_id>/send-wa  { phones:[], message:"..." }
+      const url = window.location.origin + `/lead/${encodeURIComponent(leadData.lead_id)}/send-wa`;
+      const resp = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ phones: nums, message: msg }) });
+      const ok = resp.ok;
+      const data = await resp.json().catch(()=>({}));
+      if (ok) {
+        waStatus.textContent = 'Sent Successfully';
+        waStatus.classList.add('wa-success');
+      } else {
+        waStatus.textContent = data.error || 'Failed';
+        waStatus.classList.remove('wa-success');
+      }
+    }catch(err){
+      waStatus.textContent = 'Error sending';
+      waStatus.classList.remove('wa-success');
+    } finally {
+      waSendBtn.disabled = false;
+    }
+  }
+
+  function refreshWaPreview(){
+    if (!waPreview) return;
+    if (waDirty) return; // don't overwrite user's manual edits
+    waPreview.value = buildWaMessage();
+  }
+
+  // Mark dirty when user edits the preview
+  if (waPreview) {
+    waPreview.addEventListener('input', () => { waDirty = true; });
+  }
+
+  if (waSendBtn){ waSendBtn.addEventListener('click', sendWa); }
+</script>
+{% endblock %}

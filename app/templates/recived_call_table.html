@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}CCE – Received Calls{% endblock %}
+{% block content %}
+<style>
+  :root{
+    --bd:#e5e7eb; 
+    --muted:#6b7280; 
+    --row-alt:#d0d5e0;
+    --header-bg:#165b83; 
+    --header-text:#ffffff; 
+    --blue:#034a9c;
+  }
+  .wrap{display:grid;gap:8px}  /* Reduced gap between boxes */
+  .card{
+    background:#fff;border:1px solid var(--bd);border-radius:12px;
+    box-shadow:0 3px 10px rgba(0,0,0,.06);padding:8px;  /* Reduced padding */
+  }
+  .filter-box{
+    background:#f8fafc;border:1px solid var(--bd);border-radius:10px;
+    padding:10px;  /* Reduced padding */
+    margin-bottom:8px;  /* Reduced margin */
+  }
+  .filter-header{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;  /* Reduced gap */
+    margin-bottom:8px;  /* Reduced margin */
+    flex-wrap:wrap;
+  }
+  .title{font-weight:800;font-size:18px;white-space:nowrap}  /* Slightly smaller font */
+  .toolbar{display:flex;gap:8px;flex-wrap:nowrap;align-items:flex-end}  /* Reduced gap */
+  .field label{display:block;font-weight:700;margin:0 0 2px 2px;font-size:11px}  /* Smaller font */
+  .field input{
+    padding:5px 8px;border:1px solid var(--bd);border-radius:6px;font-size:12px;  /* Reduced padding */
+    box-shadow:0 1px 3px rgba(0,0,0,.06);
+    outline:none;
+    height:32px;  /* Fixed height */
+  }
+  .field input:focus{box-shadow:0 0 0 2px rgba(3,74,156,.12), 0 1px 4px rgba(0,0,0,.06)}
+  .btn{
+    padding:5px 10px;border:1px solid var(--blue);border-radius:6px;background:var(--blue);  /* Reduced padding */
+    color:#fff;cursor:pointer;font-weight:700;font-size:12px;text-decoration:none;  /* Smaller font */
+    box-shadow:0 1px 3px rgba(0,0,0,0.1);
+    height:32px;  /* Fixed height */
+    display:flex;align-items:center;
+  }
+  .btn:hover{filter:brightness(0.95)}
+  .btn-outline{
+    background:transparent;color:var(--blue);
+    box-shadow:0 1px 3px rgba(0,0,0,0.1);
+  }
+  .btn-active{
+    background:#1e40af;border-color:#1e40af;
+    box-shadow:0 2px 5px rgba(0,0,0,0.15);
+  }
+  .table-wrap{overflow:auto;border:1px solid var(--bd);border-radius:8px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{
+    position:sticky;top:0;z-index:1;background:var(--header-bg);color:var(--header-text);
+    text-align:center;padding:4px 6px;font-weight:600;white-space:nowrap;  /* Reduced padding */
+    border-right:1px solid rgba(255,255,255,.2)
+  }
+  thead th:last-child{border-right:none}
+  tbody tr{border-bottom:1px solid var(--bd); text-align:center; transition:background .15s ease; font-size: 14px;}  /* Smaller font */
+  tbody tr:nth-child(even){background:var(--row-alt)}
+  td{padding:4px 6px;vertical-align:middle;color:#111827;white-space:nowrap}  /* Reduced padding */
+  .empty{padding:8px;text-align:center;color:var(--muted)}  /* Reduced padding */
+  .badge{display:inline-block;background:#d1ebde;padding:1px 5px;border-radius:999px;border:1px solid #e5e7eb;font-size:11px}  /* Smaller */
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace}
+  @media (max-width:720px){
+    .filter-header{flex-direction:column;align-items:stretch}
+    .toolbar{flex-wrap:wrap}
+    .hide-sm{display:none}
+  }
+</style>
+
+<div class="wrap">
+  <!-- Filter Box -->
+  <div class="card filter-box">
+    <div class="filter-header">
+      <!-- Buttons -->
+      <div class="toolbar">
+        <a href="{{ url_for('cce_calls.received_calls', from=from_date_str, to=to_date_str, type='completed') }}" 
+           class="btn {% if current_call_type == 'completed' %}btn-active{% else %}btn-outline{% endif %}">
+          Completed Calls
+        </a>
+        <a href="{{ url_for('cce_calls.received_calls', from=from_date_str, to=to_date_str, type='callback') }}" 
+           class="btn {% if current_call_type == 'callback' %}btn-active{% else %}btn-outline{% endif %}">
+          Callback Calls
+        </a>
+      </div>
+
+      <!-- Title with Count -->
+      <div class="title">
+        {% if current_call_type == 'completed' %}
+          📥 Completed Calls
+        {% else %}
+          📥 Callback Calls
+        {% endif %}
+        <span style="color: rgb(71, 3, 71);">({{ rows|length }} items)</span>
+      </div>
+
+      <!-- Date Filters -->
+      <form method="get" action="{{ url_for('cce_calls.received_calls') }}" class="toolbar">
+        <input type="hidden" name="type" value="{{ current_call_type }}">
+        <div class="field">
+          <label for="from">From</label>
+          <input type="date" id="from" name="from" value="{{ from_date_str }}" required>
+        </div>
+        <div class="field">
+          <label for="to">To</label>
+          <input type="date" id="to" name="to" value="{{ to_date_str }}" required>
+        </div>
+        <button type="submit" class="btn">Apply</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Table Box -->
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Sr. No</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Type</th>
+            {% if current_call_type != 'callback' %}
+            <th class="hide-sm">Duration (s)</th>
+            {% endif %}
+            <th>Created At</th>
+            {% if current_call_type == 'callback' %}
+            <th class="hide-sm">Callback By</th>
+            {% else %}
+            <th class="hide-sm">Accepted By</th>
+            {% endif %}
+            <th>Call_Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if rows and rows|length > 0 %}
+            {% for r in rows %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td class="mono">{{ r.from_number }}</td>
+                <td class="mono">{{ r.to_number }}</td>
+                <td class="badge">{{ r.call_type }}</td>
+                {% if current_call_type != 'callback' %}
+                <td class="hide-sm">{{ r.dial_call_duration or 0 }}</td>
+                {% endif %}
+                <td>{{ r.created_at }}</td>
+                {% if current_call_type == 'callback' %}
+                <td class="hide-sm">{{ r.callback_by_name or '—' }}</td>
+                {% else %}
+                <td class="hide-sm">{{ r.accepted_by_name or '—' }}</td>
+                {% endif %}
+                <td>{{ r.call_related_to or '—' }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="{% if current_call_type == 'callback' %}7{% else %}8{% endif %}" class="empty">
+                No calls found for selected dates.
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

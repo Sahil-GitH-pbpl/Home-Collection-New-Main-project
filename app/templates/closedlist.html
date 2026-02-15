@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Closed Tickets{% endblock %}
+
+{% block content %}
+<style>
+.table-container { margin-top:5px; background:#fff; border-radius:12px; box-shadow:0 6px 16px rgba(0,0,0,0.08); overflow-x:auto; padding:8px; }
+
+.tickets-table { width:100%; border-collapse:collapse; font-size:14px; table-layout:auto; }
+.tickets-table th, .tickets-table td { padding:6px 10px; border-bottom:1px solid #e5e7eb; text-align:center; vertical-align:middle; }
+.tickets-table th { background:#012769; font-weight:700; color:#ffffff; text-align:center; }
+th.actions-col, td.actions-col { width:120px; text-align:center; }
+
+.tickets-table > tbody > tr:nth-child(even) { background:#dddddd; }
+.tickets-table tr:hover { background:inherit; }
+
+.btn-action { display:inline-block; text-decoration:none; padding:6px 8px; font-size:12px; border:none; border-radius:5px; color:#fff; cursor:pointer; min-width:88px; text-align:center; }
+.btn-view { background-color:#0c52c4; }
+.btn-action:hover { background:#000; }
+
+.cell-wrap { display:flex; flex-direction:column; gap:2px; }
+.cell-sub { font-size:12px; color:#6b7280; }
+
+.page-head { margin:10px 2px 6px 2px; }
+.page-head h2 { margin:0; font-size:18px; }
+.filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+.filters input { padding:6px 8px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; }
+.filters .btn { padding:6px 10px; border-radius:6px; background:#014c69; color:#fff; border:none; cursor:pointer; }
+
+/* 🆕 Ticket Origin Badge */
+.ticket-origin { 
+    display: inline-block; 
+    padding: 2px 6px; 
+    font-size: 11px; 
+    border-radius: 4px; 
+    background: #e5e7eb; 
+    color: #374151;
+}
+.ticket-origin-cce { background: #dbeafe; color: #1e40af; }
+.ticket-origin-odt { background: #dcfce7; color: #166534; }
+
+@media (max-width: 640px){
+  .filters { gap:6px; }
+  .filters input { width: calc(50% - 6px); }
+}
+</style>
+
+<div class="page-head">
+  <h2>✅ Closed Tickets</h2>
+  {% if not is_special_user %}
+    <small style="color: #6b7280;">Showing only ODT tickets</small>
+  {% endif %}
+</div>
+
+<form class="filters" method="get" action="{{ url_for('closedlist.closed_list') }}">
+  <label>From
+    <input type="date" name="date_from" value="{{ date_from }}">
+  </label>
+  <label>To
+    <input type="date" name="date_to" value="{{ date_to }}">
+  </label>
+  <input type="text" name="q" placeholder="Search Mobile / Labmate" value="{{ q or '' }}">
+  <button class="btn" type="submit">Apply</button>
+</form>
+
+<div class="table-container">
+  <table class="tickets-table">
+    <thead>
+      <tr>
+        <th>Ticket.No</th>
+        <th>Mobile No</th>
+        <th>Patient Name</th>
+        <th>Labmate ID</th>
+        <th>Ticket Category</th>
+        <th>Type</th>  <!-- 🆕 ADDED: Ticket Origin Column -->
+        <th>Created By</th>
+        <th>Closure Remark</th>
+        <th class="actions-col">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tickets %}
+      <tr>
+        <td>{{ t.id }}</td>
+        <td>{{ t.mobile_number }}</td>
+        <td>{{ t.patient_name or '-' }}</td>
+        <td>{{ t.patient_labmate_id or '-' }}</td>
+        <td>{{ t.ticket_category or '-' }}</td>
+        <td>
+          <!-- 🆕 Ticket Origin Badge -->
+          {% if t.ticket_origin %}
+            <span class="ticket-origin ticket-origin-{{ t.ticket_origin|lower }}">
+              {{ t.ticket_origin }}
+            </span>
+          {% else %}
+            <span class="ticket-origin">CCE</span>
+          {% endif %}
+        </td>
+        <td>{{ t.created_by or '-' }}</td>
+        <td>{{ t.closed_remark or '-' }}</td>
+
+        <td class="actions-col">
+          <a class="btn-action btn-view"
+             href="{{ url_for('ticket_detail.ticket_detail', ticket_id=t.id, mode='view') }}">
+            View
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if tickets|length == 0 %}
+      <tr><td colspan="9" style="text-align:center;color:#6b7280;">No closed tickets found for selected filters.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<div style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+  {% if has_prev %}
+    <a class="btn" href="{{ url_for('closedlist.closed_list', page=page-1, page_size=page_size, date_from=date_from, date_to=date_to, q=q) }}">Prev</a>
+  {% endif %}
+  <div>Page {{ page }}</div>
+  {% if has_next %}
+    <a class="btn" href="{{ url_for('closedlist.closed_list', page=page+1, page_size=page_size, date_from=date_from, date_to=date_to, q=q) }}">Next</a>
+  {% endif %}
+</div>
+{% endblock %}

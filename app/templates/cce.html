@@ -1,0 +1,285 @@
+﻿{% extends "base.html" %}
+{% block title %}CCE - Live Calls{% endblock %}
+{% block content %}
+<style>
+  :root{
+    --bd:#e5e7eb;
+    --muted:#6b7280;
+    --chip:#f3f4f6;
+    --ring:#fef3c7;
+    --ok:#ecfdf5;
+    --bad:#fee2e2;
+    --primary:#034a9c;
+    --header-bg:#165b83;
+    --header-text:#ffffff;
+    --hover:#f9fafb;
+    --row-alt:#f8fafc;
+    --light-blue:#dbeafe;
+    --light-blue-border:#bfdbfe;
+    --soft-red:#fee2e2;
+  }
+
+  .cce-wrap{display:grid;gap:16px}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+  .muted{opacity:.85;color:var(--muted)}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:999px;background:#22c55e;margin-right:6px;vertical-align:middle}
+
+  .card{background:#fff;border:1px solid var(--bd);border-radius:14px;box-shadow:0 3px 10px rgba(0,0,0,.06);padding:10px}
+  .title{font-weight:800;font-size:16px;margin-bottom:8px}
+  table{width:100%;border-collapse:collapse;font-size:13px;border-radius:8px;overflow:hidden}
+  thead th{background:var(--header-bg);color:var(--header-text);text-align:left;padding:6px 8px;font-size:13px;font-weight:600;border-right:1px solid rgba(255,255,255,0.2)}
+  thead th:last-child{border-right:none}
+  tbody tr{border-bottom:1px solid var(--bd);transition:background 0.2s ease}
+  tbody tr:nth-child(even){background:var(--row-alt)}
+  tbody tr:hover{background:var(--hover)}
+  tbody td{padding:6px 8px;color:#111827;vertical-align:middle}
+  tbody .empty td{text-align:center;color:var(--muted);padding:10px;font-size:13px}
+
+  .btn{padding:5px 9px;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff;cursor:pointer;font-weight:700;font-size:12px}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn-success{background:#10b981;border-color:#10b981;color:#fff}
+  .btn-warn{background:#f59e0b;border-color:#f59e0b;color:#111}
+
+  /* Simple callback picker modal */
+  .cb-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1200;}
+  .cb-modal{background:#fff;border-radius:16px;box-shadow:0 18px 36px rgba(0,0,0,.22);padding:20px;min-width:320px;max-width:92vw;}
+  .cb-title{font-weight:800;font-size:17px;margin-bottom:12px;}
+  .cb-grid{display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:10px;}
+  .cb-btn{padding:10px 12px;border:1px solid var(--bd);border-radius:12px;background:#f8fafc;cursor:pointer;font-weight:700;font-size:13px;text-align:center;line-height:1.35;box-shadow:0 4px 10px rgba(0,0,0,.06);}
+  .cb-btn .num{display:block;font-weight:800;font-size:14px;}
+  .cb-btn .lbl{display:block;font-size:12px;opacity:.9;}
+  .cb-btn.cc{background:#e0f2fe;border-color:#bfdbfe;}
+  .cb-btn.resp{background:#f3e8ff;border-color:#e9d5ff;}
+  .cb-btn.shahana{background:#fee2e2;border-color:#fecaca;}
+  .cb-btn:hover{filter:brightness(0.97);}
+  .cb-actions{margin-top:12px;display:flex;justify-content:flex-end;gap:8px;}
+
+  /* === Popup styles (kept for backwards compatibility, now driven globally) === */
+  .popwrap{
+    position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:10px;z-index:1000;width:340px;max-width:90vw;max-height:85vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+  }
+  .pop{
+    background:#fff;
+    border:1px solid #d1d5db;
+    border-radius:14px;
+    box-shadow:
+      0 18px 28px rgba(0,0,0,.25),
+      0 8px 12px rgba(0,0,0,.12),
+      inset 0 1px 0 rgba(255,255,255,.6);
+    padding:12px;
+  }
+  .row{display:flex;justify-content:space-between;align-items:center}
+  .badges{display:flex;gap:6px;flex-wrap:wrap}
+  .badge{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid #eee;background:#f9fafb;display:inline-flex;align-items:center;gap:6px}
+  .badge.inbound{background:#eef2ff;border-color:#e5e7ff}
+  .badge.ringing{text-transform:capitalize;background:#fff7ed;border-color:#ffedd5}
+  .since{font-size:12px;color:#6b7280}
+  .head{margin-top:6px;display:flex;justify-content:space-between;align-items:center}
+  .caller{display:flex;align-items:center;gap:10px}
+  .num{font-weight:800;font-size:15px}
+  .agentline{font-size:12px;color:#6b7280}
+  .claim{padding:6px 10px;border:1px solid var(--bd);background:#fff;cursor:pointer;font-weight:700}
+  .claim.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .box{border:1px solid var(--bd);border-radius:10px;padding:8px}
+  .box-title{font-size:12px;color:#6b7280;margin-bottom:6px}
+  .match-chip{display:flex;flex-direction:column;gap:6px}
+  .match-summary{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+  .chip-pill{margin-left:auto;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid #dbeafe;background:#eff6ff}
+  .kv{display:grid;grid-template-columns:110px 1fr;gap:4px;font-size:13px}
+  .kv b{color:#111}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:flex-end}
+  .pill{padding:7px 9px;border:1px solid var(--bd);border-radius:10px;background:#fff;cursor:pointer;font-weight:600}
+  .pill.warn{background:#fff1f2;border-color:#fecdd3}
+  .hide{display:none !important;}
+  .cta-wrap{display:flex;flex-direction:column;gap:8px;flex:1}
+  .label{font-size:12px;color:#111827;font-weight:700;margin-bottom:2px}
+  .select{
+    width:100%;
+    padding:8px 10px;
+    border:1px solid var(--light-blue-border);
+    border-radius:10px;
+    background:#fff;
+    font-size:12px;
+    box-shadow:0 0 0 3px var(--light-blue, #dbeafe);
+    outline:none;
+  }
+  .cta-buttons{display:flex;gap:8px;flex-wrap:wrap}
+  .pop .btn:hover,
+  .pop .pill:hover,
+  .pop .claim:hover{background:inherit;border-color:inherit;color:inherit}
+  .pop .dismiss{
+    background:var(--soft-red);
+    border-color:#fecaca;
+  }
+</style>
+
+<div class="cce-wrap">
+  <div class="toolbar">
+    <div class="muted"><span class="status-dot" id="dot"></span><span id="status">Connecting...</span></div>
+  </div>
+
+  <div class="card">
+    <div class="title">Missed Calls</div>
+    <table id="missed-table">
+      <thead>
+        <tr>
+          <th>From</th>
+          <th>To</th>
+          <th>Type</th>
+          <th>Created At</th>
+          <th style="width:120px;">Action</th>
+        </tr>
+      </thead>
+      <tbody id="missed-body">
+        <tr class="empty"><td colspan="5" class="muted" style="padding:14px;">No missed calls</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const missedBody = document.getElementById('missed-body');
+  const statusEl = document.getElementById('status');
+  const dotEl = document.getElementById('dot');
+
+  const LANDLINE_OPTIONS = [
+    { num: "01149989851", label: "cc ext1", type: "cc" },
+    { num: "01149989859", label: "cc ext2", type: "cc" },
+    { num: "01149989865", label: "cc ext3", type: "cc" },
+    { num: "01149989868", label: "cc ext4", type: "cc" },
+    { num: "01149989861", label: "cc ext5", type: "cc" },
+    { num: "01149989867", label: "cc ext6", type: "cc" },
+    { num: "01149989869", label: "cc ext7", type: "cc" },
+    { num: "01149989881", label: "resp ext1", type: "resp" },
+    { num: "01149989880", label: "resp ext2", type: "resp" },
+    { num: "01149989882", label: "resp ext3", type: "resp" },
+    { num: "01149989877", label: "shahana", type: "shahana" },
+  ];
+
+  const safe = v => (v === undefined || v === null || v === "null") ? "" : String(v);
+
+  function renderMissed(rows){
+    missedBody.innerHTML = "";
+    if(!rows.length){
+      const tr = document.createElement('tr');
+      tr.className = 'empty';
+      tr.innerHTML = `<td colspan="5" class="muted" style="padding:14px;">No missed calls</td>`;
+      missedBody.appendChild(tr);
+      return;
+    }
+    for(const r of rows){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${safe(r.from_number || '')}</td>
+        <td>${safe(r.to_number || '')}</td>
+        <td>${safe(r.call_type || '')}</td>
+        <td>${safe(r.created_at || '')}</td>
+        <td>
+          <button class="btn primary cb"
+            data-id="${safe(r.id)}"
+            data-sid="${safe(r.call_sid||'')}"
+            data-phone="${safe(r.from_number||'')}"
+            data-to="${safe(r.to_number||'')}"
+          >Call Back</button>
+        </td>
+      `;
+      missedBody.appendChild(tr);
+    }
+    [...missedBody.querySelectorAll('.cb')].forEach(btn=>{
+      btn.addEventListener('click', (ev)=>{
+        const id  = ev.currentTarget.dataset.id;
+        const sid = ev.currentTarget.dataset.sid;
+        const phone = ev.currentTarget.dataset.phone || "";
+        openLandlinePicker(phone, sid, id, ev.currentTarget.closest('tr'));
+      });
+    });
+  }
+
+  async function loadMissed(){
+    try{
+      const r = await fetch("/cce/missed", {cache:'no-store'});
+      const j = await r.json();
+      if(!j.ok) throw new Error(j.error || "Failed");
+      renderMissed(j.data || []);
+      statusEl.textContent = "Ready";
+      dotEl.style.background = "#22c55e";
+    }catch(e){
+      renderMissed([]);
+      statusEl.textContent = "Failed to load missed calls";
+      dotEl.style.background = "#ef4444";
+    }
+  }
+
+  function openLandlinePicker(patientNumber, incomingSid, incomingId, rowEl){
+    if(!patientNumber){
+      alert("Patient number missing for callback.");
+      return;
+    }
+    const existing = document.querySelector('.cb-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'cb-overlay';
+    overlay.innerHTML = `
+      <div class="cb-modal">
+        <div class="cb-title">Call back ${safe(patientNumber)}</div>
+        <div class="cb-grid"></div>
+        <div class="cb-actions">
+          <button class="btn" id="cb-cancel">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const grid = overlay.querySelector('.cb-grid');
+    LANDLINE_OPTIONS.forEach(opt=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `cb-btn ${opt.type}`;
+      b.innerHTML = `<span class="num">${opt.num}</span><span class="lbl">${opt.label}</span>`;
+      b.addEventListener('click', ()=>{
+        startCallback(patientNumber, opt.num, incomingSid, incomingId, rowEl);
+        overlay.remove();
+      });
+      grid.appendChild(b);
+    });
+    overlay.querySelector('#cb-cancel').addEventListener('click', ()=>overlay.remove());
+    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) overlay.remove(); });
+  }
+
+  function startCallback(patientNumber, landline, incomingSid, incomingId, rowEl){
+    if(!confirm(`Call back ${patientNumber} from ${landline}?`)) return;
+    fetch("/cce/callback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to_number: patientNumber,
+        from_number: landline,
+        call_sid: incomingSid || ""
+      })
+    }).then(async(res)=>{
+      let j = {};
+      try{ j = await res.json(); }catch(e){}
+      if(res.ok && (j.status === "ok" || j.ok)){
+        alert("Call initiated");
+        if(rowEl){
+          rowEl.remove();
+          if (!missedBody.children.length) {
+            const trEmpty = document.createElement('tr');
+            trEmpty.className = 'empty';
+            trEmpty.innerHTML = `<td colspan="5" class="muted" style="padding:14px;">No missed calls</td>`;
+            missedBody.appendChild(trEmpty);
+          }
+        }
+      }else{
+        alert(j.message || "Call initiate failed");
+      }
+    }).catch(()=>{
+      alert("Network error while initiating call");
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', loadMissed);
+</script>
+
+{% endblock %}

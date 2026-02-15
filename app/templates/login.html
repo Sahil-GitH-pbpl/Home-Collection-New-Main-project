@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to right, #e0eafc, #cfdef3);
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .auth-container {
+      width: 100%;
+      max-width: 400px;
+      background: linear-gradient(to bottom, #ffffff,#29b6c9, #ffffff);
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 5px 8px 20px rgba(0, 0, 0, 0.1);
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .logo {
+      max-width: 250px;
+      width: 100%;
+      height: auto;
+      margin-bottom: 10px;
+    }
+    h3 {
+      font-weight: bold;
+      background: #ffffff;
+      color: #003c59;
+      font-size: 18px;
+      margin: 6px 0;
+      padding: 8px 12px;
+      border-radius: 20px;
+      display: inline-block;
+    }
+    .auth-form {
+      display: none;
+      flex-direction: column;
+      align-items: stretch;
+      margin-top: 20px;
+    }
+    .auth-form.active {
+      display: flex;
+    }
+    .auth-form input,
+    .auth-form select {
+      padding: 12px;
+      margin-bottom: 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 15px;
+      width: 100%;
+      box-sizing: border-box;
+      box-shadow: 3px 3px 4px grey;
+    }
+    .auth-form button {
+      padding: 14px;
+      background-color: #007bff;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-size: 17px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    .auth-form button:hover {
+      background-color: #0056b3;
+    }
+    .input-wrapper {
+      position: relative;
+      width: 100%;
+    }
+    .suggestion-box {
+      list-style-type: none;
+      margin: 0;
+      padding: 0;
+      border: 1px solid #ccc;
+      border-top: none;
+      max-height: 200px;
+      overflow-y: auto;
+      background: linear-gradient(90deg, #69b1ff, #b1eecb, #69b1ff);
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 100%;
+      z-index: 999;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      color: #003c59;
+    }
+    .suggestion-item {
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .suggestion-item.highlighted {
+      background-color: #145b5d;
+      color: white;
+    }
+
+    /* NEW STYLES FOR ARPRA NEO */
+    .brand-title {
+      display: flex;
+      justify-content: center;
+      align-items: baseline;
+      gap: 4px;
+      margin-bottom: 25px;
+      flex-wrap: wrap;
+    }
+    .arpra-text {
+      font-size: 36px;
+      font-weight: 900;
+      color: #003c59;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+      letter-spacing: 1px;
+    }
+    .neo-text {
+      font-size: 28px;
+      font-weight: 700;
+      color: #830a0a;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+      position: relative;
+    }
+    .neo-text::after {
+      content: "";
+      position: absolute;
+      bottom: -3px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #d32f2f, transparent);
+      border-radius: 1px;
+    }
+
+    @media screen and (max-width: 768px) {
+      .auth-container {
+        max-width: none;
+        width: 100%;
+        min-height: 80vh;
+        padding: 25px 20px;
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .auth-form input,
+      .auth-form select {
+        padding: 14px;
+        font-size: 16px;
+        margin-bottom: 16px;
+      }
+      .auth-form button {
+        padding: 15px;
+        font-size: 18px;
+        margin-top: 8px;
+      }
+      .arpra-text {
+        font-size: 38px;
+      }
+      .neo-text {
+        font-size: 24px;
+      }
+    }
+    @media screen and (max-width: 480px) {
+      .auth-container {
+        padding: 20px 15px;
+        min-height: 85vh;
+      }
+      h3 {
+        font-size: 16px;
+        padding: 6px 10px;
+      }
+      .arpra-text {
+        font-size: 34px;
+      }
+      .neo-text {
+        font-size: 22px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-container">
+    <img src="/static/assets/Logo1.png" alt="Logo" class="logo" />
+    <h3>Patient Being First</h3>
+    <h3>Empathy</h3>
+    <h3>Accuracy</h3>
+    <h3>Honesty</h3>
+    <h3>Safe & Hygienic</h3>
+    <form id="login-form" class="auth-form active" method="post" action="/login" autocomplete="off">
+      <input type="hidden" name="next" id="next-field">
+      
+      <!-- UPDATED BRAND TITLE -->
+      <div class="brand-title">
+        <span class="arpra-text">ARPRA</span>
+        <span class="neo-text">NEO</span>
+      </div>
+
+      <div class="input-wrapper">
+        <input type="text" id="username" name="username" placeholder="Enter Full Name" required autocomplete="off" />
+        <ul id="suggestions" class="suggestion-box"></ul>
+      </div>
+      <input type="password" id="password" name="password" placeholder="Enter DOB as DDMMYYYY" required pattern="\d{8}" maxlength="8" />
+      <button type="submit">Login</button>
+    </form>
+  </div>
+
+<script>
+  const usernameInput = document.getElementById('username');
+  const suggestionsBox = document.getElementById('suggestions');
+  const passwordInput = document.getElementById('password');
+  let selectedIndex = -1;
+  const DESIGNATION = 'Customer Care and Marketing';
+  
+  function focusPassword() {
+    setTimeout(() => {
+      if (passwordInput) {
+        usernameInput.blur();
+        passwordInput.focus();
+        passwordInput.scrollIntoView({ block: 'nearest' });
+      }
+    }, 0);
+  }
+
+  usernameInput.addEventListener('input', () => {
+    const query = usernameInput.value.trim();
+    suggestionsBox.innerHTML = '';
+    selectedIndex = -1;
+    if (query.length < 1) return;
+    
+    const url = `/suggest_names?q=${encodeURIComponent(query)}&designation=${encodeURIComponent(DESIGNATION)}`;
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        suggestionsBox.innerHTML = '';
+        data.slice(0, 10).forEach(name => {
+          const li = document.createElement('li');
+          li.textContent = name;
+          li.classList.add('suggestion-item');
+          li.addEventListener('click', () => {
+            usernameInput.value = name;
+            suggestionsBox.innerHTML = '';
+            focusPassword();
+          });
+          suggestionsBox.appendChild(li);
+        });
+        const items = suggestionsBox.querySelectorAll('.suggestion-item');
+        if (items.length > 0) {
+          selectedIndex = 0;
+          highlightSelected(items);
+        }
+      })
+      .catch(() => { suggestionsBox.innerHTML = ''; });
+  });
+
+  usernameInput.addEventListener('keydown', (e) => {
+    const items = suggestionsBox.querySelectorAll('.suggestion-item');
+    if (items.length === 0 && e.key === 'Enter') { e.preventDefault(); focusPassword(); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); selectedIndex = (selectedIndex + 1) % items.length; highlightSelected(items); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); selectedIndex = (selectedIndex - 1 + items.length) % items.length; highlightSelected(items); }
+    else if (e.key === 'Enter') {
+      if (selectedIndex >= 0 && items[selectedIndex]) {
+        e.preventDefault();
+        usernameInput.value = items[selectedIndex].textContent;
+        suggestionsBox.innerHTML = '';
+        focusPassword();
+      }
+    }
+  });
+
+  function highlightSelected(items) {
+    items.forEach(item => item.classList.remove('highlighted'));
+    if (selectedIndex >= 0 && items[selectedIndex]) {
+      items[selectedIndex].classList.add('highlighted');
+      items[selectedIndex].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#username') && !e.target.closest('#suggestions')) {
+      suggestionsBox.innerHTML = '';
+    }
+  });
+
+  const nextField = document.getElementById('next-field');
+  if (nextField) {
+    nextField.value = new URLSearchParams(location.search).get('next') || '';
+  }
+</script>
+</body>
+</html>

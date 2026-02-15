@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+
+{% block title %}Completed Messages Report{% endblock %}
+
+{% block content %}
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<style>
+    .card-shadow { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); }
+    .table-shadow { box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06); }
+</style>
+
+<div class="bg-gray-50 min-h-screen p-4 md:p-6">
+    <!-- Header -->
+    <div class="max-w-7xl mx-auto mb-6">
+        <h1 class="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-3">
+            <i class="fas fa-check-circle text-green-500"></i> Completed Deliveries
+        </h1>
+        <p class="text-gray-600 mt-1 text-sm">Successfully delivered WhatsApp messages</p>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-xl p-4 border-l-4 border-green-500 card-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-gray-600 font-medium">Total Delivered</p>
+                    <p class="text-xl font-bold text-gray-800" id="totalDelivered">0</p>
+                </div>
+                <i class="fas fa-check-circle text-green-500 text-xl"></i>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border-l-4 border-blue-500 card-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-gray-600 font-medium">WABA Messages</p>
+                    <p class="text-xl font-bold text-gray-800" id="wabaDelivered">0</p>
+                </div>
+                <i class="fas fa-comment text-blue-500 text-xl"></i>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border-l-4 border-purple-500 card-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-gray-600 font-medium">Unofficial Messages</p>
+                    <p class="text-xl font-bold text-gray-800" id="unofficialDelivered">0</p>
+                </div>
+                <i class="fas fa-mobile-alt text-purple-500 text-xl"></i>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border-l-4 border-yellow-500 card-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-gray-600 font-medium">Today's Count</p>
+                    <p class="text-xl font-bold text-gray-800" id="todayCount">0</p>
+                </div>
+                <i class="fas fa-calendar-day text-yellow-500 text-xl"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unified Filter Section -->
+    <div class="max-w-7xl mx-auto bg-white rounded-xl p-4 mb-6 card-shadow">
+        <div class="flex flex-col md:flex-row md:flex-nowrap items-end gap-3">
+            <div class="flex flex-col w-full md:w-auto md:flex-1 min-w-[150px]">
+                <label class="block text-xs font-medium text-gray-700 mb-1">From Date</label>
+                <input type="date" id="fromDate" class="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm">
+            </div>
+            <div class="flex flex-col w-full md:w-auto md:flex-1 min-w-[150px]">
+                <label class="block text-xs font-medium text-gray-700 mb-1">To Date</label>
+                <input type="date" id="toDate" class="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm">
+            </div>
+            <div class="flex flex-col w-full md:w-48">
+                <label class="block text-xs font-medium text-gray-700 mb-1">Channel</label>
+                <select id="channelFilter" class="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm">
+                    <option value="all">All Channels</option>
+                    <option value="WABA">WABA</option>
+                    <option value="Unofficial">Unofficial</option>
+                </select>
+            </div>
+            <div class="flex flex-col w-full md:w-48">
+                <label class="block text-xs font-medium text-gray-700 mb-1">Status</label>
+                <select id="statusFilter" class="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm">
+                    <option value="all">All Status</option>
+                    <option value="sent">Sent</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="read">Read</option>
+                    <option value="manual">Manual</option>
+                </select>
+            </div>
+            <div class="flex flex-col w-full md:flex-1 min-w-[200px]">
+                <label class="block text-xs font-medium text-gray-700 mb-1">Search</label>
+                <input type="text" id="searchInput" placeholder="Search by ID, Mobile, or Lab ID..." 
+                    class="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm">
+            </div>
+            <div class="w-full md:w-auto">
+                <button id="applyFilter" class="w-full md:w-auto px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-medium whitespace-nowrap">
+                    Apply
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="max-w-7xl mx-auto bg-white rounded-xl overflow-hidden table-shadow">
+        <div class="overflow-x-auto">
+            <table class="min-w-full">
+                <thead class="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">ID</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Lab ID</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Phone/Group</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Channel</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Send By</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Manual Time</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody" class="bg-white divide-y divide-gray-200">
+                </tbody>
+            </table>
+        </div>
+        <div id="loading" class="p-6 text-center">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+            <p class="mt-2 text-gray-600 text-sm">Loading completed deliveries...</p>
+        </div>
+        <div id="noData" class="hidden p-6 text-center">
+            <i class="fas fa-inbox text-gray-400 text-3xl mb-3"></i>
+            <p class="text-gray-600 text-sm font-medium">No completed deliveries found!</p>
+            <p class="text-gray-500 text-xs">Try changing your filter criteria.</p>
+        </div>
+        <div id="pagination" class="hidden p-4 border-t flex items-center justify-between">
+            <div class="text-sm text-gray-700">
+                Showing <span id="startRow">0</span> to <span id="endRow">0</span> of <span id="totalRows">0</span> entries
+            </div>
+            <div class="flex gap-1">
+                <button id="prevBtn" class="px-3 py-1 border rounded text-sm disabled:opacity-50">&laquo; Previous</button>
+                <button id="nextBtn" class="px-3 py-1 border rounded text-sm disabled:opacity-50">Next &raquo;</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentData = [];
+    let filteredData = [];
+    let currentPage = 1;
+    const pageSize = 20;
+
+    // Set default dates (today)
+    document.addEventListener('DOMContentLoaded', function() {
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('fromDate').value = today;
+        document.getElementById('toDate').value = today;
+        
+        loadData();
+        setupEventListeners();
+    });
+
+    function setupEventListeners() {
+        document.getElementById('applyFilter').addEventListener('click', loadData);
+        document.getElementById('searchInput').addEventListener('input', filterData);
+        document.getElementById('channelFilter').addEventListener('change', filterData);
+        document.getElementById('statusFilter').addEventListener('change', filterData);
+        document.getElementById('prevBtn').addEventListener('click', () => changePage(-1));
+        document.getElementById('nextBtn').addEventListener('click', () => changePage(1));
+    }
+
+    async function loadData() {
+        showLoading();
+        
+        const fromDate = document.getElementById('fromDate').value;
+        const toDate = document.getElementById('toDate').value;
+        
+        try {
+            const response = await fetch(`/completedreport/api/completed-deliveries?from=${fromDate}&to=${toDate}`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to load data');
+            }
+            
+            const data = await response.json();
+            currentData = data;
+            currentPage = 1;
+            filterData();
+        } catch (error) {
+            document.getElementById('loading').innerHTML = `
+                <div class="text-red-500 p-4">
+                    <i class="fas fa-exclamation-circle"></i>
+                    Error loading data: ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    function renderTable(data) {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        if (data.length === 0) {
+            hideLoading();
+            return;
+        }
+        hideNoData();
+
+        // Calculate pagination
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = Math.min(startIndex + pageSize, data.length);
+        const pageData = data.slice(startIndex, endIndex);
+
+        pageData.forEach((item, index) => {
+            const row = document.createElement('tr');
+            row.className = index % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 hover:bg-gray-100';
+            
+            const channelClass = getChannelClass(item.channel);
+            const statusClass = getStatusClass(item.status);
+            const statusIcon = getStatusIcon(item.status);
+            const manualBy = (item.manual_flag && item.manual_by) ? item.manual_by : '-';
+            const manualTime = (item.manual_flag && item.manual_time) ? formatDateTime(item.manual_time) : '-';
+            
+            row.innerHTML = `
+                <td class="px-4 py-3 whitespace-nowrap">
+                    <div class="text-sm font-mono font-bold text-gray-900">${item.id}</div>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    <div class="text-sm font-mono text-gray-900">${item.labmateid || 'N/A'}</div>
+                </td>
+                <td class="px-4 py-3">
+                    <div class="text-sm font-medium text-gray-900">${item.display_name}</div>
+                    ${item.original_phone && item.original_phone !== item.display_name ? 
+                      `<div class="text-xs text-gray-500">ID: ${item.original_phone}</div>` : ''}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    <span class="px-2 py-1 inline-flex text-xs leading-4 font-semibold rounded-full ${channelClass}">
+                        ${item.channel}
+                    </span>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    <div class="flex items-center gap-2">
+                        <i class="${statusIcon}"></i>
+                        <span class="px-2 py-1 inline-flex text-xs leading-4 font-semibold rounded-full ${statusClass}">
+                            ${item.status}
+                        </span>
+                    </div>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    <div class="text-sm text-gray-900">${manualBy}</div>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                    <div class="text-sm text-gray-700">${manualTime}</div>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+        
+        hideLoading();
+        updatePaginationInfo(startIndex, endIndex, data.length);
+    }
+
+    function filterData() {
+        const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+        const channelFilter = document.getElementById('channelFilter').value;
+        const statusFilter = document.getElementById('statusFilter').value;
+        
+        filteredData = currentData.filter(item => {
+            const matchesSearch = !searchTerm || 
+                item.id.toLowerCase().includes(searchTerm) ||
+                item.display_name.toLowerCase().includes(searchTerm) ||
+                (item.original_phone && item.original_phone.toLowerCase().includes(searchTerm)) ||
+                (item.labmateid && item.labmateid.toString().toLowerCase().includes(searchTerm)) ||
+                (item.manual_by && item.manual_by.toLowerCase().includes(searchTerm));
+            
+            const matchesChannel = channelFilter === 'all' || item.channel === channelFilter;
+            let matchesStatus = true;
+            if (statusFilter === 'manual') {
+                matchesStatus = !!item.manual_flag;
+            } else if (statusFilter !== 'all') {
+                matchesStatus = item.status === statusFilter;
+            }
+            
+            return matchesSearch && matchesChannel && matchesStatus;
+        });
+        
+        currentPage = 1;
+        renderTable(filteredData);
+        updateStats(filteredData);
+        
+        if (filteredData.length === 0) {
+            showNoData();
+            hidePagination();
+        } else {
+            hideNoData();
+            showPagination(filteredData.length);
+        }
+    }
+
+    function updateStats(data) {
+        const today = new Date().toISOString().split('T')[0];
+        const todayData = data.filter(item => item.sent_at && item.sent_at.startsWith(today));
+        
+        document.getElementById('totalDelivered').textContent = data.length;
+        document.getElementById('wabaDelivered').textContent = data.filter(d => d.channel === 'WABA').length;
+        document.getElementById('unofficialDelivered').textContent = data.filter(d => d.channel === 'Unofficial').length;
+        document.getElementById('todayCount').textContent = todayData.length;
+    }
+
+    function changePage(direction) {
+        const totalPages = Math.ceil(filteredData.length / pageSize);
+        const newPage = currentPage + direction;
+        
+        if (newPage >= 1 && newPage <= totalPages) {
+            currentPage = newPage;
+            renderTable(filteredData);
+        }
+    }
+
+    function showPagination(totalRows) {
+        document.getElementById('pagination').classList.remove('hidden');
+        document.getElementById('totalRows').textContent = totalRows;
+        
+        const totalPages = Math.ceil(totalRows / pageSize);
+        document.getElementById('prevBtn').disabled = currentPage === 1;
+        document.getElementById('nextBtn').disabled = currentPage === totalPages;
+    }
+
+    function hidePagination() {
+        document.getElementById('pagination').classList.add('hidden');
+    }
+
+    function updatePaginationInfo(start, end, total) {
+        document.getElementById('startRow').textContent = start + 1;
+        document.getElementById('endRow').textContent = end;
+        document.getElementById('totalRows').textContent = total;
+        
+        const totalPages = Math.ceil(total / pageSize);
+        document.getElementById('prevBtn').disabled = currentPage === 1;
+        document.getElementById('nextBtn').disabled = currentPage === totalPages;
+    }
+
+    function showLoading() {
+        document.getElementById('loading').classList.remove('hidden');
+        document.getElementById('noData').classList.add('hidden');
+        document.getElementById('tableBody').innerHTML = '';
+        hidePagination();
+    }
+
+    function hideLoading() {
+        document.getElementById('loading').classList.add('hidden');
+    }
+
+    function showNoData() {
+        document.getElementById('noData').classList.remove('hidden');
+    }
+
+    function hideNoData() {
+        document.getElementById('noData').classList.add('hidden');
+    }
+
+    function getChannelClass(channel) {
+        if (channel === 'WABA') {
+            return 'bg-blue-100 text-blue-800';
+        } else {
+            return 'bg-purple-100 text-purple-800';
+        }
+    }
+
+    function getStatusClass(status) {
+        switch(status.toLowerCase()) {
+            case 'sent': return 'bg-blue-100 text-blue-800';
+            case 'delivered': return 'bg-green-100 text-green-800';
+            case 'read': return 'bg-indigo-100 text-indigo-800';
+            case 'manual': return 'bg-orange-100 text-orange-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    }
+
+    function getStatusIcon(status) {
+        switch(status.toLowerCase()) {
+            case 'sent': return 'fas fa-paper-plane text-blue-500';
+            case 'delivered': return 'fas fa-check-circle text-green-500';
+            case 'read': return 'fas fa-eye text-indigo-500';
+            case 'manual': return 'fas fa-user-edit text-orange-500';
+            default: return 'fas fa-info-circle text-gray-500';
+        }
+    }
+
+    function formatDateTime(timestamp) {
+        if (!timestamp) return 'N/A';
+        return new Date(timestamp).toLocaleString();
+    }
+</script>
+{% endblock %}
