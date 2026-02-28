@@ -4,6 +4,7 @@ import json
 import re
 import math
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 import pymysql
 from flask import Blueprint, jsonify, session, request, current_app
@@ -12,6 +13,7 @@ from app.alerts import send_whatsapp_to_number
 from pymysql.cursors import DictCursor
 
 tickets_bp = Blueprint("tickets", __name__)
+IST = ZoneInfo("Asia/Kolkata")
 
 # -------------------- helpers --------------------
 def _norm(s: Optional[str]) -> str:
@@ -36,7 +38,7 @@ def _g(data: Dict[str, Any], key: str, default: str = "") -> str:
     return str(data.get(key) or default)
 
 def _now():
-    return datetime.now()
+    return datetime.now(IST)
 
 def _parse_predefined_label_to_dt(label: str) -> Optional[datetime]:
     s = _norm(label)
@@ -570,7 +572,7 @@ def proxy_labmate_patient():
         if not patient_id:
             return jsonify({"ok": False, "error": "Patient ID required"}), 400
 
-        labmate_url = "http://122.180.250.177:8000/reportapi/LabmatePatRegistration.svc/Getpatientdatabymobileno"
+        labmate_url = "http://192.168.0.252:8000/reportapi/LabmatePatRegistration.svc/Getpatientdatabymobileno"
         
         response = requests.post(
             labmate_url,

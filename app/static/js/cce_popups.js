@@ -133,6 +133,17 @@
     }
   }
 
+  async function loadRecentRaw(limit = 20) {
+    try {
+      const res = await fetch(`/cce/raw?limit=${encodeURIComponent(String(limit))}`, { cache: "no-store" });
+      const j = await res.json();
+      const list = Array.isArray(j) ? j : j.data || [];
+      list.forEach((item) => upsertPopup(item));
+    } catch (e) {
+      /* no-op */
+    }
+  }
+
   function renderMissed(rows) {
     if (!hasMissedTable) return;
     missedBody.innerHTML = "";
@@ -608,9 +619,12 @@
   let fallbackTimer = null;
 
   function startFallback() {
-    if (fallbackTimer || !hasMissedTable) return;
+    if (fallbackTimer) return;
     if (document.visibilityState === "visible") {
-      fallbackTimer = setInterval(loadMissed, 60000);
+      fallbackTimer = setInterval(() => {
+        if (hasMissedTable) loadMissed();
+        loadRecentRaw(20);
+      }, 60000);
     }
   }
   function stopFallback() {
@@ -622,22 +636,34 @@
 
   function connectWS() {
     if (!WS_URL && !EXOTEL_HTTP) return;
+    const socketOpts = {
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
+    };
     try {
-      socket = io(WS_URL || EXOTEL_HTTP, { transports: ["websocket"] });
+      socket = io(WS_URL || EXOTEL_HTTP, socketOpts);
     } catch (e) {
-      socket = io(EXOTEL_HTTP, { transports: ["websocket"] });
+      socket = io(EXOTEL_HTTP, socketOpts);
     }
 
     socket.on("connect", () => {
-      if (statusEl) statusEl.textContent = 'Live connected ƒo"';
+      if (statusEl) statusEl.textContent = "Live connected";
       if (dotEl) dotEl.style.background = "#22c55e";
       stopFallback();
       debouncedLoadMissed();
+      loadRecentRaw(20);
     });
 
     socket.on("disconnect", () => {
-      if (statusEl) statusEl.textContent = "Disconnectedƒ?Ý retrying";
+      if (statusEl) statusEl.textContent = "Disconnected retrying";
       if (dotEl) dotEl.style.background = "#ef4444";
+      startFallback();
+    });
+    socket.on("connect_error", () => {
       startFallback();
     });
 
@@ -698,10 +724,7 @@
     }
 
     try {
-      const res = await fetch("/cce/raw?limit=20", { cache: "no-store" });
-      const j = await res.json();
-      const list = Array.isArray(j) ? j : j.data || [];
-      list.forEach((item) => upsertPopup(item));
+      await loadRecentRaw(20);
     } catch (e) {
       /* no-op */
     }

@@ -1,0 +1,68 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: arpra-neo-web
+    ports:
+      - "3000:3000"
+    environment:
+      TZ: Asia/Kolkata
+      FLASK_SECRET_KEY: arpra-neo-dev-secret
+      DB_HOST: mariadb
+      DB_USER: root
+      DB_PASSWORD: arpra_root_pass
+      DB_NAME: lead_management
+      LABMATE_HOST: mariadb
+      LABMATE_USER: root
+      LABMATE_PASSWORD: arpra_root_pass
+      LABMATE_NAME: labmate_data
+      EXOTEL_HOST: 192.168.0.202
+      EXOTEL_PORT: 8002
+      EXOTEL_WS_URL: ws://192.168.0.202:8002
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mariadb:
+    image: mariadb:11.4
+    container_name: arpra-neo-mariadb
+    ports:
+      - "3306:3306"
+    command: ["--default-time-zone=+05:30"]
+    environment:
+      TZ: Asia/Kolkata
+      MARIADB_ROOT_PASSWORD: arpra_root_pass
+      MARIADB_DATABASE: lead_management
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./docker/mariadb/init/00-create-extra-dbs.sql:/docker-entrypoint-initdb.d/00-create-extra-dbs.sql:ro
+      - ./lead_management.sql:/docker-entrypoint-initdb.d/01-lead_management.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -p$$MARIADB_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    restart: unless-stopped
+
+  phpmyadmin:
+    image: phpmyadmin:5.2-apache
+    container_name: arpra-neo-phpmyadmin
+    ports:
+      - "8085:80"
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: arpra_root_pass
+      PMA_ARBITRARY: 0
+      UPLOAD_LIMIT: 256M
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mariadb_data:

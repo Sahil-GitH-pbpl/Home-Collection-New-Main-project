@@ -332,13 +332,18 @@
 </div>
 
 <script>
+    let activeDateFilter = { startDate: '', endDate: '' };
+    let autoRefreshTimer = null;
+
     document.addEventListener('DOMContentLoaded', function() {
         initializeDashboard();
     });
 
     function initializeDashboard() {
         setupEventListeners();
+        // On login/page load use default cached today API, not forced fresh recalc.
         loadLeaderboardData();
+        startAutoRefresh();
     }
 
     function setupEventListeners() {
@@ -360,9 +365,17 @@
                     return;
                 }
 
-                loadLeaderboardData({ startDate, endDate });
+                activeDateFilter = { startDate, endDate };
+                loadLeaderboardData(activeDateFilter);
             });
         }
+    }
+
+    function startAutoRefresh() {
+        if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+        autoRefreshTimer = setInterval(() => {
+            loadLeaderboardData(activeDateFilter);
+        }, 60 * 60 * 1000);
     }
 
     async function loadLeaderboardData({ startDate = '', endDate = '' } = {}) {
@@ -473,13 +486,19 @@
     function updateLastUpdatedTime(timestamp) {
         const updateTimeElement = document.getElementById('updateTime');
         if (updateTimeElement && timestamp) {
-            const date = new Date(timestamp);
-            const formattedTime = date.toLocaleTimeString('en-IN', { 
-                hour: '2-digit', 
-                minute: '2-digit',
-                second: '2-digit'
-            });
-            updateTimeElement.textContent = formattedTime;
+            // Backend sends IST timestamp in "YYYY-MM-DD HH:MM:SS".
+            const t = String(timestamp).trim().split(' ')[1] || '';
+            const parts = t.split(':');
+            if (parts.length >= 2) {
+                let hh = parseInt(parts[0], 10);
+                const mm = parts[1];
+                const ss = parts[2] || '00';
+                const meridian = hh >= 12 ? 'PM' : 'AM';
+                hh = hh % 12 || 12;
+                updateTimeElement.textContent = `${String(hh).padStart(2, '0')}:${mm}:${ss} ${meridian}`;
+            } else {
+                updateTimeElement.textContent = timestamp;
+            }
         }
     }
 </script>

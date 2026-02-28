@@ -2,8 +2,10 @@ from flask import Blueprint, render_template, jsonify, request
 from app.db.connection import get_fail_message_connection, get_whatsapp_groups_connection, get_db_connection
 from mysql.connector import Error
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 completedreport_bp = Blueprint('completedreport', __name__)
+IST = ZoneInfo("Asia/Kolkata")
 
 @completedreport_bp.route('/')
 def index():
@@ -19,12 +21,12 @@ def get_completed_deliveries():
     
     try:
         # Get date filters from request
-        from_date = request.args.get('from', datetime.now().strftime('%Y-%m-%d'))
-        to_date = request.args.get('to', datetime.now().strftime('%Y-%m-%d'))
+        from_date = request.args.get('from', datetime.now(IST).strftime('%Y-%m-%d'))
+        to_date = request.args.get('to', datetime.now(IST).strftime('%Y-%m-%d'))
         
         # If only one date provided, use same for both
         if not from_date:
-            from_date = datetime.now().strftime('%Y-%m-%d')
+            from_date = datetime.now(IST).strftime('%Y-%m-%d')
         if not to_date:
             to_date = from_date
         
@@ -176,7 +178,7 @@ def get_completed_deliveries():
                 'status_details': row['status_details'],
                 'send_result': row['send_result'],
                 'message': row['message'],
-                'sent_at': row['sent_at'].isoformat() if isinstance(row['sent_at'], datetime) else datetime.now().isoformat(),
+                'sent_at': row['sent_at'].isoformat() if isinstance(row['sent_at'], datetime) else datetime.now(IST).isoformat(),
                 'manual_send': row['manual_send'],
                 'manual_flag': manual_flag,
                 'manual_by': manual_info.get('resolved_by') if manual_flag else None,

@@ -1,39 +1,63 @@
 from flask import Blueprint, render_template, make_response, jsonify, request
 from pymysql.cursors import DictCursor
 from app.db.connection import get_db_connection, get_whatsapp_connection
-import threading
-import time
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
 dashboard_cache = {}
-cache_lock = threading.Lock()
-background_started = False
+scheduler = None
+IST = ZoneInfo("Asia/Kolkata")
 
-def background_data_fetcher():
-    while True:
-        try:
-            today_data = fetch_all_stats(date_range="today")
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            with cache_lock:
-                dashboard_cache["today"] = {
-                    "data": today_data,
-                    "last_updated": current_time,
-                }
+def _now_ist_str():
+    return datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
-        except Exception:
-            pass
 
-        time.sleep(3600)
+def _refresh_today_cache():
+    """Rebuild today's leaderboard cache and timestamp."""
+    today_data = fetch_all_stats(date_range="today")
+    current_time = _now_ist_str()
+    dashboard_cache["today"] = {
+        "data": today_data,
+        "last_updated": current_time,
+    }
 
-def start_background_fetcher():
-    global background_started
-    if not background_started:
-        thread = threading.Thread(target=background_data_fetcher, daemon=True)
-        thread.start()
-        background_started = True
+
+def init_dashboard_scheduler(app):
+    global scheduler
+    if scheduler:
+        return
+
+    def scheduled_refresh():
+        with app.app_context():
+            try:
+                _refresh_today_cache()
+                app.logger.info("[dashboard] leaderboard cache refreshed")
+            except Exception:
+                app.logger.exception("[dashboard] leaderboard cache refresh failed")
+
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        func=scheduled_refresh,
+        trigger="interval",
+        hours=1,
+        id="dashboard_cache_refresh",
+        replace_existing=True,
+    )
+    scheduler.start()
+
+    # Seed cache immediately on boot so login gets latest available snapshot.
+    scheduled_refresh()
+    atexit.register(lambda: scheduler.shutdown() if scheduler else None)
+
+
+@dashboard_bp.record_once
+def on_load(state):
+    init_dashboard_scheduler(state.app)
 
 @dashboard_bp.route("/dashboard")
 def dashboard():
@@ -53,7 +77,7 @@ def tickets_page():
 
 @dashboard_bp.route("/cce-dashboard")
 def cce_dashboard():
-    return render_template("cce_dashboard.html")
+    return render_template("dashboard.html")
 
 @dashboard_bp.route("/api/cce-dashboard/all-stats")
 def all_stats():
@@ -83,7 +107,7 @@ def all_stats():
             )
 
         data = fetch_all_stats(start_date=start_date, end_date=end_date)
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        current_time = _now_ist_str()
         return jsonify(
             {
                 "ok": True,
@@ -92,10 +116,10 @@ def all_stats():
             }
         )
 
-    with cache_lock:
-        cached = dashboard_cache.get("today")
+    cached = dashboard_cache.get("today")
 
-    if cached:
+    # Return cache only when it contains actual rows; otherwise recalculate.
+    if cached and cached.get("data"):
         return jsonify(
             {
                 "ok": True,
@@ -105,10 +129,9 @@ def all_stats():
         )
 
     data = fetch_all_stats(date_range="today")
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_time = _now_ist_str()
 
-    with cache_lock:
-        dashboard_cache["today"] = {"data": data, "last_updated": current_time}
+    dashboard_cache["today"] = {"data": data, "last_updated": current_time}
 
     return jsonify(
         {
@@ -460,5 +483,3 @@ def fetch_all_stats(date_range="today", start_date=None, end_date=None):
     finally:
         if conn:
             conn.close()
-
-start_background_fetcher()

@@ -18,6 +18,7 @@ et_xmlfile==2.0.0
 fastapi==0.116.0
 Flask==3.1.1
 flask-cors==6.0.0
+APScheduler==3.10.4
 fonttools==4.59.0
 google-api-core==2.25.1
 google-api-python-client==2.177.0

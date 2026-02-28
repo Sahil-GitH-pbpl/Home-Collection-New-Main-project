@@ -3,11 +3,13 @@ from flask_cors import CORS
 from app.db.connection import get_db_connection, get_fail_message_connection, get_whatsapp_groups_connection
 from mysql.connector import Error
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 
 failurereport_bp = Blueprint('failurereport', __name__)
 CORS(failurereport_bp)
+IST = ZoneInfo("Asia/Kolkata")
 
 scheduler = None
 
@@ -110,7 +112,7 @@ def get_failed_deliveries():
                 'provider_status': row['provider_status'],
                 'error': row['error'] or 'Unknown error',
                 'message': row['message'],
-                'sent_at': row['sent_at'].isoformat() if isinstance(row['sent_at'], datetime) else datetime.now().isoformat(),
+                'sent_at': row['sent_at'].isoformat() if isinstance(row['sent_at'], datetime) else datetime.now(IST).isoformat(),
                 'attempts': 1
             })
         
@@ -196,7 +198,7 @@ def mark_resolved(message_id):
                 'message_id': message_id,
                 'labmate_id': labmate_id,
                 'resolved_by': username,
-                'resolved_at': datetime.now().isoformat()
+                'resolved_at': datetime.now(IST).isoformat()
             }
         })
         

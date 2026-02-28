@@ -4,18 +4,21 @@ from flask import Blueprint
 from app.db.connection import get_db_connection  # noqa: F401 (kept for future use)
 import requests
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import threading
 import logging
 import uuid
 
 alerts_bp = Blueprint('alerts', __name__)
+IST = ZoneInfo("Asia/Kolkata")
 
 # =========================
 # Config
 # =========================
-API_TOKEN = "61e3f2cd978650537d9223e7"
-# Group ID ya mobile (StewIndia format)
-WHATSAPP_MOBILE = "917838104597-1635675661"
+WHATSAPP_API_URL = "http://192.168.0.71:3004/api/messages/send"
+WHATSAPP_ACCOUNT_ID = 1
+# Group ID ya mobile (local WA API format)
+WHATSAPP_MOBILE = "917838104597-1635675661@g.us"
 
 # =========================
 # Logger Setup
@@ -34,26 +37,32 @@ if not logger.handlers:
 # =========================
 def send_whatsapp_to_number(phone: str, message: str):
     """
-    StewIndia sendText API wrapper with detailed logs.
+    Local WhatsApp API wrapper with detailed logs.
     Returns: (status_code: int, response_text: str)
     """
     req_id = str(uuid.uuid4())[:8]  # short trace id for this attempt
     try:
-        url = "http://mediaapi.stewindia.com/api/sendText"
-        safe_token = (API_TOKEN[:4] + "****") if API_TOKEN else "None"
+        target = (phone or "").strip()
+        if target and "@g.us" not in target:
+            target = target.replace("+", "").replace(" ", "")
+            while target.startswith("0"):
+                target = target[1:]
+            if len(target) == 10 and not target.startswith("91"):
+                target = f"91{target}"
 
         logger.info(
-            "WA[%s] → Preparing sendText | phone=%s | len(message)=%s | token=%s",
-            req_id, phone, len(message or ""), safe_token
+            "WA[%s] → Preparing send | target=%s | len(message)=%s | accountId=%s",
+            req_id, target, len(message or ""), WHATSAPP_ACCOUNT_ID
         )
 
-        r = requests.get(
-            url,
-            params={
-                "token": API_TOKEN,
-                "phone": phone,
+        r = requests.post(
+            WHATSAPP_API_URL,
+            json={
+                "accountId": WHATSAPP_ACCOUNT_ID,
+                "target": target,
                 "message": message
             },
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
             timeout=10
         )
 
@@ -87,7 +96,7 @@ def _build_lead_message(
     """
     WhatsApp-friendly message for new lead creation alert.
     """
-    now = datetime.now().strftime("%d-%b-%Y %I:%M %p")
+    now = datetime.now(IST).strftime("%d-%b-%Y %I:%M %p")
     lines = [
         "✨🧪🧬 *Fresh Lead Captured!* 🧬🧪✨",
         f"*Name:* {name or '-'}",

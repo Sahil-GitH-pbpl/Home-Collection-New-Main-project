@@ -1,0 +1,2 @@
+CREATE DATABASE IF NOT EXISTS labmate_data;
+CREATE DATABASE IF NOT EXISTS whatsapp_group_id;
