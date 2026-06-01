@@ -1,0 +1,90 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/happ.css') }}">
+
+<div class="container-fluid pt-1 pb-3 h-assign-page">
+  <div class="h-assign-toolbar mb-1">
+    <h4 class="mb-0 h-assign-title">Asgn Booking</h4>
+    <div class="h-assign-date-wrap">
+      <input id="asg-plan-date" type="date" class="form-control" value="{{ default_date }}">
+      <button id="asg-reload" type="button" class="btn btn-primary btn-sm">Load</button>
+    </div>
+    <div class="h-assign-meta" id="asg-meta"></div>
+  </div>
+
+  <div class="card h-assign-grid-card">
+    <div class="table-responsive h-assign-grid-wrap">
+      <table id="asg-grid-table" class="h-assign-grid-table"></table>
+    </div>
+    <div id="asg-xscroll" class="h-assign-xscroll">
+      <div id="asg-xscroll-inner"></div>
+    </div>
+  </div>
+</div>
+
+<div class="h-assign-bottom-bar">
+  <button class="btn btn-success" id="asg-commit-btn">Assign All Bookings</button>
+</div>
+
+<pre id="asg-hover-panel" class="asg-hover-panel d-none"></pre>
+
+<div class="modal fade" id="asgReviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:1020px;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Booking Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="asg-review-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="position-fixed top-50 start-50 translate-middle asg-toast-wrap">
+  <div id="asg-feedback-toast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="false">
+    <div class="d-flex">
+      <div id="asg-feedback-toast-body" class="toast-body"></div>
+      <button type="button" class="me-2 m-auto" data-bs-dismiss="toast" aria-label="Close" style="background:transparent;border:0;color:#fff;font-size:26px;line-height:1;opacity:1;padding:0 4px;">&times;</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="asgModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="asg-modal-title">Assign Route</h5>
+        <div class="asg-modal-search-wrap">
+          <input id="asg-phlebo-search" type="text" class="form-control form-control-sm" placeholder="Type 2 letters to search">
+          <div id="asg-phlebo-search-suggest" class="asg-phlebo-search-suggest d-none"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="asg-phlebo-list" class="assign-alpha-groups"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="asg-save-route-btn" type="button" class="btn btn-warning btn-sm" disabled>Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/hassign_user_picker.js') }}"></script>
+<script>
+  window.H_ASSIGN_DEFAULT_DATE = "{{ default_date }}";
+</script>
+<script src="{{ url_for('static', filename='js/hassignment.js') }}"></script>
+{% endblock %}
+
+
+
+
+
+
+

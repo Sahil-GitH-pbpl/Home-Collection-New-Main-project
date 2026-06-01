@@ -34,7 +34,8 @@ def received_calls():
                         exotel_outgoing_calls.created_at,
                         NULL AS accepted_by_name,
                         i.call_related_to AS call_related_to,
-                        exotel_outgoing_calls.callback_by_name
+                        exotel_outgoing_calls.callback_by_name,
+                        exotel_outgoing_calls.missed_reason
                     FROM exotel_outgoing_calls
                     LEFT JOIN exotel_incoming_calls i
                       ON i.call_sid = exotel_outgoing_calls.call_sid

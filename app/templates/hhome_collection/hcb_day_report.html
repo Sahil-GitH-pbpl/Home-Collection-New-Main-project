@@ -1,0 +1,509 @@
+{% extends 'base.html' %}
+{% block title %}HCB Day Report{% endblock %}
+{% block content %}
+<style>
+  .hcb-day-report-page{padding:12px;background:#f5f7fb;min-height:calc(100vh - 110px)}
+  .hcb-day-report-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-start;background:linear-gradient(180deg,#a2c5e5 0%,#d8c09a 100%);border:1px solid #7ea6c4;border-radius:10px;padding:10px}
+  .hcb-field-inline{display:flex;align-items:center;gap:8px}
+  .hcb-field-inline label{display:inline-block;font-size:11px;font-weight:800;text-transform:uppercase;margin:0;color:#0f172a;white-space:nowrap}
+  .hcb-day-report-toolbar .form-control{padding:7px 10px;border-radius:8px;border:1px solid transparent;box-shadow:none;outline:none}
+  .hcb-day-report-toolbar .form-control:focus{border-color:#2563eb !important;box-shadow:0 0 0 2px rgba(37,99,235,.25) !important;outline:none}
+  .hcb-day-report-toolbar .btn{padding:5px 10px;border-radius:8px;border:none !important;cursor:pointer;transition:background-color .15s ease,color .15s ease}
+  .hcb-day-report-toolbar .btn:hover{background:#0b4fc1 !important;color:#fff !important}
+  .hcb-phlebo-wrap{position:relative}
+  .hcb-phlebo-suggest{position:absolute;left:0;right:0;top:100%;z-index:30;background:#fff;border:1px solid #cfd8ea;border-radius:8px;box-shadow:0 8px 20px rgba(15,23,42,.12);max-height:230px;overflow:auto;display:none}
+  .hcb-phlebo-item{display:block;width:100%;text-align:left;border:0;background:#fff;padding:8px 10px;font-size:14px;font-weight:600;border-bottom:1px solid #eef2f8}
+  .hcb-phlebo-item:last-child{border-bottom:none}
+  .hcb-phlebo-item:hover{background:#f5f8ff}
+  .hcb-phlebo-empty{padding:8px 10px;font-size:13px;color:#64748b}
+  .hcb-day-report-table-wrap{margin-top:10px;background:#fff;border:1px solid #c7d2e7;border-radius:10px;overflow:auto}
+  .hcb-day-report-table{width:100%;border-collapse:collapse;font-size:12px;min-width:1180px}
+  .hcb-day-report-table th,.hcb-day-report-table td{border:1px solid #d7dfef;padding:6px 8px;vertical-align:top}
+  .hcb-day-report-table th{position:sticky;top:0;background:#0b1f4d;color:#fff;z-index:2}
+  .hcb-day-report-table .th-sort{cursor:pointer;white-space:nowrap}
+  .hcb-day-report-table .th-sort .ico{font-size:11px;margin-left:6px;opacity:.9}
+  .hcb-slot-col{white-space:nowrap}
+  .hcb-addr-label{display:block;font-size:11px;color:#334155;text-transform:uppercase;letter-spacing:.3px}
+  .hcb-addr-value{display:block;font-size:13px;font-weight:600;line-height:1.35;color:#0f172a}
+  .hcb-patient-line{padding:3px 0;border-bottom:1px dashed #e2e8f5}
+  .hcb-patient-line:last-child{border-bottom:none}
+  .hcb-patient-name{font-weight:900;color:#7f1d1d}
+  .hcb-tag-value{color:#f97316;font-weight:700}
+  .hcb-empty{padding:16px;text-align:center;color:#64748b}
+  .hcb-type-new{color:#111827;font-weight:800}
+  .hcb-type-link{color:#0b6b2d;font-weight:800}
+  @media print{
+    body{background:#fff}
+  }
+</style>
+
+<div class="hcb-day-report-page">
+  <div class="hcb-day-report-toolbar">
+    <div class="hcb-field-inline">
+      <label for="hcb-date">Date</label>
+      <input id="hcb-date" type="date" class="form-control form-control-sm" value="{{ default_date }}">
+    </div>
+    <div class="hcb-field-inline">
+      <label for="hcb-phlebo">Phlebo (Active User Search)</label>
+      <div class="hcb-phlebo-wrap">
+        <input id="hcb-phlebo" class="form-control form-control-sm" autocomplete="off" placeholder="Type 2 letters to search">
+        <div id="hcb-phlebo-suggest" class="hcb-phlebo-suggest"></div>
+      </div>
+    </div>
+    <div>
+      <button id="hcb-apply" class="btn btn-primary btn-sm w-100">Apply</button>
+    </div>
+    <div>
+      <button id="hcb-download" class="btn btn-primary btn-sm w-100">&#128229; Download</button>
+    </div>
+  </div>
+
+  <div class="hcb-day-report-table-wrap">
+    <table class="hcb-day-report-table" id="hcb-report-table">
+      <thead>
+        <tr>
+          <th style="width:60px">Sr No</th>
+          <th style="width:150px">Booking ID &amp; Type</th>
+          <th style="width:245px">Patient Details</th>
+          <th style="width:315px">Selected Address For Booking</th>
+          <th class="hcb-slot-col" style="width:120px">Slot Time</th>
+          <th style="width:180px">Panel Company</th>
+          <th style="width:120px">Booked By</th>
+          <th class="th-sort" id="hcb-th-phlebo" style="width:120px">Phlebo <span class="ico" id="hcb-phlebo-sort-ico">&#8645;</span></th>
+        </tr>
+      </thead>
+      <tbody id="hcb-report-body">
+        <tr><td colspan="8" class="hcb-empty">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  let hcbRows = [];
+  let phleboSortDir = 'asc';
+  let allPhlebos = [];
+  let pickTimer = null;
+  let pickXhr = null;
+
+  function esc(v){
+    return String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function mapBookingTypeLabel(v){
+    const s = String(v || '');
+    const parts = s.split('&');
+    if (parts.length < 2) return s;
+    const left = parts[0].trim();
+    const typeRaw = parts.slice(1).join('&').trim().toLowerCase();
+    let mapped = parts.slice(1).join('&').trim();
+    if (typeRaw === 'booking') mapped = 'New Appointment';
+    else if (typeRaw === 'appointment') mapped = 'Link Appointment';
+    return `${left} & ${mapped}`;
+  }
+
+  function formatBookingTypeHtml(v){
+    const mapped = mapBookingTypeLabel(v);
+    const parts = mapped.split('&');
+    if (parts.length < 2) return esc(mapped);
+    const left = esc(parts[0].trim());
+    const rightRaw = parts.slice(1).join('&').trim();
+    const rightEsc = esc(rightRaw);
+    if (rightRaw.toLowerCase() === 'new appointment') {
+      return `${left} & <span class="hcb-type-new">${rightEsc}</span>`;
+    }
+    if (rightRaw.toLowerCase() === 'link appointment') {
+      return `${left} & <span class="hcb-type-link">${rightEsc}</span>`;
+    }
+    return `${left} & ${rightEsc}`;
+  }
+
+  function hidePhleboSuggest(){
+    const box = document.getElementById('hcb-phlebo-suggest');
+    box.style.display = 'none';
+    box.innerHTML = '';
+  }
+
+  function renderPhleboSuggest(items){
+    const box = document.getElementById('hcb-phlebo-suggest');
+    if(!items.length){
+      box.innerHTML = '<div class="hcb-phlebo-empty">No phlebo found</div>';
+      box.style.display = 'block';
+      return;
+    }
+    box.innerHTML = items.map(n => `<button type="button" class="hcb-phlebo-item" data-name="${esc(n)}">${esc(n)}</button>`).join('');
+    box.style.display = 'block';
+  }
+
+  function renderRows(rows){
+    const tb = document.getElementById('hcb-report-body');
+    if(!rows.length){
+      tb.innerHTML = '<tr><td colspan="8" class="hcb-empty">No records found</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map((r, idx) => {
+      const patients = (r.patient_details || []).map(p => `
+        <div class="hcb-patient-line">
+          <div class="hcb-patient-name">${esc(p.name)}</div>
+          <div>Mobile: ${esc(p.mobile)}</div>
+          <div>P_Tag: <span class="hcb-tag-value">${esc(p.p_tag || p.tag || '-')}</span></div>
+          ${String(p.t_tag || '').trim() && String(p.t_tag || '').trim() !== '-' ? `<div>T_Tag: <span class="hcb-tag-value">${esc(p.t_tag)}</span></div>` : ''}
+        </div>
+      `).join('') || '<div>-</div>';
+      const accessNotes = String(r.access_notes || '').trim();
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${formatBookingTypeHtml(r.booking_id_and_type)}</td>
+          <td>${patients}</td>
+          <td>
+            <span class="hcb-addr-label">Visit Address</span>
+            <span class="hcb-addr-value">${esc(r.visit_address)}</span>
+            <span class="hcb-addr-label" style="margin-top:6px">Landmark</span>
+            <span class="hcb-addr-value">${esc(r.landmark)}</span>
+            ${accessNotes && accessNotes !== '-' ? `<span class="hcb-addr-label" style="margin-top:6px">Access Notes</span><span class="hcb-addr-value">${esc(accessNotes)}</span>` : ''}
+          </td>
+          <td>${esc(r.slot_time)}</td>
+          <td>${esc(r.panel_company)}</td>
+          <td>${esc(r.booked_by)}</td>
+          <td>${esc(r.phlebo_name)}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function sortByPhlebo(){
+    const dir = phleboSortDir === 'asc' ? 1 : -1;
+    hcbRows = [...hcbRows].sort((a,b)=>{
+      const pa = String(a.phlebo_name || '').toLowerCase();
+      const pb = String(b.phlebo_name || '').toLowerCase();
+      if (pa < pb) return -1 * dir;
+      if (pa > pb) return 1 * dir;
+      const sa = Number(a.slot_key || 9999);
+      const sb = Number(b.slot_key || 9999);
+      if(sa !== sb) return sa - sb;
+      return Number(a.booking_id || 0) - Number(b.booking_id || 0);
+    });
+    renderRows(hcbRows);
+    document.getElementById('hcb-phlebo-sort-ico').textContent = '\u2195';
+    phleboSortDir = phleboSortDir === 'asc' ? 'desc' : 'asc';
+  }
+
+  function buildPrintHtml(rows, reportDate, phleboFilter, extraSections){
+      const bodyRows = rows.map((r, idx) => {
+      const patients = (r.patient_details || []).map(p => `
+        <div style="padding:2px 0;border-bottom:1px dashed #d7dfef;">
+          <div style="font-weight:700;color:#7f1d1d;">${esc(p.name)}</div>
+          <div>Mobile: ${esc(p.mobile)}</div>
+          <div>P_Tag: ${esc(p.p_tag || p.tag || '-')}</div>
+          ${String(p.t_tag || '').trim() && String(p.t_tag || '').trim() !== '-' ? `<div>T_Tag: ${esc(p.t_tag)}</div>` : ''}
+        </div>
+      `).join('') || '-';
+      const accessNotes = String(r.access_notes || '').trim();
+      return `
+      <tr>
+        <td>${idx + 1}</td>
+        <td>${formatBookingTypeHtml(r.booking_id_and_type)}</td>
+        <td>${patients}</td>
+        <td><div style="font-size:10px;color:#5e6b7f;text-transform:uppercase;">Visit Address</div><div style="font-weight:600;">${esc(r.visit_address)}</div><div style="font-size:10px;color:#5e6b7f;text-transform:uppercase;margin-top:5px;">Landmark</div><div style="font-weight:600;">${esc(r.landmark)}</div>${accessNotes && accessNotes !== '-' ? `<div style="font-size:10px;color:#5e6b7f;text-transform:uppercase;margin-top:5px;">Access Notes</div><div style="font-weight:600;">${esc(accessNotes)}</div>` : ''}</td>
+        <td>${esc(r.slot_time)}</td>
+        <td>${esc(r.panel_company)}</td>
+        <td>${esc(r.booked_by)}</td>
+        <td>${esc(r.phlebo_name)}</td>
+      </tr>`;
+    }).join('');
+    return `<!doctype html>
+<html><head><meta charset="utf-8"><title>HCB Day Report</title>
+<style>
+body{font-family:"Segoe UI",Arial,sans-serif;color:#0f172a;margin:0}
+h2,.meta{margin-left:14px;margin-right:14px}
+h2{margin:0 0 4px;color:#0b1f4d}
+.meta{margin:0 0 10px;font-size:12px;color:#334155}
+table{width:calc(100% - 28px);margin:0 14px;border-collapse:collapse;font-size:11px}
+th,td{border:1px solid #d7dfef;padding:5px 6px;vertical-align:top}
+th{background:#0b1f4d;color:#fff}
+.detail-card{border:1px solid #c7d2e7;border-radius:8px;padding:10px;margin-top:12px;page-break-inside:avoid}
+.detail-title{font-size:13px;font-weight:800;color:#0b1f4d;margin-bottom:8px}
+.doc-grid{display:flex;flex-wrap:wrap;gap:8px}
+.doc-thumb{width:120px;height:90px;object-fit:cover;border:1px solid #d7dfef;border-radius:6px;background:#fff}
+.doc-pdf{display:inline-flex;align-items:center;justify-content:center;width:120px;height:90px;border:1px solid #d7dfef;border-radius:6px;background:#f8fafc;font-size:12px;font-weight:700;color:#334155}
+.print-page{break-after:page;page-break-after:always}
+.print-page:last-child{break-after:auto;page-break-after:auto}
+.doc-page{padding:20px}
+.doc-page h3{margin:0 0 8px}
+@page{size:A4;margin:10mm}
+</style></head>
+<body>
+  <h2>HCB Day Report</h2>
+  <div class="meta">Date: ${esc(reportDate)}${phleboFilter ? ` | Phlebo: ${esc(phleboFilter)}` : ' | Phlebo: All'}</div>
+  <table>
+    <thead><tr>
+      <th>Sr No</th><th>Booking ID & Type</th><th>Patient Details</th><th>Selected Address For Booking</th><th>Slot Time</th><th>Panel Company</th><th>Booked By</th><th>Phlebo</th>
+    </tr></thead>
+    <tbody>${bodyRows || '<tr><td colspan="8">No records found</td></tr>'}</tbody>
+  </table>
+  ${extraSections || ''}
+</body></html>`;
+  }
+
+
+  function parseBookingIdFromRow(row){
+    const direct = Number(row?.booking_id || 0);
+    if (direct > 0) return direct;
+    const txt = String(row?.booking_id_and_type || '');
+    const m = txt.match(/\d+/);
+    return m ? Number(m[0]) : 0;
+  }
+
+
+  function renderBookingViewPageHtml(b){
+    const patients = Array.isArray(b?.patients) ? b.patients : [];
+    const total = Number(b?.total_amount || 0);
+    const computedSub = patients.reduce((acc, p) => acc + ((Array.isArray(p.tests) ? p.tests : []).reduce((a, t) => a + Number(t.mrp || 0), 0)), 0);
+    const computedDis = patients.reduce((acc, p) => acc + ((Array.isArray(p.tests) ? p.tests : []).reduce((a, t) => a + Number(t.discount || 0), 0)), 0);
+    const sub = Number(b?.F_Apt_Am ?? computedSub);
+    const dis = Number(b?.F_dis ?? computedDis);
+    const patientBlocks = patients.map((p) => {
+      const tests = Array.isArray(p.tests) ? p.tests : [];
+      const rows = tests.map((t)=>`
+        <tr>
+          <td><strong>${esc([t.booked_code, t.test_name].filter(Boolean).join(' - ') || '-')}</strong></td>
+          <td style="text-align:right">${esc(fmtMoney(t.mrp))}</td>
+          <td style="text-align:right">${esc(fmtMoney(t.discount))}</td>
+          <td style="text-align:right"><strong>${esc(fmtMoney(t.final_charge))}</strong></td>
+          <td style="text-align:center">-</td>
+        </tr>
+      `).join('');
+      const patientTotal = tests.reduce((acc, t) => acc + Number(t.final_charge || 0), 0);
+      return `
+      <div class="detail-card">
+        <div class="detail-title">Patient Name: ${esc(p.full_name || '-')}</div>
+        <div><strong>Test_Bkg_Status:</strong> ${esc(tbsLabel(p.test_booking_status))}</div>
+        <div style="margin-top:6px"><strong>Tests (${tests.length})</strong></div>
+        <table style="margin-top:4px">
+          <thead>
+            <tr><th>Test Name</th><th>Standard Charge</th><th>Discount</th><th>Final Charge</th><th>TAT</th></tr>
+          </thead>
+          <tbody>${rows || '<tr><td colspan="5">No tests.</td></tr>'}</tbody>
+        </table>
+        <div style="margin-top:4px;text-align:right"><strong>Charges: ${esc(fmtMoney(patientTotal))}</strong></div>
+      </div>`;
+    }).join('');
+    return `<section class="print-page">
+      <div class="detail-card">
+        <div class="detail-title">Booking ${esc(b.booking_code || b.id || '-')}</div>
+        <div><strong>Caller:</strong> ${esc(b.primary_mobile || '-')} | <strong>Patients:</strong> ${patients.length}</div>
+        <div><strong>Google Location:</strong> ${esc(b.google_location || '-')}</div>
+        <div><strong>Referred By:</strong> ${esc(b.referred_by || '-')} | <strong>Internal Referred By:</strong> ${esc(b.intrnl_rfrncd_by || '-')} | <strong>Lead ID:</strong> ${esc(b.lead_id || '-')}</div>
+        <div style="margin-top:4px"><strong>Address:</strong> House/Flat No ${esc(b.house_flat_no || '-')}, Floor ${esc(b.floor || '-')}, Block/Tower No ${esc(b.block_tower_no || '-')}, Street/Sector ${esc(b.street_line || '-')}, Colony ${esc(b.colony_name || '-')}, City ${esc(b.city || '-')}, ${esc(b.pincode || '-')}</div>
+        <div><strong>Landmark:</strong> ${esc(b.landmark || '-')}</div>
+        ${String(b.access_notes || '').trim() && String(b.access_notes || '').trim() !== '-' ? `<div><strong>Access Notes:</strong> ${esc(b.access_notes)}</div>` : ''}
+        ${patientBlocks || '<div class="detail-card">No patient details.</div>'}
+        <div style="margin-top:8px">
+          <strong>Final Sub Total:</strong> ${esc(fmtMoney(sub))}<br>
+          <strong>Final Discount:</strong> ${esc(fmtMoney(dis))}<br>
+          <strong>Final Amount:</strong> ${esc(fmtMoney(total))}
+        </div>
+      </div>
+    </section>`;
+  }
+
+  function renderDocPageHtml(patientName, label, src, index){
+    const low = String(src || '').toLowerCase();
+    const isPdf = low.endsWith('.pdf');
+    return `<section class="print-page doc-page">
+      <h3>${esc(label)} (${index}) - ${esc(patientName || '-')}</h3>
+      ${isPdf
+        ? `<div style="padding:20px;border:1px solid #d7dfef;border-radius:8px;background:#f8fafc;font-weight:700;">PDF File: ${esc(src)}</div>`
+        : `<img src="${esc(src)}" style="max-width:100%;max-height:90vh;object-fit:contain">`
+      }
+      <div style="font-size:11px;color:#475569;margin-top:6px;word-break:break-all">${esc(src)}</div>
+    </section>`;
+  }
+
+  async function buildDetailPrintSections(rows){
+    const sections = [];
+    for (const r of rows){
+      const bid = parseBookingIdFromRow(r);
+      const aid = Number(r.appointment_id || 0);
+      if(!bid) continue;
+      try{
+        const url = aid > 0
+          ? `/hhome-collection/booking/${bid}?appointment_id=${aid}`
+          : `/hhome-collection/booking/${bid}`;
+        const res = await fetch(url);
+        const js = await res.json();
+        const b = js.booking || {};
+        sections.push(renderBookingViewPageHtml(b));
+        const patients = Array.isArray(b.patients) ? b.patients : [];
+        patients.forEach((p) => {
+          const pname = p.full_name || '-';
+          const pdocs = Array.isArray(p.patient_document_urls) ? p.patient_document_urls : [];
+          const pres = Array.isArray(p.prescription_urls) ? p.prescription_urls : [];
+          pdocs.forEach((u, i) => { if (u) sections.push(renderDocPageHtml(pname, 'Patient Document', u, i + 1)); });
+          pres.forEach((u, i) => { if (u) sections.push(renderDocPageHtml(pname, 'Prescription', u, i + 1)); });
+        });
+      }catch(_e){}
+    }
+    return sections.join('');
+  }
+
+  async function openPrintPreview(){
+    const dateVal = document.getElementById('hcb-date').value || '';
+    const phleboVal = (document.getElementById('hcb-phlebo').value || '').trim();
+    let extraSections = '';
+    if (phleboVal && hcbRows.length) {
+      extraSections = await buildDetailPrintSections(hcbRows);
+    }
+    const html = buildPrintHtml(hcbRows, dateVal, phleboVal, extraSections);
+    let frame = document.getElementById('hcb-print-frame');
+    if (!frame) {
+      frame = document.createElement('iframe');
+      frame.id = 'hcb-print-frame';
+      frame.style.position = 'fixed';
+      frame.style.right = '0';
+      frame.style.bottom = '0';
+      frame.style.width = '0';
+      frame.style.height = '0';
+      frame.style.border = '0';
+      document.body.appendChild(frame);
+    }
+    const fdoc = frame.contentWindow.document;
+    fdoc.open();
+    fdoc.write(html);
+    fdoc.close();
+    const imgs = Array.from(fdoc.querySelectorAll('img'));
+    if (!imgs.length) {
+      setTimeout(() => {
+        try {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+        } catch(_e){}
+      }, 120);
+      return;
+    }
+    let done = 0;
+    const finish = () => {
+      done += 1;
+      if (done >= imgs.length) {
+        setTimeout(() => {
+          try {
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
+          } catch(_e){}
+        }, 120);
+      }
+    };
+    imgs.forEach((img) => {
+      if (img.complete) { finish(); return; }
+      img.addEventListener('load', finish, { once: true });
+      img.addEventListener('error', finish, { once: true });
+    });
+  }
+
+  async function loadUsers(){
+    try{
+      const res = await fetch('/hhome-collection/phlebotomists');
+      const js = await res.json();
+      allPhlebos = (js.phlebotomists || [])
+        .map(r => String(r.name || r.full_name || '').trim())
+        .filter(Boolean);
+    }catch(_e){ allPhlebos = []; }
+  }
+
+  async function searchPhleboSuggestions(q){
+    const s = String(q || '').trim();
+    if (s.length < 2) { hidePhleboSuggest(); return; }
+    try{
+      const qs = new URLSearchParams({ q: s, limit: '20' });
+      const res = await fetch(`/hhome-collection/internal-ref-users?${qs.toString()}`);
+      const js = await res.json();
+      const items = (js.items || []).map(x => String(x.name || '').trim()).filter(Boolean);
+      renderPhleboSuggest(items);
+    }catch(_e){
+      const fallback = allPhlebos.filter(x => x.toLowerCase().includes(s.toLowerCase())).slice(0,20);
+      renderPhleboSuggest(fallback);
+    }
+  }
+
+  async function loadData(){
+    const tb = document.getElementById('hcb-report-body');
+    const dateVal = document.getElementById('hcb-date').value || '';
+    const phleboVal = (document.getElementById('hcb-phlebo').value || '').trim();
+    tb.innerHTML = '<tr><td colspan="8" class="hcb-empty">Loading...</td></tr>';
+    try{
+      const qs = new URLSearchParams({date: dateVal, phlebo: phleboVal});
+      const res = await fetch(`/hhome-collection/hcb-day-report/data?${qs.toString()}`);
+      const js = await res.json();
+      if(!js.ok){
+        tb.innerHTML = `<tr><td colspan="8" class="hcb-empty">${esc(js.message || 'Failed to load')}</td></tr>`;
+        return;
+      }
+      hcbRows = js.rows || [];
+      renderRows(hcbRows);
+    }catch(e){
+      tb.innerHTML = `<tr><td colspan="8" class="hcb-empty">${esc(e.message || 'Failed to load')}</td></tr>`;
+    }
+  }
+
+  function fmtMoney(v){
+    const n = Number(v || 0);
+    if(!Number.isFinite(n)) return '0';
+    return n.toFixed(2).replace(/\.00$/,'');
+  }
+
+  function tbsLabel(code){
+    const normalized = String(code ?? '').trim();
+    if (!normalized) return '-';
+    if (
+      normalized === 'Test confirmed and booked' ||
+      normalized === 'Prescription attached but test not booked' ||
+      normalized === 'No test information: ask to patient for tests' ||
+      normalized === 'Incompleted test, phlebo verification pending to confirm and book'
+    ) return normalized;
+    const c = Number(code || 0);
+    if (c === 1) return 'Test confirmed and booked';
+    if (c === 2) return 'Prescription attached but test not booked';
+    if (c === 3) return 'No test information: ask to patient for tests';
+    if (c === 4) return 'Incompleted test, phlebo verification pending to confirm and book';
+    return '-';
+  }
+
+  document.getElementById('hcb-date').addEventListener('change', function(){});
+  document.getElementById('hcb-phlebo').addEventListener('change', function(){});
+  document.getElementById('hcb-phlebo').addEventListener('input', function(){
+    const q = String(this.value || '').trim().toLowerCase();
+    if (pickTimer) clearTimeout(pickTimer);
+    pickTimer = setTimeout(() => {
+      if(!q){
+        hidePhleboSuggest();
+        return;
+      }
+      if(q.length < 2){
+        hidePhleboSuggest();
+        return;
+      }
+      searchPhleboSuggestions(q);
+    }, 180);
+  });
+  document.getElementById('hcb-phlebo-suggest').addEventListener('click', function(e){
+    const btn = e.target.closest('.hcb-phlebo-item');
+    if(!btn) return;
+    const name = btn.getAttribute('data-name') || '';
+    document.getElementById('hcb-phlebo').value = name;
+    hidePhleboSuggest();
+    loadData();
+  });
+  document.addEventListener('click', function(e){
+    if (e.target.closest('.hcb-phlebo-wrap')) return;
+    hidePhleboSuggest();
+  });
+  document.getElementById('hcb-apply').addEventListener('click', loadData);
+  document.getElementById('hcb-download').addEventListener('click', openPrintPreview);
+  document.getElementById('hcb-th-phlebo').addEventListener('click', sortByPhlebo);
+
+  loadUsers();
+  loadData();
+</script>
+{% endblock %}
+

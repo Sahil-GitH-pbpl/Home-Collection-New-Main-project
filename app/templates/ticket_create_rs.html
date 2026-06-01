@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .rs-page{padding:18px;background:linear-gradient(180deg,#eef2ff,#f7faff);}
+  .rs-card{max-width:1100px;margin:0 auto;background:#fff;border:1px solid #d8d9ff;border-radius:14px;box-shadow:0 10px 26px rgba(76,29,149,0.12);padding:18px 18px 22px;}
+  .rs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px 18px;align-items:end;}
+  .rs-field{display:flex;flex-direction:column;gap:6px;}
+  .rs-field label{font-weight:700;font-size:13px;color:#1f2937;}
+  .rs-input, .rs-select, .rs-textarea{
+    width:100%;padding:12px 14px;border:1px solid #c8c9ff;border-radius:12px;
+    box-shadow:0 4px 10px rgba(76,29,149,0.10);font-size:14px;box-sizing:border-box;min-height:44px;
+  }
+  .rs-select{background:linear-gradient(135deg,#f9fbff,#eef2ff);color:#0f172a;}
+  .rs-select:focus{outline:2px solid #5b7bff; box-shadow:0 0 0 3px rgba(91,123,255,0.18);}
+  .rs-textarea{min-height:90px;resize:vertical;}
+  .pill-btn{border:1px solid transparent;border-radius:12px;padding:12px 16px;cursor:pointer;font-weight:700;transition:all .15s;}
+  .pill-secondary{
+    background:linear-gradient(90deg,#0f7a4f 0%, #0451c4 100%);
+    color:#fff;
+    box-shadow:0 6px 14px rgba(15,122,79,0.25);
+  }
+  .pill-secondary:disabled{opacity:.7;cursor:not-allowed;}
+  .rs-actions{display:flex;gap:10px;margin-top:12px;justify-content:flex-end;}
+</style>
+
+<div class="rs-page">
+  <div class="rs-card">
+    <h3 style="margin:0 0 14px 0;">Raise Rejected Sample Ticket</h3>
+
+    <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;">
+      <div class="rs-field" style="flex:1 1 60%;">
+        <label>Patient ID</label>
+        <input id="rs_patient_id" class="rs-input" placeholder="Enter Labmate ID">
+      </div>
+      <div class="rs-field" style="flex:0 0 180px;">
+        <label>&nbsp;</label>
+        <button class="pill-btn pill-secondary" id="rs_btnFetch" type="button" style="width:100%;">Fetch Details</button>
+      </div>
+    </div>
+
+    <!-- Row 1 -->
+    <div class="rs-grid">
+      <div class="rs-field">
+        <label>Patient Name</label>
+        <input id="rs_patient_name" class="rs-input" placeholder="Patient name" readonly>
+      </div>
+      <div class="rs-field">
+        <label>Mobile</label>
+        <input id="rs_mobile_number" class="rs-input" placeholder="Mobile number" readonly>
+      </div>
+      <div class="rs-field">
+        <label>Doctor</label>
+        <input id="rs_doctor" class="rs-input" placeholder="Doctor" readonly>
+      </div>
+    </div>
+
+    <!-- Row 2 -->
+    <div class="rs-grid" style="margin-top:4px;">
+      <div class="rs-field">
+        <label>Doctor Mobile</label>
+        <input id="rs_doctor_mobile" class="rs-input" placeholder="Doctor mobile" readonly>
+      </div>
+      <div class="rs-field">
+        <label>Panel</label>
+        <input id="rs_panel" class="rs-input" placeholder="Panel" readonly>
+      </div>
+      <div class="rs-field">
+        <label>Panel Mobile</label>
+        <input id="rs_panel_mobile" class="rs-input" placeholder="Panel mobile" readonly>
+      </div>
+    </div>
+
+    <!-- Row 3 -->
+    <div class="rs-grid" style="margin-top:4px;">
+      <div class="rs-field">
+        <label>Sample Type</label>
+        <select id="rs_sample_type" class="rs-select">
+          <option value="">-- Select Sample Type --</option>
+          <option>Blood EDTA</option>
+          <option>Serum</option>
+          <option>Plasma Fluoride</option>
+          <option>Urine</option>
+          <option>Stool</option>
+          <option>Sputum</option>
+          <option>Swab</option>
+          <option>CSF</option>
+          <option>Biopsy</option>
+          <option>Body Fluid</option>
+        </select>
+      </div>
+      <div class="rs-field">
+        <label>Reason for Rejection</label>
+        <select id="rs_rejection_reason" class="rs-select">
+          <option value="">-- Select Reason --</option>
+          <option>NOT IN FORMALIN</option>
+          <option>QNS</option>
+          <option>REPEAT REQUESTED</option>
+          <option>SAMPLE CLOTTED</option>
+          <option>SAMPLE DETERIORATED</option>
+          <option>SAMPLE HAEMOLYSED</option>
+          <option>SAMPLE ICTERIC</option>
+          <option>SAMPLE INADEQUATE</option>
+          <option>SAMPLE LIPAEMIC</option>
+          <option>TRF INCOMPLETE</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="rs-actions">
+      <button class="pill-btn pill-secondary" id="rs_submit" type="button">Create Rejected Sample Ticket</button>
+    </div>
+  </div>
+</div>
+
+<script>
+async function rsLoadAssignees(){ /* none needed for RS */ }
+
+document.getElementById('rs_btnFetch').onclick = async () => {
+  const pid = document.getElementById('rs_patient_id').value;
+  if (!pid) return alert('Enter Patient ID first');
+  const btn = document.getElementById('rs_btnFetch');
+  const prev = btn.textContent;
+  btn.textContent = 'Fetching...'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/proxy/labmate-patient', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ patientid: pid })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      document.getElementById('rs_patient_name').value = j.name || '';
+  document.getElementById('rs_mobile_number').value = j.mobileno || '';
+  document.getElementById('rs_doctor').value = j.doctor || '';
+  document.getElementById('rs_doctor_mobile').value = j.doctormobile || '';
+  document.getElementById('rs_panel').value = j.panel || '';
+  document.getElementById('rs_panel_mobile').value = j.whatsapp || '';
+    } else {
+      alert(j.error || 'No data found');
+    }
+  } catch(e){ alert('Fetch failed'); }
+  finally { btn.textContent = prev; btn.disabled = false; }
+};
+
+document.getElementById('rs_submit').onclick = async () => {
+  const payload = {
+    patient_labmate_id: document.getElementById('rs_patient_id').value,
+    patient_name: document.getElementById('rs_patient_name').value,
+    mobile_number: document.getElementById('rs_mobile_number').value,
+    doctor: document.getElementById('rs_doctor').value,
+    doctor_mobile: document.getElementById('rs_doctor_mobile').value,
+    panel: document.getElementById('rs_panel').value,
+    panel_mobile: document.getElementById('rs_panel_mobile').value,
+    country_code: '+91',
+    sample_type: document.getElementById('rs_sample_type').value,
+    rejection_reason: document.getElementById('rs_rejection_reason').value
+  };
+  const res = await fetch('/tickets/rs/create', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const j = await res.json();
+  if (j.ok) {
+    window.location = '/tickets/list';
+  } else {
+    alert('Error: ' + j.error);
+  }
+};
+</script>
+{% endblock %}

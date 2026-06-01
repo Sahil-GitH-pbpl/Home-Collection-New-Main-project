@@ -130,6 +130,68 @@ th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
   </div>
 {% endif %}
 
+{% if unassigned_rs_tickets and unassigned_rs_tickets|length > 0 %}
+  <div class="section-head">
+    <h2>🧪 Open Rejected Sample Tickets</h2>
+    <span class="section-sub">RS tickets available for pick</span>
+  </div>
+
+  <div class="table-container" style="overflow-x:hidden;">
+    <table class="tickets-table">
+      <thead>
+        <tr>
+          <th>Ticket No</th>
+          <th>Mobile No</th>
+          <th>Patient Name</th>
+          <th>Ticket Category</th>
+          <th>Ticket Type</th>
+          <th>Commitment At</th>
+          <th class="actions-col" style="width:140px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in unassigned_rs_tickets %}
+        <tr>
+          <td>{{ t.id }}</td>
+          <td>{{ t.mobile_number }}</td>
+          <td>{{ t.patient_name or '-' }}</td>
+          <td>{{ t.ticket_category }}</td>
+          <td>{{ t.ticket_origin or 'RST' }}</td>
+          <td>
+            <div class="commitment-wrap">
+              <div class="commitment-dt">{{ t.commitment_at_display or '-' }}</div>
+              {% if t.commitment_countdown_text %}
+                <span class="badge commitment-badge {% if t.commitment_countdown_state == 'ok' %}badge-ok{% elif t.commitment_countdown_state == 'near' %}badge-near{% elif t.commitment_countdown_state == 'overdue' %}badge-overdue{% endif %}">
+                  {{ t.commitment_countdown_text }}
+                </span>
+              {% endif %}
+            </div>
+          </td>
+          <td class="actions-col">
+            <table style="width:100%; border-collapse:collapse;">
+              <tr>
+                <td style="text-align:right; padding:0 4px;">
+                  <a class="btn-action btn-view" href="{{ url_for('ticket_detail.ticket_detail', ticket_id=t.id) }}">View</a>
+                </td>
+                <td style="text-align:left; padding:0 4px;">
+                  {% if t.actions_enabled %}
+                  <form method="post" action="{{ url_for('ticketlist.pick_odt_ticket', ticket_id=t.id) }}" style="margin:0;">
+                    <button type="submit" class="btn-action btn-pick" style="min-width:64px;">Pick</button>
+                  </form>
+                  {% else %}
+                  <button class="btn-action btn-pick btn-disabled" disabled style="min-width:64px;">Pick</button>
+                  {% endif %}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
 {% if unassigned_odt_tickets and unassigned_odt_tickets|length > 0 %}
   <div class="section-head">
     <h2>📋 Unassigned ODT Tickets</h2>

@@ -32,7 +32,10 @@ except Exception as e:
 IST = ZoneInfo("Asia/Kolkata")
 
 # ----------------- WhatsApp (Local API) -----------------
-WHATSAPP_API_URL = "http://192.168.0.71:3004/api/messages/send"
+WHATSAPP_API_URL = os.getenv(
+    "WHATSAPP_API_URL",
+    "http://10.1.1.44:3004/api/messages/send",
+).strip()
 WHATSAPP_ACCOUNT_ID = 1
 # Default WhatsApp destination (CCE daily summary group)  
 DEFAULT_TARGET = "120363418373355488@g.us"

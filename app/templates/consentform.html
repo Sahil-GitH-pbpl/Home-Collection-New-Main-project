@@ -1,0 +1,602 @@
+{% extends "base.html" %}
+{% block title %}Consent Form{% endblock %}
+{% block content %}
+<style>
+  .consent-page{
+    --bg:#f3f6fb;
+    --surface:#ffffff;
+    --text:#12233d;
+    --muted:#5c6b80;
+    --primary:#0b7285;
+    --primary-dark:#095766;
+    --accent:#1d4ed8;
+    --border:#d6e1ec;
+    --danger:#b42318;
+    max-width:1100px;
+    margin:0 auto;
+    padding:8px 16px 40px;
+    overflow-x:hidden;
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Segoe UI",sans-serif;
+  }
+  .consent-page *,
+  .consent-page *::before,
+  .consent-page *::after{
+    box-sizing:border-box;
+  }
+  .consent-page .panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:20px;
+    overflow-x:hidden;
+  }
+  .consent-page h1,
+  .consent-page h2{
+    margin:0;
+  }
+  .consent-page p{
+    margin:8px 0 0;
+    color:var(--muted);
+  }
+  .consent-page form{
+    display:grid;
+    grid-template-columns:minmax(0, 240px) auto;
+    gap:10px;
+    margin-top:18px;
+    align-items:center;
+  }
+  .consent-page input,
+  .consent-page select{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid var(--border);
+    border-radius:12px;
+    font-size:.95rem;
+    background:#fff;
+    color:var(--text);
+  }
+  .consent-page button{
+    border:0;
+    border-radius:12px;
+    padding:10px 16px;
+    background:var(--primary);
+    color:#fff;
+    font-size:.95rem;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .consent-page button:hover{
+    background:var(--primary-dark);
+  }
+  .consent-page .message{
+    margin-top:14px;
+    padding:12px 14px;
+    border-radius:12px;
+  }
+  .consent-page .error{
+    background:#fef3f2;
+    color:var(--danger);
+    border:1px solid #fecdca;
+  }
+  .consent-page .stack{
+    display:grid;
+    gap:18px;
+    margin-top:18px;
+  }
+  .consent-page .panel-head{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) auto;
+    gap:18px;
+    align-items:end;
+  }
+  .consent-page .panel-head-copy{
+    max-width:520px;
+  }
+  .consent-page .search-block{
+    min-width:0;
+  }
+  .consent-page .info-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:12px;
+    margin-top:16px;
+  }
+  .consent-page .info-item{
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:12px 14px;
+    min-height:72px;
+    background:linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  }
+  .consent-page .label{
+    display:block;
+    font-size:.82rem;
+    color:var(--muted);
+    margin-bottom:4px;
+  }
+  .consent-page .value{
+    font-weight:600;
+    display:block;
+    font-size:.96rem;
+    line-height:1.35;
+    white-space:normal;
+    word-break:break-word;
+  }
+  .consent-page .actions{
+    display:grid;
+    grid-template-columns:minmax(220px, 320px) auto;
+    gap:10px;
+    align-items:center;
+  }
+  .consent-page .action-note{
+    margin-top:8px;
+    font-size:.92rem;
+    color:var(--muted);
+  }
+  .consent-page .print-btn{
+    background:var(--accent);
+  }
+  .consent-page .print-btn:hover{
+    background:#1e40af;
+  }
+  .consent-page .template-box{
+    border:1px solid var(--border);
+    border-radius:18px;
+    background:#fff;
+    overflow:hidden;
+    width:100%;
+  }
+  .consent-page .template{
+    display:none;
+    padding:20px;
+    width:100%;
+    overflow:hidden;
+    text-align:center;
+  }
+  .consent-page .template.active{
+    display:block;
+  }
+  .consent-page .sheet-frame{
+    display:inline-block;
+    text-align:left;
+    max-width:100%;
+  }
+  .consent-page .sheet-header{
+    display:grid;
+    gap:10px;
+    margin-bottom:8px;
+  }
+  .consent-page .sheet-header-top{
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+  }
+  .consent-page .sheet-header-bottom{
+    display:block;
+    text-align:center;
+    min-height:34px;
+    width:100%;
+  }
+  .consent-page .print-only-title{
+    display:none;
+    font-size:24px;
+    font-weight:700;
+    color:#000;
+    text-align:center;
+    width:100%;
+    margin:0 0 10px;
+  }
+  .consent-page .sheet-logo{
+    max-height:74px;
+    width:auto;
+  }
+  .consent-page .sheet-title{
+    font-size:24px;
+    font-weight:700;
+    color:#000;
+    text-align:center;
+    display:inline-block;
+    margin:0 auto;
+    max-width:100%;
+  }
+  .consent-page .excel-wrap{
+    overflow:hidden;
+    display:block;
+    width:100%;
+    position:relative;
+  }
+  .consent-page .excel-sheet{
+    border-collapse:collapse;
+    margin:0 auto;
+    background:#fff;
+    color:#000;
+    font-size:32px;
+    line-height:1.7;
+    table-layout:fixed;
+    transform-origin:top center;
+  }
+  .consent-page .excel-sheet td{
+    min-width:20px;
+    padding:10px 13px;
+    white-space:nowrap;
+    overflow:visible;
+  }
+  .consent-page .excel-check{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:14px;
+    height:14px;
+    margin-right:6px;
+    border:1.5px solid #000;
+    border-radius:2px;
+    vertical-align:middle;
+    position:relative;
+    top:-1px;
+  }
+  .consent-page .excel-check::after{
+    content:"";
+    position:absolute;
+    left:3px;
+    top:1px;
+    width:5px;
+    height:8px;
+    border-right:2px solid #000;
+    border-bottom:2px solid #000;
+    transform:rotate(40deg);
+  }
+  @media (max-width: 700px){
+    .consent-page form,
+    .consent-page .panel-head,
+    .consent-page .info-grid,
+    .consent-page .actions{
+      grid-template-columns:1fr;
+      display:grid;
+    }
+    .consent-page .search-block{
+      width:100%;
+    }
+    .consent-page form{
+      grid-template-columns:1fr;
+    }
+  }
+  @media print{
+    @page{
+      margin:10mm;
+    }
+    .header-wrap{
+      display:none !important;
+    }
+    #content{
+      padding:0 !important;
+    }
+    body{
+      background:#fff;
+      overflow:visible;
+    }
+    .consent-page .no-print{
+      display:none !important;
+    }
+    .consent-page{
+      max-width:100%;
+      padding:0;
+      overflow:visible;
+      background:#fff;
+    }
+    .consent-page .panel,
+    .consent-page .template-box{
+      border:0;
+      padding:0;
+      box-shadow:none;
+      overflow:visible;
+    }
+    .consent-page .template{
+      display:none !important;
+      padding:0;
+      width:100%;
+      overflow:visible;
+    }
+    .consent-page .template.active{
+      display:block !important;
+      position:relative;
+    }
+    .consent-page .sheet-frame{
+      display:block;
+      width:100%;
+      padding-top:0;
+      margin:0 auto !important;
+      text-align:left !important;
+    }
+    .consent-page .excel-wrap{
+      overflow:visible;
+      display:block;
+      height:auto !important;
+      width:100%;
+    }
+    .consent-page .excel-sheet{
+      transform:none !important;
+      margin:0;
+      font-size:18px !important;
+      line-height:1.25 !important;
+    }
+    .consent-page .excel-sheet td{
+      padding:4px 6px !important;
+    }
+    .consent-page .sheet-header{
+      gap:6px;
+      width:100%;
+    }
+    .consent-page .sheet-header-top{
+      justify-content:flex-start;
+    }
+    .consent-page .sheet-header-bottom{
+      display:none;
+    }
+    .consent-page .print-only-title{
+      display:block;
+      position:static;
+      width:100vw;
+      margin-left:calc(50% - 50vw);
+      margin:0 0 8px;
+      text-align:center;
+      font-size:26px;
+      font-weight:700;
+    }
+    body.print-template-a .consent-page .print-only-title{
+      font-size:26px;
+      margin-bottom:10px;
+    }
+    body.print-template-b .consent-page .print-only-title{
+      font-size:26px;
+      margin-bottom:10px;
+    }
+    body.print-template-c .consent-page .print-only-title{
+      font-size:26px;
+      margin-bottom:8px;
+    }
+    .consent-page .sheet-logo{
+      max-height:66px;
+    }
+    .consent-page .sheet-title{
+      font-size:20px;
+    }
+    body.print-template-a .consent-page .excel-sheet{
+      font-size:22px !important;
+      line-height:1.3 !important;
+    }
+    body.print-template-b .consent-page .excel-sheet{
+      font-size:21px !important;
+      line-height:1.26 !important;
+    }
+    body.print-template-c .consent-page .excel-sheet{
+      font-size:18px !important;
+      line-height:1.2 !important;
+    }
+    body.print-template-a .consent-page .excel-sheet td{
+      padding:4px 6px !important;
+    }
+    body.print-template-b .consent-page .excel-sheet td{
+      padding:4px 6px !important;
+    }
+    body.print-template-c .consent-page .excel-sheet td{
+      padding:3px 5px !important;
+    }
+    body.print-template-c .consent-page .sheet-logo{
+      max-height:44px;
+    }
+    body.print-template-c .consent-page .sheet-header{
+      gap:4px;
+    }
+    .consent-page .sheet-header-bottom{
+      display:none !important;
+    }
+    .consent-page .template{
+      text-align:center !important;
+    }
+  }
+</style>
+
+{% set patient = patient_record %}
+<main class="consent-page">
+  <section class="panel no-print">
+    <div class="panel-head">
+      <div class="panel-head-copy">
+        <h1>Consent Form</h1>
+        <p>Fetch patient details and print the selected Consent Form.</p>
+      </div>
+      <div class="search-block">
+        <form method="post" action="{{ url_for('consentform.index') }}">
+          <input type="text" name="patient_id" value="{{ patient_id }}" placeholder="Enter patient ID" autocomplete="off" autofocus>
+          <button type="submit">Search</button>
+        </form>
+      </div>
+    </div>
+
+    {% if error_message %}
+      <div class="message error">{{ error_message }}</div>
+    {% endif %}
+    {% if patient %}
+      <div class="info-grid">
+        <div class="info-item">
+          <span class="label">Patient Name</span>
+          <span class="value">{{ patient.patientname or "-" }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Patient ID</span>
+          <span class="value">{{ patient.patientid or "-" }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Age / Gender</span>
+          <span class="value">{{ patient.age or "-" }} {{ patient.gender or "" }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Doctor</span>
+          <span class="value">{{ patient.doctor or "-" }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Test</span>
+          <span class="value">{{ patient.ordertest or "-" }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Date</span>
+          <span class="value">{{ patient.bdate or "-" }}</span>
+        </div>
+      </div>
+    {% endif %}
+  </section>
+
+  {% if patient %}
+    <section class="stack">
+      <section class="panel">
+        <div class="actions no-print">
+          <select id="templateSelect" aria-label="Select template">
+            <option value="template-a" {% if selected_template == "template-a" %}selected{% endif %}>HIV Test</option>
+            <option value="template-b" {% if selected_template == "template-b" %}selected{% endif %}>Pap Smear/LBC</option>
+            <option value="template-c" {% if selected_template == "template-c" %}selected{% endif %}>FNAC</option>
+          </select>
+          <button type="button" class="print-btn" id="printTemplate">Print</button>
+        </div>
+        <div class="action-note no-print">Best matched form is preselected from the fetched test details.</div>
+
+        <div class="template-box">
+          <article class="template {% if selected_template == 'template-a' %}active{% endif %}" id="template-a">
+            <div class="print-only-title">Consent Form HIV Test</div>
+            <div class="sheet-frame">
+              <div class="sheet-header">
+                <div class="sheet-header-top">
+                  <img class="sheet-logo" src="{{ url_for('consentform.workbook_media', filename='image1.png') }}" alt="Dr Bhasin's Lab logo">
+                </div>
+                <div class="sheet-header-bottom">
+                  <div class="sheet-title">Consent Form HIV Test</div>
+                </div>
+              </div>
+              <div class="excel-wrap">{{ rendered_templates["template-a"] }}</div>
+            </div>
+          </article>
+
+          <article class="template {% if selected_template == 'template-b' %}active{% endif %}" id="template-b">
+            <div class="print-only-title">Consent Form Pap Smear / LBC</div>
+            <div class="sheet-frame">
+              <div class="sheet-header">
+                <div class="sheet-header-top">
+                  <img class="sheet-logo" src="{{ url_for('consentform.workbook_media', filename='image1.png') }}" alt="Dr Bhasin's Lab logo">
+                </div>
+                <div class="sheet-header-bottom">
+                  <div class="sheet-title">Consent Form Pap Smear / LBC</div>
+                </div>
+              </div>
+              <div class="excel-wrap">{{ rendered_templates["template-b"] }}</div>
+            </div>
+          </article>
+
+          <article class="template {% if selected_template == 'template-c' %}active{% endif %}" id="template-c">
+            <div class="print-only-title">Consent Form FNAC</div>
+            <div class="sheet-frame">
+              <div class="sheet-header">
+                <div class="sheet-header-top">
+                  <img class="sheet-logo" src="{{ url_for('consentform.workbook_media', filename='image1.png') }}" alt="Dr Bhasin's Lab logo">
+                </div>
+                <div class="sheet-header-bottom">
+                  <div class="sheet-title">Consent Form FNAC</div>
+                </div>
+              </div>
+              <div class="excel-wrap">{{ rendered_templates["template-c"] }}</div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </section>
+  {% elif patient_id and not error_message %}
+    <section class="panel">
+      <div class="message error">No details were found for this patient ID, or the response was empty.</div>
+    </section>
+  {% endif %}
+</main>
+
+<script>
+  (() => {
+    const templateSelect = document.getElementById("templateSelect");
+    const templates = document.querySelectorAll(".consent-page .template");
+    const printButton = document.getElementById("printTemplate");
+    const activeTemplate = document.querySelector(".consent-page .template.active");
+    const templateBodyClasses = ["print-template-a", "print-template-b", "print-template-c"];
+    const originalTitle = document.title;
+    const templateTitles = {
+      "template-a": "HIV Test Consent Form",
+      "template-b": "Pap Smear LBC Consent Form",
+      "template-c": "FNAC Consent Form"
+    };
+
+    function activateTemplate(templateId) {
+      templates.forEach((template) => {
+        template.classList.toggle("active", template.id === templateId);
+      });
+      fitActiveTemplate();
+    }
+
+    function fitActiveTemplate() {
+      const active = document.querySelector(".consent-page .template.active .excel-wrap");
+      if (!active) return;
+
+      const sheet = active.querySelector(".excel-sheet");
+      if (!sheet) return;
+
+      sheet.style.transform = "scale(1)";
+      active.style.height = "auto";
+
+      const availableWidth = active.clientWidth;
+      const naturalWidth = sheet.offsetWidth;
+      const naturalHeight = sheet.offsetHeight;
+      const scale = naturalWidth > availableWidth ? availableWidth / naturalWidth : 1;
+
+      sheet.style.transform = `scale(${scale})`;
+      active.style.height = `${naturalHeight * scale}px`;
+    }
+
+    function resetPrintLayout() {
+      document.querySelectorAll(".consent-page .excel-wrap").forEach((wrap) => {
+        wrap.style.height = "auto";
+      });
+      document.querySelectorAll(".consent-page .excel-sheet").forEach((sheet) => {
+        sheet.style.transform = "none";
+      });
+      document.body.classList.remove(...templateBodyClasses);
+      const selectedTemplate = templateSelect ? templateSelect.value : "template-a";
+      document.body.classList.add(`print-${selectedTemplate}`);
+    }
+
+    if (templateSelect) {
+      templateSelect.addEventListener("change", (event) => {
+        activateTemplate(event.target.value);
+      });
+      activateTemplate(templateSelect.value);
+    }
+
+    if (activeTemplate) {
+      requestAnimationFrame(() => {
+        activeTemplate.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+
+    window.addEventListener("resize", fitActiveTemplate);
+    window.addEventListener("load", fitActiveTemplate);
+    window.addEventListener("beforeprint", resetPrintLayout);
+    window.addEventListener("afterprint", fitActiveTemplate);
+
+    if (printButton) {
+      printButton.addEventListener("click", () => {
+        const selectedTemplate = templateSelect ? templateSelect.value : "template-a";
+        document.title = templateTitles[selectedTemplate] || originalTitle;
+        resetPrintLayout();
+        window.print();
+        setTimeout(() => {
+          document.title = originalTitle;
+          fitActiveTemplate();
+        }, 1000);
+      });
+    }
+  })();
+</script>
+{% endblock %}

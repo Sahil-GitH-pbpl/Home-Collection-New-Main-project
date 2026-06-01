@@ -1,4 +1,15 @@
 services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: labmate-nginx-4672
+    ports:
+      - "4672:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /home/arpraandhc/Downloads/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+      - /home/arpraandhc/Downloads/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
+    restart: unless-stopped
+
   web:
     build:
       context: .
@@ -17,12 +28,27 @@ services:
       LABMATE_USER: root
       LABMATE_PASSWORD: arpra_root_pass
       LABMATE_NAME: labmate_data
-      EXOTEL_HOST: 192.168.0.202
+      B7001_HOST: mariadb
+      B7001_USER: root
+      B7001_PASSWORD: arpra_root_pass
+      B7001_NAME: bhasin_7001_new
+      WA_HOST: 10.1.1.51
+      FAIL_HOST: 10.1.1.51
+      VENE_HOST: 10.1.1.53
+      WHATSAPP_API_URL: http://10.1.1.44:3004/api/messages/send
+      EXOTEL_HOST: 10.1.1.67
       EXOTEL_PORT: 8002
-      EXOTEL_WS_URL: ws://192.168.0.202:8002
+      EXOTEL_WS_URL: ws://10.1.1.67:8002
+      PEPIPOST_WA_ENABLED: ${PEPIPOST_WA_ENABLED:-1}
+      PEPIPOST_BOOKING_TEMPLATE: ${PEPIPOST_BOOKING_TEMPLATE:-arpra_booking}
+      PEPIPOST_ASSIGNMENT_TEMPLATE: ${PEPIPOST_ASSIGNMENT_TEMPLATE:-arpra_assignmentss}
+      PEPIPOST_WA_TIMEOUT: ${PEPIPOST_WA_TIMEOUT:-8}
+      PEPIPOST_WA_TOKEN: ${PEPIPOST_WA_TOKEN:-}
     depends_on:
       mariadb:
         condition: service_healthy
+    volumes:
+      - ./app/static/uploads:/app/app/static/uploads
     restart: unless-stopped
 
   mariadb:
@@ -39,6 +65,8 @@ services:
       - mariadb_data:/var/lib/mysql
       - ./docker/mariadb/init/00-create-extra-dbs.sql:/docker-entrypoint-initdb.d/00-create-extra-dbs.sql:ro
       - ./lead_management.sql:/docker-entrypoint-initdb.d/01-lead_management.sql:ro
+      - ./docker/mariadb/init/02-bhasin_7001_new.sql:/docker-entrypoint-initdb.d/02-bhasin_7001_new.sql:ro
+      - ./docker/mariadb/init/04-hc-tms-status.sql:/docker-entrypoint-initdb.d/04-hc-tms-status.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h localhost -p$$MARIADB_ROOT_PASSWORD --silent"]
       interval: 10s

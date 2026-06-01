@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, make_response, jsonify, request
+from flask import Blueprint, render_template, make_response, jsonify, request, session, redirect, url_for
 from pymysql.cursors import DictCursor
 from app.db.connection import get_db_connection, get_whatsapp_connection
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -11,6 +11,10 @@ dashboard_bp = Blueprint("dashboard", __name__)
 dashboard_cache = {}
 scheduler = None
 IST = ZoneInfo("Asia/Kolkata")
+
+
+def _dashboard_designation_cf():
+    return (session.get("designation") or session.get("role") or "").strip().lower()
 
 
 def _now_ist_str():
@@ -73,6 +77,11 @@ def lead_shell():
 
 @dashboard_bp.route('/tickets')
 def tickets_page():
+    if not session.get("user_id"):
+        return redirect(url_for("auth.home"))
+    desig = _dashboard_designation_cf()
+    if not (desig == "admin" or "marketing" in desig or "customer care" in desig):
+        return redirect(url_for("ticketlist.tickets_list"))
     return render_template('tickets.html')
 
 @dashboard_bp.route("/cce-dashboard")
@@ -159,8 +168,8 @@ def fetch_all_stats(date_range="today", start_date=None, end_date=None):
             AND DATE(STR_TO_DATE(wabadatetime, '%d-%m-%Y %h:%i %p')) BETWEEN '{start_date}' AND '{end_date}'
         """
         hcb_date_condition = f"""
-            bookingtime >= '{cutoff_datetime}'
-            AND DATE(bookingtime) BETWEEN '{start_date}' AND '{end_date}'
+            created_at >= '{cutoff_datetime}'
+            AND DATE(created_at) BETWEEN '{start_date}' AND '{end_date}'
         """
     elif date_range == "today":
         date_condition = "DATE(created_at) = CURDATE()"
@@ -170,7 +179,7 @@ def fetch_all_stats(date_range="today", start_date=None, end_date=None):
             (STR_TO_DATE(wabadatetime, '%d-%m-%Y %h:%i %p') >= '{cutoff_datetime}' 
              AND DATE(STR_TO_DATE(wabadatetime, '%d-%m-%Y %h:%i %p')) = CURDATE())
         """
-        hcb_date_condition = f"bookingtime >= '{cutoff_datetime}' AND DATE(bookingtime) = CURDATE()"
+        hcb_date_condition = f"created_at >= '{cutoff_datetime}' AND DATE(created_at) = CURDATE()"
     else:
         date_condition = "1=1"
         closed_date_condition = "1=1"
@@ -325,6 +334,8 @@ def fetch_all_stats(date_range="today", start_date=None, end_date=None):
             cur.execute(main_query)
             main_results = cur.fetchall()
         
+        whatsapp_results = []
+        hcb_results = []
         whatsapp_conn = None
         try:
             whatsapp_conn = get_whatsapp_connection()
@@ -343,25 +354,26 @@ def fetch_all_stats(date_range="today", start_date=None, end_date=None):
                     """
                     cur.execute(whatsapp_sql)
                     whatsapp_results = cur.fetchall()
-                    
-                    hcb_sql = f"""
-                        SELECT 
-                            UPPER(TRIM(bookedby)) as user_name,
-                            COUNT(*) as hcb_count
-                        FROM tblbooking 
-                        WHERE bookedby IS NOT NULL 
-                            AND bookedby != ''
-                            AND {hcb_date_condition}
-                        GROUP BY UPPER(TRIM(bookedby))
-                    """
-                    cur.execute(hcb_sql)
-                    hcb_results = cur.fetchall()
         except Exception:
             whatsapp_results = []
-            hcb_results = []
         finally:
             if whatsapp_conn:
                 whatsapp_conn.close()
+
+        with conn.cursor(DictCursor) as cur:
+            hcb_sql = f"""
+                SELECT
+                    UPPER(TRIM(COALESCE(u.name, 'Unknown'))) as user_name,
+                    COUNT(*) as hcb_count
+                FROM hhome_collection_booking hcb
+                LEFT JOIN users u ON u.id = hcb.created_by
+                WHERE hcb.created_by IS NOT NULL
+                    AND hcb.created_by > 0
+                    AND {hcb_date_condition}
+                GROUP BY UPPER(TRIM(COALESCE(u.name, 'Unknown')))
+            """
+            cur.execute(hcb_sql)
+            hcb_results = cur.fetchall()
         
         user_data = {}
         

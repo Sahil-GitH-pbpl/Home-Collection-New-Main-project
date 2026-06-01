@@ -25,6 +25,25 @@ th.actions-col, td.actions-col { width:120px; text-align:center; }
 .filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
 .filters input { padding:6px 8px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; }
 .filters .btn { padding:6px 10px; border-radius:6px; background:#014c69; color:#fff; border:none; cursor:pointer; }
+.filters .btn { margin-left:4px; }
+.filters select {
+  padding:6px 8px;
+  border:1px solid #d1d5db;
+  border-radius:6px;
+  font-size:13px;
+  background:#f9fafb;
+}
+.pager-btn{
+  display:inline-block;
+  padding:8px 14px;
+  background:linear-gradient(135deg,#0f766e,#0b4cad);
+  color:#fff;
+  text-decoration:none;
+  border-radius:10px;
+  font-weight:700;
+  border:none;
+}
+.pager-btn:hover{opacity:0.9;}
 
 /* 🆕 Ticket Origin Badge */
 .ticket-origin { 
@@ -37,6 +56,8 @@ th.actions-col, td.actions-col { width:120px; text-align:center; }
 }
 .ticket-origin-cce { background: #dbeafe; color: #1e40af; }
 .ticket-origin-odt { background: #dcfce7; color: #166534; }
+.ticket-origin-cvt { background: #fef3c7; color: #b45309; }
+.ticket-origin-rst { background: #fce7f3; color: #9d174d; }
 
 @media (max-width: 640px){
   .filters { gap:6px; }
@@ -59,6 +80,16 @@ th.actions-col, td.actions-col { width:120px; text-align:center; }
     <input type="date" name="date_to" value="{{ date_to }}">
   </label>
   <input type="text" name="q" placeholder="Search Mobile / Labmate" value="{{ q or '' }}">
+  <label>
+    Type
+    <select name="origin">
+      <option value="">All</option>
+      <option value="CCE" {% if origin == 'CCE' %}selected{% endif %}>CCE</option>
+      <option value="ODT" {% if origin == 'ODT' %}selected{% endif %}>ODT</option>
+      <option value="CVT" {% if origin == 'CVT' %}selected{% endif %}>CVT</option>
+      <option value="RST" {% if origin == 'RST' %}selected{% endif %}>RST</option>
+    </select>
+  </label>
   <button class="btn" type="submit">Apply</button>
 </form>
 
@@ -87,16 +118,16 @@ th.actions-col, td.actions-col { width:120px; text-align:center; }
         <td>{{ t.ticket_category or '-' }}</td>
         <td>
           <!-- 🆕 Ticket Origin Badge -->
-          {% if t.ticket_origin %}
+        {% if t.ticket_origin %}
             <span class="ticket-origin ticket-origin-{{ t.ticket_origin|lower }}">
               {{ t.ticket_origin }}
             </span>
-          {% else %}
-            <span class="ticket-origin">CCE</span>
-          {% endif %}
+        {% else %}
+            <span class="ticket-origin ticket-origin-cce">CCE</span>
+        {% endif %}
         </td>
         <td>{{ t.created_by or '-' }}</td>
-        <td>{{ t.closed_remark or '-' }}</td>
+        <td>{{ t.closed_remark_display or '-' }}</td>
 
         <td class="actions-col">
           <a class="btn-action btn-view"
@@ -113,13 +144,13 @@ th.actions-col, td.actions-col { width:120px; text-align:center; }
   </table>
 </div>
 
-<div style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+<div style="display:flex; gap:8px; align-items:center; margin-top:10px; justify-content:flex-end;">
   {% if has_prev %}
-    <a class="btn" href="{{ url_for('closedlist.closed_list', page=page-1, page_size=page_size, date_from=date_from, date_to=date_to, q=q) }}">Prev</a>
+    <a class="pager-btn" href="{{ url_for('closedlist.closed_list', page=page-1, page_size=page_size, date_from=date_from, date_to=date_to, q=q, origin=origin) }}">Prev</a>
   {% endif %}
   <div>Page {{ page }}</div>
   {% if has_next %}
-    <a class="btn" href="{{ url_for('closedlist.closed_list', page=page+1, page_size=page_size, date_from=date_from, date_to=date_to, q=q) }}">Next</a>
+    <a class="pager-btn" href="{{ url_for('closedlist.closed_list', page=page+1, page_size=page_size, date_from=date_from, date_to=date_to, q=q, origin=origin) }}">Next</a>
   {% endif %}
 </div>
 {% endblock %}

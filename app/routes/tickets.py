@@ -7,9 +7,9 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 import pymysql
-from flask import Blueprint, jsonify, session, request, current_app
+from flask import Blueprint, jsonify, session, request, current_app, redirect, url_for
 from app.db.connection import get_db_connection, get_labmate_connection
-from app.alerts import send_whatsapp_to_number
+from app.alerts import send_whatsapp_to_number, send_whatsapp_document_to_number
 from pymysql.cursors import DictCursor
 
 tickets_bp = Blueprint("tickets", __name__)
@@ -40,6 +40,101 @@ def _g(data: Dict[str, Any], key: str, default: str = "") -> str:
 def _now():
     return datetime.now(IST)
 
+
+def _safe_report_filename(patient_name: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "_", (patient_name or "").strip()).strip("_")
+    return f"{cleaned or 'Patient'}_Report.pdf"
+
+
+def _find_recent_cvt(cur, patient_labmate_id: str, mobile_number: str):
+    patient_labmate_id = (patient_labmate_id or "").strip()
+    mobile_number = (mobile_number or "").strip()
+
+    clauses = []
+    params = []
+
+    if patient_labmate_id:
+        clauses.append("patient_labmate_id = %s")
+        params.append(patient_labmate_id)
+    if mobile_number:
+        clauses.append("mobile_number = %s")
+        params.append(mobile_number)
+
+    if not clauses:
+        return None
+
+    cur.execute(
+        f"""
+        SELECT id, patient_name, patient_labmate_id, mobile_number, created_at, status
+        FROM tickets
+        WHERE ticket_origin = 'CVT'
+          AND created_at >= (NOW() - INTERVAL 24 HOUR)
+          AND ({' OR '.join(clauses)})
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        params,
+    )
+    return cur.fetchone()
+
+
+def _designation_cf() -> str:
+    return _norm(session.get("designation") or session.get("role") or "")
+
+
+def _has_any_designation(*needles: str) -> bool:
+    desig = _designation_cf()
+    return any(needle and needle in desig for needle in needles)
+
+
+def _require_login_json():
+    if not session.get("user_id"):
+        return jsonify({"ok": False, "error": "Not logged in"}), 401
+    return None
+
+
+def _require_cce_raise_access_json():
+    login_err = _require_login_json()
+    if login_err:
+        return login_err
+    if not (_has_any_designation("marketing", "customer care") or _designation_cf() == "admin"):
+        return jsonify({"ok": False, "error": "Not authorized to create this ticket type"}), 403
+    return None
+
+
+def _require_cvt_access_page():
+    if not session.get("user_id"):
+        return redirect(url_for("auth.home"))
+    if not (_has_any_designation("customer care") or _designation_cf() == "admin"):
+        return redirect(url_for("ticketlist.tickets_list"))
+    return None
+
+
+def _require_cvt_access_json():
+    login_err = _require_login_json()
+    if login_err:
+        return login_err
+    if not (_has_any_designation("customer care") or _designation_cf() == "admin"):
+        return jsonify({"ok": False, "error": "Not authorized to create CV tickets"}), 403
+    return None
+
+
+def _require_rst_access_page():
+    if not session.get("user_id"):
+        return redirect(url_for("auth.home"))
+    if not (_has_any_designation("technical", "tech") or _designation_cf() == "admin"):
+        return redirect(url_for("ticketlist.tickets_list"))
+    return None
+
+
+def _require_rst_access_json():
+    login_err = _require_login_json()
+    if login_err:
+        return login_err
+    if not (_has_any_designation("technical", "tech") or _designation_cf() == "admin"):
+        return jsonify({"ok": False, "error": "Not authorized to create rejected sample tickets"}), 403
+    return None
+
 def _parse_predefined_label_to_dt(label: str) -> Optional[datetime]:
     s = _norm(label)
     if not s:
@@ -65,7 +160,8 @@ def _parse_custom_to_dt(date_str: str, time_str: str) -> Optional[datetime]:
     if re.fullmatch(r"\d{2}:\d{2}$", time_str):
         time_str += ":00"
     try:
-        return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S")
+        dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S")
+        return dt.replace(tzinfo=IST)
     except Exception:
         return None
 
@@ -77,7 +173,8 @@ def _parse_iso_like_to_dt(iso_like: str) -> Optional[datetime]:
     if re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", s):
         s += ":00"
     try:
-        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+        dt = datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+        return dt.replace(tzinfo=IST)
     except Exception:
         return None
 
@@ -106,6 +203,8 @@ def get_custom_commitment_minutes(commitment_dt):
 @tickets_bp.route("/tickets/odt")
 def tickets_create_odt_page():
     """Render ODT ticket creation page"""
+    if not session.get("user_id"):
+        return redirect(url_for("auth.home"))
     return render_template("ticket_create_odt.html")
 
 # -------------------- UNIFIED TICKET CREATE ROUTE --------------------
@@ -122,6 +221,10 @@ def tickets_create_unified():
 
         # Determine ticket origin (CCE or ODT)
         ticket_origin = _g(data, "ticket_origin") or "CCE"
+        if ticket_origin == "CCE":
+            auth_err = _require_cce_raise_access_json()
+            if auth_err:
+                return auth_err
 
         # Extract common fields
         source = _g(data, "source")
@@ -163,7 +266,11 @@ def tickets_create_unified():
                 commitment_at_dt = _parse_predefined_label_to_dt(label)
             else:
                 custom_date = _g(data, "commitment_date").strip()
-                custom_time = _g(data, "callbackTime").strip() or _g(data, "commitment_time").strip()
+                custom_time = (
+                    _g(data, "callbackTime").strip()
+                    or _g(data, "callback_time").strip()
+                    or _g(data, "commitment_time").strip()
+                )
                 if custom_date and "T" in custom_time:
                     maybe = _parse_iso_like_to_dt(custom_time)
                     commitment_at_dt = maybe if maybe else _parse_custom_to_dt(custom_date, custom_time)
@@ -426,7 +533,10 @@ def get_customer_care():
         cur_desig = session.get("designation")
         if not cur_desig and cur_id:
             with conn.cursor(pymysql.cursors.DictCursor) as c2:
-                c2.execute("SELECT designation FROM users WHERE id=%s LIMIT 1", (cur_id,))
+                c2.execute(
+                    "SELECT designation FROM users WHERE id=%s AND LOWER(TRIM(status)) = 'active' LIMIT 1",
+                    (cur_id,),
+                )
                 row = c2.fetchone()
                 cur_desig = row["designation"] if row else None
         norm = (cur_desig or "").strip().lower()
@@ -557,6 +667,370 @@ def labmate_clients_search():
         return jsonify({"ok": True, "error": "DB error while searching clients"}), 500
 
 
+# -------------------- CV Ticket Routes --------------------
+@tickets_bp.route("/tickets/cv")
+def tickets_cv_form():
+    """Render Critical Value ticket creation form."""
+    auth_err = _require_cvt_access_page()
+    if auth_err:
+        return auth_err
+    return render_template("ticket_create_cv.html")
+
+
+@tickets_bp.route("/tickets/cv/create", methods=["POST"])
+def tickets_cv_create():
+    """
+    Create a Critical Value (CVT) ticket.
+    - Auto sets commitment_at = now + 30 minutes
+    - Forces ticket_origin = CVT and ticket_category = Critical Value
+    - Sends WhatsApp on creation
+    - Persists test rows into cv_ticket_tests
+    """
+    auth_err = _require_cvt_access_json()
+    if auth_err:
+        return auth_err
+    data = request.get_json(silent=True) or request.form.to_dict(flat=True)
+
+    country_code = (data.get("country_code") or "+91").strip()
+    mobile_number = (data.get("mobile_number") or "").strip()
+    doctor_mobile = (data.get("doctor_mobile") or "").strip()
+    panel_mobile = (data.get("panel_mobile") or "").strip()
+    patient_name = (data.get("patient_name") or "").strip()
+    patient_labmate_id = (data.get("patient_labmate_id") or "").strip()
+    assign_to_user_id = data.get("assign_to_user_id")
+    additional_info = (data.get("additional_info") or "").strip() or None
+    report_url = (
+        (data.get("report_url") or "")
+        or (data.get("report_link") or "")
+        or (data.get("link") or "")
+        or (data.get("pdffile") or "")
+        or (data.get("report") or "")
+    ).strip()
+    doc_pan_json = json.dumps({
+        "doctor": {
+            "name": (data.get("doctor") or "").strip(),
+            "mobile": (data.get("doctor_mobile") or "").strip()
+        },
+        "panel": {
+            "name": (data.get("panel") or "").strip(),
+            "mobile": (data.get("panel_mobile") or "").strip()
+        }
+    })
+
+    tests = data.get("tests") or []
+    if isinstance(tests, str):
+        try:
+            tests = json.loads(tests)
+        except Exception:
+            tests = []
+    first_test_name = ""
+    if isinstance(tests, list):
+        for t in tests:
+            if not isinstance(t, dict):
+                continue
+            first_test_name = (t.get("test_name") or "").strip()
+            if first_test_name:
+                break
+
+    # Basic validation (mobile optional because API may not send)
+    if not patient_name:
+        return jsonify({"ok": False, "error": "Patient name required"}), 400
+
+    try:
+        assign_to_user_id = int(assign_to_user_id) if assign_to_user_id else None
+    except ValueError:
+        assign_to_user_id = None
+
+    commitment_at = (datetime.now() + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+    created_by = session.get("username")
+    designation = session.get("designation")
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            existing_cvt = _find_recent_cvt(cur, patient_labmate_id, mobile_number)
+            if existing_cvt:
+                existing_id = existing_cvt.get("id")
+                existing_created = existing_cvt.get("created_at")
+                created_text = (
+                    existing_created.strftime("%d-%b-%Y %I:%M %p")
+                    if isinstance(existing_created, datetime)
+                    else str(existing_created or "").strip()
+                )
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        "CVT already exists for this patient within the last 24 hours."
+                        + (f" Existing Ticket ID: {existing_id}" if existing_id else "")
+                        + (f" ({created_text})" if created_text else "")
+                    ),
+                    "duplicate_ticket_id": existing_id,
+                }), 409
+
+            # Insert main ticket
+            cur.execute(
+                """
+                INSERT INTO tickets
+                (source, country_code, mobile_number, patient_name, patient_labmate_id,
+                 client_name, priority, whatsapp_opt_in, ticket_category, commitment_at,
+                 assign_to_user_id, assignment_reason, tags_json, additional_info, doc_pan_json,
+                 status, created_by, designation, created_at, ticket_origin)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
+                """,
+                (
+                    "patient",
+                    country_code,
+                    mobile_number,
+                    patient_name,
+                    patient_labmate_id,
+                    None,               # client_name
+                    "High",             # priority
+                    1,                  # whatsapp_opt_in
+                    "Critical Value",   # ticket_category
+                    commitment_at,
+                    assign_to_user_id,
+                    None,               # assignment_reason
+                    None,               # tags_json
+                    additional_info,
+                    doc_pan_json,
+                    "Open",
+                    created_by,
+                    designation,
+                    "CVT",
+                ),
+            )
+            ticket_id = cur.lastrowid
+
+            # Insert tests
+            rows = []
+            for t in tests:
+                rows.append(
+                    (
+                        ticket_id,
+                        (t.get("test_name") or "").strip(),
+                        (t.get("value_text") or "").strip() or None,
+                        (t.get("result_text") or "").strip() or None,
+                        (t.get("interp_text") or "").strip() or None,
+                    )
+                )
+            rows = [r for r in rows if r[1]]
+            if rows:
+                cur.executemany(
+                    """
+                    INSERT INTO cv_ticket_tests
+                        (ticket_id, test_name, value_text, result_text, interp_text)
+                    VALUES (%s,%s,%s,%s,%s)
+                    """,
+                    rows,
+                )
+
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    # WhatsApp on create: patient / doctor / panel (supports @g.us group IDs too)
+    test_name_for_msg = first_test_name or "test"
+    msg = (
+        f"⚠️ IMPORTANT: URGENT LAB RESULT\n"
+        f"Dear {patient_name or 'Patient'}\n"
+        f"Your {test_name_for_msg} report is attached and requires urgent clinical review.\n"
+        f"Kindly consult your treating doctor immediately.\n"
+        f"This message does not replace medical advice."
+    )
+
+    patient_target = ""
+    if mobile_number:
+        cc_digits = re.sub(r"\D", "", country_code or "91")
+        ms_digits = re.sub(r"\D", "", mobile_number or "")
+        if ms_digits.startswith("0"):
+            ms_digits = ms_digits[1:]
+        patient_target = f"{cc_digits}{ms_digits}" if ms_digits else ""
+
+    recipients = [patient_target, doctor_mobile, panel_mobile]
+    seen = set()
+    unique_recipients = []
+    for raw in recipients:
+        target = (raw or "").strip()
+        if not target:
+            continue
+        key = target.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_recipients.append(target)
+
+    for target in unique_recipients:
+        try:
+            if report_url:
+                status_code, _ = send_whatsapp_document_to_number(
+                    target,
+                    msg,
+                    report_url,
+                    filename=_safe_report_filename(patient_name),
+                )
+                if status_code not in (200, 201):
+                    # Fallback so critical info still reaches even if attachment API fails.
+                    send_whatsapp_to_number(target, f"{msg}\n\nReport: {report_url}")
+            else:
+                send_whatsapp_to_number(target, msg)
+        except Exception:
+            current_app.logger.exception("[tickets_cv_create] WA send failed for target=%s", target)
+
+    return jsonify({"ok": True, "ticket_id": ticket_id}), 200
+
+
+@tickets_bp.route("/tickets/cv/open")
+def tickets_cv_open():
+    """List open CV tickets with test details."""
+    conn = get_db_connection()
+    tickets = []
+    tests_by = {}
+    try:
+        with conn.cursor(DictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, patient_name, patient_labmate_id, mobile_number,
+                       assign_to_user_id, commitment_at, created_at, status
+                FROM tickets
+                WHERE ticket_origin='CVT'
+                  AND (status IS NULL OR status='' OR status='Open' OR status='open')
+                ORDER BY commitment_at ASC
+                """
+            )
+            tickets = cur.fetchall() or []
+            ids = [t["id"] for t in tickets]
+            if ids:
+                placeholders = ",".join(["%s"] * len(ids))
+                cur.execute(
+                    f"""
+                    SELECT ticket_id, test_name, value_text, result_text, interp_text
+                    FROM cv_ticket_tests
+                    WHERE ticket_id IN ({placeholders})
+                    ORDER BY id ASC
+                    """,
+                    tuple(ids),
+                )
+                for r in cur.fetchall():
+                    tests_by.setdefault(r["ticket_id"], []).append(r)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    return render_template("cv_ticket_list.html", tickets=tickets, tests_by=tests_by)
+
+# -------------------- Rejected Sample (RST) Routes --------------------
+@tickets_bp.route("/tickets/rejected-sample")
+def tickets_rs_form():
+    """Render Rejected Sample ticket creation form."""
+    auth_err = _require_rst_access_page()
+    if auth_err:
+        return auth_err
+    return render_template("ticket_create_rs.html")
+
+
+@tickets_bp.route("/tickets/rs/create", methods=["POST"])
+def tickets_rs_create():
+    """
+    Create Rejected Sample ticket.
+    - ticket_origin = RST
+    - ticket_category = Rejected Sample
+    - commitment_at = now + 60 minutes
+    - no assignment (assign_to_user_id NULL)
+    - stores sample_type & rejection_reason
+    """
+    auth_err = _require_rst_access_json()
+    if auth_err:
+        return auth_err
+    data = request.get_json(silent=True) or request.form.to_dict(flat=True)
+    country_code = (data.get("country_code") or "+91").strip()
+    mobile_number = (data.get("mobile_number") or "").strip()
+    doctor_mobile = (data.get("doctor_mobile") or "").strip()
+    panel_mobile = (data.get("panel_mobile") or "").strip()
+    patient_name = (data.get("patient_name") or "").strip()
+    patient_labmate_id = (data.get("patient_labmate_id") or "").strip()
+    sample_type = (data.get("sample_type") or "").strip()
+    rejection_reason = (data.get("rejection_reason") or "").strip() or None
+    doc_pan_json = json.dumps({
+        "doctor": {
+            "name": (data.get("doctor") or "").strip(),
+            "mobile": (data.get("doctor_mobile") or "").strip()
+        },
+        "panel": {
+            "name": (data.get("panel") or "").strip(),
+            "mobile": (data.get("panel_mobile") or "").strip()
+        }
+    })
+
+    if not patient_name:
+        return jsonify({"ok": False, "error": "Patient name required"}), 400
+
+    commitment_at = (datetime.now() + timedelta(minutes=60)).strftime("%Y-%m-%d %H:%M:%S")
+    created_by = session.get("username")
+    designation = session.get("designation")
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO tickets
+                (source, country_code, mobile_number, patient_name, patient_labmate_id,
+                 client_name, priority, whatsapp_opt_in, ticket_category, commitment_at,
+                 assign_to_user_id, assignment_reason, tags_json, additional_info,
+                 doc_pan_json, status, created_by, designation, created_at, ticket_origin,
+                 sample_type, rejection_reason)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s,%s,%s)
+                """,
+                (
+                    "patient",
+                    country_code,
+                    mobile_number,
+                    patient_name,
+                    patient_labmate_id,
+                    None,
+                    "High",
+                    1,
+                    "Rejected Sample",
+                    commitment_at,
+                    None,           # assign_to_user_id
+                    None,           # assignment_reason
+                    None,           # tags_json
+                    None,           # additional_info
+                    doc_pan_json,
+                    "Open",
+                    created_by,
+                    designation,
+                    "RST",
+                    sample_type if sample_type else None,
+                    rejection_reason,
+                ),
+            )
+            ticket_id = cur.lastrowid
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    # WhatsApp send (disabled for now) - recipients would include patient, doctor, panel mobiles
+    # recipients = [m for m in [mobile_number, doctor_mobile, panel_mobile] if m]
+    # TODO: add WA send when enabled
+
+    return jsonify({"ok": True, "ticket_id": ticket_id}), 200
+
+
 @tickets_bp.route("/api/debug/session")
 def debug_session():
     return jsonify(_session_snapshot())
@@ -567,12 +1041,13 @@ def proxy_labmate_patient():
         import requests 
         
         data = request.get_json()
-        patient_id = data.get("patientid", "").strip()
+        patient_id = (data.get("patientid") or "").strip()
         
         if not patient_id:
             return jsonify({"ok": False, "error": "Patient ID required"}), 400
 
-        labmate_url = "http://192.168.0.252:8000/reportapi/LabmatePatRegistration.svc/Getpatientdatabymobileno"
+        # Updated Labmate patient fetch endpoint (internal)
+        labmate_url = "http://10.1.1.252:8000/reportapi/LabmatePatRegistration.svc/Getpatientdatabymobileno"
         
         response = requests.post(
             labmate_url,
@@ -580,10 +1055,35 @@ def proxy_labmate_patient():
             timeout=10
         )
         
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
+        if response.status_code != 200:
             return jsonify({"ok": False, "error": f"API returned {response.status_code}"}), 500
+
+        j = response.json() or {}
+        data_arr = j.get("data") or []
+        first = data_arr[0] if data_arr else {}
+        payload = {
+            "ok": True,
+            "raw": first,
+            "data": data_arr,  # backward compatibility for old JS expecting data.data
+            "name": first.get("patientname") or first.get("name"),
+            "mobile": first.get("mobileno") or first.get("mobile") or first.get("whatsapp"),
+            "patientid": first.get("patientid"),
+            "patientname": first.get("patientname"),
+            "mobileno": first.get("mobileno"),
+            "doctor": first.get("doctor"),
+            "doctormobile": first.get("doctormobile"),
+            "panel": first.get("panel"),
+            "whatsapp": first.get("whatsapp"),  # panel contact (used as panel mobile)
+            "report_url": (
+                first.get("report_url")
+                or first.get("report_link")
+                or first.get("link")
+                or first.get("url")
+                or first.get("pdffile")
+                or first.get("report")
+            ),
+        }
+        return jsonify(payload)
             
     except requests.exceptions.RequestException as e:
         return jsonify({"ok": False, "error": f"API connection failed"}), 500

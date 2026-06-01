@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/happ.css', v='20260501-3') }}">
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center gap-3 mb-2 wizard-header-row">
+    <h4 class="mb-0">Home Collection Booking Wizard</h4>
+    <div id="caller-history-panel" class="caller-history-inline-slot"></div>
+  </div>
+
+  <div class="wizard-steps mb-3">
+    <button type="button" class="step-pill active" data-step="1">🔎 1. Search & Select</button>
+    <button type="button" class="step-pill" data-step="2">📅 2. Appointment</button>
+    <button type="button" class="step-pill" data-step="3">🧪 3. Tests & Billing</button>
+    <button type="button" class="step-pill" data-step="4">✅ 4. Review & Submit</button>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-9" id="wizard-left-col">
+      <div class="card shadow-sm">
+        <div class="card-body border-bottom py-2" id="wizard-top-tags">
+          <div class="row g-2 hc-tag-compact-row">
+            <div class="col-md-6 tb-panel-wrap">
+              <div class="hc-tag-inline">
+                <label class="form-label mb-0 hc-tag-inline-label">Permanent Tags :</label>
+                <select id="ap-permanent-tag-select" class="form-select form-select-sm hc-tag-inline-input">
+                  <option value="">Select</option>
+                </select>
+              </div>
+              <div id="ap-permanent-tags" class="patient-tag-picker mt-1 hc-tag-chip-row">
+                <div class="text-muted small">No permanent tags selected.</div>
+              </div>
+            </div>
+            <div class="col-md-6 tb-panel-wrap">
+              <div class="hc-tag-inline">
+                <label class="form-label mb-0 hc-tag-inline-label">Transactional Tags :</label>
+                <select id="ap-booking-tag-select" class="form-select form-select-sm hc-tag-inline-input">
+                  <option value="">Select</option>
+                </select>
+              </div>
+              <div id="ap-booking-tags" class="patient-tag-picker mt-1 hc-tag-chip-row">
+                <div class="text-muted small">No booking tags selected.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-body" id="wizard-left-panel">
+          {% include 'hhome_collection/hstep1_caller.html' %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-3" id="wizard-right-col">
+      <div class="right-sticky d-flex flex-column gap-3">
+        <div class="card shadow-sm">
+          <div class="card-header bg-light d-flex align-items-center justify-content-between">
+            <strong>Linked Patients</strong>
+            <button
+              type="button"
+              class="btn btn-link p-0 right-panel-toggle-btn"
+              data-bs-toggle="collapse"
+              data-bs-target="#linked-patients-panel"
+              aria-controls="linked-patients-panel"
+              aria-expanded="true"
+              title="Collapse/Expand Linked Patients">
+              <span class="toggle-chevron" aria-hidden="true">&#9662;</span>
+            </button>
+          </div>
+          <div class="collapse show" id="linked-patients-panel"></div>
+        </div>
+        <div class="card shadow-sm">
+          <div class="card-header bg-light">
+            <strong>Reference Addresses</strong>
+          </div>
+          <div class="card-body" id="reference-addresses-panel"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="hc-page-loader" class="hd-page-loader d-none">
+  <div class="hd-loader-card">
+    <div class="spinner-border text-primary mb-2" role="status" aria-hidden="true"></div>
+    <div class="hd-loader-text">Saving booking...</div>
+  </div>
+</div>
+<div class="modal fade" id="phleboTagModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="phleboTagModalTitle">Select Phlebo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="phlebo-tag-chip-list" class="assign-alpha-groups"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="phlebo-tag-apply-btn" disabled>Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script defer src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script defer src="{{ url_for('static', filename='js/hassign_user_picker.js', v='20260429-1') }}"></script>
+<script defer src="{{ url_for('static', filename='js/hhome_collection.js', v='20260531-1') }}"></script>
+{% endblock %}
+

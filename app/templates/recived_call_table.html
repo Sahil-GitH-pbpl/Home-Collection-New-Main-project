@@ -130,6 +130,7 @@
             <th>Created At</th>
             {% if current_call_type == 'callback' %}
             <th class="hide-sm">Callback By</th>
+            <th>Missed Reason</th>
             {% else %}
             <th class="hide-sm">Accepted By</th>
             {% endif %}
@@ -150,6 +151,7 @@
                 <td>{{ r.created_at }}</td>
                 {% if current_call_type == 'callback' %}
                 <td class="hide-sm">{{ r.callback_by_name or '—' }}</td>
+                <td>{{ r.missed_reason or '—' }}</td>
                 {% else %}
                 <td class="hide-sm">{{ r.accepted_by_name or '—' }}</td>
                 {% endif %}
@@ -158,7 +160,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="{% if current_call_type == 'callback' %}7{% else %}8{% endif %}" class="empty">
+              <td colspan="{% if current_call_type == 'callback' %}8{% else %}8{% endif %}" class="empty">
                 No calls found for selected dates.
               </td>
             </tr>

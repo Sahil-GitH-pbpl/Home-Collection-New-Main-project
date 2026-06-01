@@ -1,8 +1,10 @@
 import os
 from datetime import timedelta
 from flask import Flask, request, session, current_app
+from dotenv import load_dotenv
 
 def create_app():
+    load_dotenv()
     app = Flask(__name__, template_folder="templates", static_folder="static")
 
     app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
@@ -33,6 +35,13 @@ def create_app():
     from app.routes.cce_calls import cce_calls_bp
     from app.routes.failurereport import failurereport_bp
     from app.routes.completedreport import completedreport_bp
+    from app.routes.venepunchre import venepunchre_bp
+    from app.routes.consentform import consentform_bp
+    from app.routes.hhome_collection import hhome_collection_bp, service as hhome_collection_service
+    from app.routes.hhome_collection_dashboard import hhome_collection_dashboard_bp
+    from app.routes.phlebo_summary import phlebo_summary_bp
+    from app.routes.hcb_day_report import hcb_day_report_bp
+    from app.routes.hbatch_handover_ui import hbatch_handover_ui_bp
     
 
     app.register_blueprint(auth_bp)
@@ -54,6 +63,20 @@ def create_app():
     app.register_blueprint(cce_calls_bp)
     app.register_blueprint(failurereport_bp, url_prefix='/failurereport')
     app.register_blueprint(completedreport_bp, url_prefix='/completedreport')
+    app.register_blueprint(venepunchre_bp)
+    app.register_blueprint(consentform_bp)
+    app.register_blueprint(hhome_collection_bp)
+    app.register_blueprint(hhome_collection_dashboard_bp)
+    app.register_blueprint(phlebo_summary_bp)
+    app.register_blueprint(hcb_day_report_bp)
+    app.register_blueprint(hbatch_handover_ui_bp)
+
+    # Warm once on server start: panel/company + GST catalog for fast HC test booking.
+    try:
+        hhome_collection_service.preload_panel_catalog()
+        app.logger.info("[hhome_collection preload] in-memory catalog ready")
+    except Exception as exc:
+        app.logger.error(f"[hhome_collection preload] failed: {exc}")
 
     # ---------- CCE popup globals (available on every template) ----------
     # Default to local Exotel listener port if env not set.

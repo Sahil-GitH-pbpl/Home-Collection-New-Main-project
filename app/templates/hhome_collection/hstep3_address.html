@@ -1,0 +1,59 @@
+<div id="step3-wrap">
+  <h5>Step 3 - Tests & Billing</h5>
+  <div id="tests-billing-sections"></div>
+
+  <div class="mt-3">
+    <button class="btn btn-outline-secondary" id="btn-back-step2">Back</button>
+    <button class="btn btn-primary next-btn" id="btn-go-step4">Next <span class="next-arrow">&#8594;</span></button>
+  </div>
+</div>
+
+<div class="modal fade panel-tests-modal" id="panelTestsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title">Panel Group / Subgroup / Test Selector</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-2">
+        <div class="small text-muted mb-2" id="panel-modal-meta"></div>
+        <div class="row g-2 panel-gst-row">
+          <div class="col-md-3">
+            <div class="panel-col-head">Groups</div>
+            <div id="panel-groups-list" class="panel-col-list"></div>
+          </div>
+          <div class="col-md-3">
+            <div class="panel-col-head">Subgroups</div>
+            <div id="panel-subgroups-list" class="panel-col-list"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="panel-col-head">Tests</div>
+            <div class="panel-test-search-wrap">
+              <input
+                type="text"
+                id="panel-test-search"
+                class="form-control form-control-sm panel-test-search"
+                placeholder="Search test name..."
+                autocomplete="off"
+              />
+              <div class="panel-test-search-note text-muted" id="panel-test-search-note">Type 2 letters to search across all tests</div>
+            </div>
+            <div class="panel-tests-split">
+              <div id="panel-tests-list" class="panel-col-list panel-main-tests"></div>
+              <div class="panel-child-wrap">
+                <div class="panel-child-head">Child Tests</div>
+                <div id="panel-child-tests-list" class="panel-child-list">
+                  <div class="text-muted p-2">Child Tests button se list khulegi</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-apply-panel-tests">Apply Selected Tests</button>
+      </div>
+    </div>
+  </div>
+</div>

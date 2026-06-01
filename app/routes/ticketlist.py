@@ -268,6 +268,7 @@ def tickets_list():
     filtered_tickets = []
     breach_pool = []
     unassigned_odt_tickets = []
+    unassigned_rs_tickets = []
     now_ist = datetime.now(IST)
     user_id_int = _coerce_int(user_id)
     username_cf = _casefold(username)
@@ -294,9 +295,9 @@ def tickets_list():
                       AND NOW() >= t.commitment_at
                       AND c.ticket_id IS NULL
                       AND (
-                        t.ticket_origin = 'CCE' 
-                        OR 
-                        (t.ticket_origin = 'ODT' AND t.assign_to_user_id IS NOT NULL)
+                        t.ticket_origin = 'CCE'
+                        OR (t.ticket_origin = 'ODT' AND t.assign_to_user_id IS NOT NULL)
+                        OR t.ticket_origin = 'CVT'
                       )
                     ORDER BY t.commitment_at ASC
                     LIMIT 200
@@ -340,6 +341,28 @@ def tickets_list():
                     ORDER BY t.created_at DESC
                 """, (designation,))
             unassigned_odt_raw = cur.fetchall()
+
+        # Unassigned RS tickets (special users only)
+        with conn.cursor(pymysql.cursors.DictCursor) as cur:
+            if is_special_user:
+                cur.execute("""
+                    SELECT
+                      t.id, t.mobile_number, t.patient_name, t.client_name,
+                      t.ticket_category, t.ticket_origin, t.commitment_at,
+                      t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
+                      t.created_at, t.created_by
+                    FROM tickets t
+                    LEFT JOIN users u ON t.assign_to_user_id = u.id
+                    LEFT JOIN ticket_claims c ON c.ticket_id = t.id AND c.is_active=1 AND c.expires_at > NOW()
+                    WHERE (t.status IS NULL OR t.status='open' OR t.status='Open')
+                      AND t.ticket_origin = 'RST'
+                      AND t.assign_to_user_id IS NULL
+                      AND c.ticket_id IS NULL
+                    ORDER BY t.created_at DESC
+                """)
+                unassigned_rs_raw = cur.fetchall()
+            else:
+                unassigned_rs_raw = []
 
         with conn.cursor(pymysql.cursors.DictCursor) as cursor:
             if is_special_user:
@@ -398,6 +421,13 @@ def tickets_list():
             ticket["tags_for_user"] = tags_for_user
             ticket["actions_enabled"] = is_special_user
             unassigned_odt_tickets.append(ticket)
+
+        for ticket in unassigned_rs_raw if is_special_user else []:
+            active_claim = claim_by_ticket.get(ticket.get("id"))
+            ticket = _enrich_ticket_data(ticket, active_claim, now_ist)
+            ticket["tags_for_user"] = []
+            ticket["actions_enabled"] = is_special_user
+            unassigned_rs_tickets.append(ticket)
 
         for ticket in all_tickets:
             active_claim = claim_by_ticket.get(ticket.get("id"))
@@ -459,6 +489,7 @@ def tickets_list():
         "ticketlist.html",
         breach_pool=breach_pool,
         unassigned_odt_tickets=unassigned_odt_tickets,
+        unassigned_rs_tickets=unassigned_rs_tickets,
         tickets=page_tickets,
         page=page,
         page_size=page_size,

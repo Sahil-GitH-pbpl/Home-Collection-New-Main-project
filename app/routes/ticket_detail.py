@@ -4,6 +4,7 @@ from flask import (
 )
 import json
 import datetime
+import random
 from zoneinfo import ZoneInfo
 from pymysql.cursors import DictCursor
 
@@ -61,6 +62,24 @@ def _safe_json_list(value) -> list:
         pass
     return []
 
+def _safe_json_obj(value) -> dict:
+    try:
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, (bytes, bytearray)):
+            value = value.decode("utf-8", "ignore")
+        if isinstance(value, str):
+            x = json.loads(value)
+            if isinstance(x, str):
+                try:
+                    x = json.loads(x)
+                except Exception:
+                    pass
+            if isinstance(x, dict):
+                return x
+    except Exception:
+        pass
+    return {}
 def _fmt_commitment(commitment_at) -> dict:
     if not commitment_at:
         return {"display": "-", "state": None, "text": None}
@@ -100,6 +119,15 @@ def _fmt_commitment(commitment_at) -> dict:
 def _username() -> str:
     return session.get("username") or "System"
 
+
+def _normalize_rst_close_remark(raw_remark: str) -> str:
+    val = (raw_remark or "").strip().lower()
+    if val == "fresh sample":
+        return "Fresh Sample"
+    if val == "cancel test":
+        return "Cancel Test"
+    return random.choice(["Fresh Sample", "Cancel Test"])
+
 def _user_id_int():
     try:
         return int(session.get("user_id"))
@@ -132,6 +160,20 @@ def ticket_detail(ticket_id: int):
             return jsonify({"ok": False, "error": "Ticket not found"}), 404
         flash("Ticket not found", "danger")
         return redirect(url_for("ticketlist.tickets_list"))
+
+    # CV tests (for CVT)
+    cv_tests = []
+    if ticket.get("ticket_origin") == "CVT":
+        cur.execute(
+            """
+            SELECT test_name, value_text, result_text, interp_text
+            FROM cv_ticket_tests
+            WHERE ticket_id=%s
+            ORDER BY id ASC
+            """,
+            (ticket_id,),
+        )
+        cv_tests = cur.fetchall() or []
 
     # Closed flag
     is_closed = (str(ticket.get("status") or "").strip().lower() == "closed")
@@ -187,13 +229,13 @@ def ticket_detail(ticket_id: int):
     commitment = _fmt_commitment(ticket.get("commitment_at"))
 
     # Fetch ALL users (legacy)
-    cur.execute("SELECT id, name FROM users ORDER BY name")
+    cur.execute("SELECT id, name FROM users WHERE LOWER(TRIM(status)) = 'active' ORDER BY name")
     users = cur.fetchall() or []
 
     # --- DB Assignee (base)
     base_assignee = {"id": ticket.get("assign_to_user_id"), "name": "-"}
     if ticket.get("assign_to_user_id"):
-        cur.execute("SELECT id, name FROM users WHERE id=%s", (ticket["assign_to_user_id"],))
+        cur.execute("SELECT id, name FROM users WHERE id=%s AND LOWER(TRIM(status)) = 'active'", (ticket["assign_to_user_id"],))
         r = cur.fetchone()
         if r:
             base_assignee = r
@@ -301,12 +343,17 @@ def ticket_detail(ticket_id: int):
         tags=decorated_tags,
         tags_for_user=tags_for_user,
         users=users,
-        current_assignee=current_assignee,   # 👈 claim-holder name shows in “Assign To”
-        base_assignee=base_assignee,         # 👈 optional: show somewhere as “Base assignee”
+        current_assignee=current_assignee,
+        base_assignee=base_assignee,
         commitment=commitment,
         assign_updates=assign_updates,
         claim_banner=claim_banner,
-        is_closed=is_closed,                 # 👈 added
+        is_closed=is_closed,
+        contact_log=_safe_json_obj(
+            ticket.get("cvt_rst_contact_log_json") if ticket else {}
+        ),
+        doc_pan=_safe_json_obj(ticket.get("doc_pan_json") if ticket else {}),
+        cv_tests=cv_tests,
     )
 
 
@@ -333,17 +380,40 @@ def ticket_quick_remark(ticket_id: int):
     # NEW: extra fields sent by the single modal (sections hide/show)
     closure_mood = (request.form.get("closure_mood") or "").strip().lower()  # "happy" | "sad" (required only when closing)
     confirm_cross_close = (request.form.get("confirm_cross_close") == "1")   # "1" only after user confirms cross-assignee close
-
-    if not remark:
-        if _wants_json():
-            return jsonify({"ok": False, "error": "Remark is required"}), 400
-        flash("Remark is required", "danger")
-        return redirect(url_for("ticket_detail.ticket_detail", ticket_id=ticket_id))
+    contact_log = None
+    contact_summary = None
+    spoken_ok = False
 
     conn = get_db_connection()
     cur = conn.cursor(DictCursor)
 
     try:
+        # Fetch ticket origin for conditional logic
+        cur.execute("SELECT ticket_origin FROM tickets WHERE id=%s", (ticket_id,))
+        row_origin = cur.fetchone()
+        ticket_origin = (row_origin.get("ticket_origin") if row_origin else "") or ""
+
+        # Collect contact log (CVT/RST)
+        contact_log = None
+        spoken_ok = False
+        if ticket_origin in ("CVT", "RST"):
+            cats = ["patient","doctor","hospital"]
+            contact_log = {}
+            for k in cats:
+                called = request.form.get(f"called_{k}") == "1"
+                status = request.form.get(f"status_{k}") or None
+                # enforce: if called checked, status must be chosen
+                if called and not status:
+                    if _wants_json():
+                        return jsonify({"ok": False, "error": f"{k.capitalize()}: select a status when Called is ticked."}), 400
+                    flash(f"{k.capitalize()}: select a status when Called is ticked.", "danger")
+                    return redirect(url_for("ticket_detail.ticket_detail", ticket_id=ticket_id))
+                if called or status:
+                    contact_log[k] = {"called": called, "status": status}
+            # remove empty keys just in case (e.g., only called false and no status)
+            contact_log = {k:v for k,v in contact_log.items() if v and (v.get("called") or v.get("status"))}
+            spoken_ok = any(v.get("called") and v.get("status") == "spoken" for v in contact_log.values())
+
         # --------- Determine effective assignee (claim overrides base) ----------
         effective_assignee_id = None
 
@@ -390,25 +460,68 @@ def ticket_quick_remark(ticket_id: int):
                     return jsonify({"ok": False, "error": "Cross-assignee confirmation required."}), 409
                 flash("Confirmation required: you are closing a ticket assigned to someone else.", "warning")
                 return redirect(url_for("ticket_detail.ticket_detail", ticket_id=ticket_id))
+            if ticket_origin in ("CVT", "RST") and contact_log and not spoken_ok:
+                if _wants_json():
+                    return jsonify({"ok": False, "error": "Close blocked: mark at least one Called + Spoken (Patient/Doctor/Hospital)."}), 400
+                flash("Close blocked: mark at least one Called + Spoken (Patient/Doctor/Hospital).", "danger")
+                return redirect(url_for("ticket_detail.ticket_detail", ticket_id=ticket_id))
+
+        # Remark mandatory if hospital called (CVT/RST)
+        hospital_called = bool(contact_log.get("hospital", {}).get("called")) if contact_log else False
+        if hospital_called and not remark:
+            if _wants_json():
+                return jsonify({"ok": False, "error": "Remark required when Hospital is marked Called."}), 400
+            flash("Remark required when Hospital is marked Called.", "danger")
+            return redirect(url_for("ticket_detail.ticket_detail", ticket_id=ticket_id))
 
         # -------------- 1) Always insert a history row (same behavior) --------------
         cur_hist = conn.cursor()
+        # Build contact summary (for remark log)
+        contact_summary = None
+        if contact_log:
+            parts = []
+            for label, key in [("Patient","patient"),("Doctor","doctor"),("Hospital","hospital")]:
+                if key not in contact_log:
+                    continue
+                info = contact_log.get(key, {}) or {}
+                c = "Called" if info.get("called") else "Not called"
+                s = info.get("status") or "-"
+                parts.append(f"{label}: {c} - {s}")
+            contact_summary = "; ".join(parts)
+
+        remark_log = remark
+        if contact_summary:
+            remark_log = f"{remark} | {contact_summary}" if remark else contact_summary
+
         cur_hist.execute(
             """
             INSERT INTO ticket_assign_updates
                 (ticket_id, from_user_id, to_user_id, reason, remark, updated_by)
             VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (ticket_id, None, None, None, remark, _username()),
+            (ticket_id, None, None, None, remark_log, _username()),
         )
         cur_hist.close()
+
+        # Persist latest contact snapshot on the ticket (CV only)
+        if contact_log is not None:
+            cur_contact = conn.cursor()
+            cur_contact.execute(
+                "UPDATE tickets SET cvt_rst_contact_log_json=%s WHERE id=%s",
+                (json.dumps(contact_log), ticket_id),
+            )
+            cur_contact.close()
 
         msg = "Remark submitted."
 
         # --------------------- 2) Close path: update ticket fields ----------------------
         if close_ticket:
             mood_tag = "HAPPY" if closure_mood == "happy" else "SAD"
-            combined_remark = mood_tag
+            if ticket_origin == "RST":
+                # RST closure text is constrained to two options only.
+                combined_remark = _normalize_rst_close_remark(remark)
+            else:
+                combined_remark = mood_tag if not remark else f"{mood_tag} | {remark}"
 
             cur2 = conn.cursor()
             # UPDATED QUERY: Added closed_by_user_id field
@@ -615,7 +728,7 @@ def ticket_tag_update(ticket_id: int):
 
     # 1) add new tag
     if new_staff_id:
-        cur.execute("SELECT id, name FROM users WHERE id=%s", (new_staff_id,))
+        cur.execute("SELECT id, name FROM users WHERE id=%s AND LOWER(TRIM(status)) = 'active'", (new_staff_id,))
         u = cur.fetchone()
         if not u:
             cur.close(); conn.close()
@@ -666,7 +779,7 @@ def ticket_tag_update(ticket_id: int):
             uname = _username()
             if uname:
                 try:
-                    cur.execute("SELECT id FROM users WHERE name=%s LIMIT 1", (uname,))
+                    cur.execute("SELECT id FROM users WHERE name=%s AND LOWER(TRIM(status)) = 'active' LIMIT 1", (uname,))
                     row = cur.fetchone()
                     if row and row.get("id") is not None:
                         me_id = row["id"]

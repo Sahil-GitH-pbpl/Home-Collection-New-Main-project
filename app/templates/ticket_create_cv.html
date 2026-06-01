@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  /* mimic existing ticket create form styling */
+  .cv-page{padding:18px;background:linear-gradient(180deg,#eef2ff,#f7faff);}
+  .cv-card{max-width:1100px;margin:0 auto;background:#fff;border:1px solid #d8d9ff;border-radius:14px;box-shadow:0 10px 26px rgba(76,29,149,0.12);padding:18px 18px 22px;}
+  .cv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 16px;align-items:end;}
+  .cv-field{display:flex;flex-direction:column;gap:6px;}
+  .cv-field label{font-weight:700;font-size:13px;color:#1f2937;}
+  .cv-input, .cv-select, .cv-textarea{
+    width:100%;padding:12px 14px;border:1px solid #c8c9ff;border-radius:12px;
+    box-shadow:0 4px 10px rgba(76,29,149,0.10);font-size:14px;box-sizing:border-box;min-height:44px;
+  }
+  .cv-textarea{min-height:90px;resize:vertical;}
+  .pill-btn{border:1px solid transparent;border-radius:12px;padding:12px 16px;cursor:pointer;font-weight:700;transition:all .15s;}
+  .pill-secondary{
+    background:linear-gradient(90deg,#0f7a4f 0%, #0451c4 100%);
+    color:#fff;
+    box-shadow:0 6px 14px rgba(15,122,79,0.25);
+  }
+  .pill-secondary:disabled{opacity:.7;cursor:not-allowed;}
+  .pill-ghost{background:#fff;border:1px solid #d7dce5;color:#0f172a;}
+  .pill-btn:hover{transform:translateY(-1px);box-shadow:0 6px 12px rgba(0,0,0,.08);}
+  .cv-table-wrap{margin-top:12px;}
+  .cv-table{width:100%;border-collapse:collapse;border:1px solid #d4d7e0;border-radius:10px;overflow:hidden;}
+  .cv-table th{background:#0d41a8;color:#fff;font-weight:700;}
+  .cv-table th,.cv-table td{border:1px solid #dfe3eb;padding:8px;}
+  .cv-table input, .cv-table select{
+    border:1px solid #c4c7d1;border-radius:6px;padding:6px 8px;width:100%;box-sizing:border-box;box-shadow:none;min-height:34px;
+  }
+  .cv-actions{display:flex;gap:10px;margin-top:12px;}
+</style>
+
+<div class="cv-page">
+  <div class="cv-card">
+    <h3 style="margin:0 0 14px 0;">Raise CV Ticket</h3>
+
+    <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;">
+      <div class="cv-field" style="flex:1 1 60%;">
+        <label>Patient ID</label>
+        <input id="patient_id" class="cv-input" placeholder="Enter Labmate ID">
+      </div>
+      <div class="cv-field" style="flex:0 0 180px;">
+        <label>&nbsp;</label>
+        <button class="pill-btn pill-secondary" id="btnFetch" type="button" style="width:100%;">Fetch Details</button>
+      </div>
+    </div>
+
+    <div class="cv-grid" style="margin-top:4px;">
+      <div class="cv-field">
+        <label>Patient Name</label>
+        <input id="patient_name" class="cv-input" placeholder="Patient name" readonly>
+      </div>
+      <div class="cv-field">
+        <label>Mobile</label>
+        <input id="mobile_number" class="cv-input" placeholder="Mobile number" readonly>
+      </div>
+      <div class="cv-field">
+        <label>Doctor</label>
+        <input id="doctor_name" class="cv-input" placeholder="Doctor" readonly>
+      </div>
+      <div class="cv-field">
+        <label>Doctor Mobile</label>
+        <input id="doctor_mobile" class="cv-input" placeholder="Doctor mobile" readonly>
+      </div>
+      <div class="cv-field">
+        <label>Panel</label>
+        <input id="panel_name" class="cv-input" placeholder="Panel" readonly>
+      </div>
+      <div class="cv-field">
+        <label>Panel Mobile</label>
+        <input id="panel_mobile" class="cv-input" placeholder="Panel mobile" readonly>
+      </div>
+      <div class="cv-field">
+        <label>Assign To</label>
+        <select id="assign_to_user_id" class="cv-select"></select>
+      </div>
+    </div>
+
+    <div class="cv-field" style="margin-top:12px;">
+      <label>Remarks</label>
+      <textarea id="additional_info" class="cv-textarea" placeholder="Notes for team"></textarea>
+    </div>
+
+    <div class="cv-table-wrap">
+      <h5 style="margin:12px 0 6px;">Tests</h5>
+      <table id="testsTable" class="cv-table">
+        <thead><tr>
+          <th style="width:6%;">Sr.</th>
+          <th style="width:32%;">Test</th>
+          <th style="width:16%;">Value</th>
+          <th style="width:12%;">Result</th>
+          <th style="width:34%;">Interpretation</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="sr-col">1</td>
+            <td><select name="test_name" class="cv-input test-select"></select></td>
+            <td class="value-cell"><input name="value_text" class="cv-input value-input"></td>
+            <td><input name="result_text" class="cv-input result-input" readonly></td>
+            <td><input name="interp_text" class="cv-input interp-input" readonly></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="cv-actions" style="justify-content:flex-end;">
+        <button class="pill-btn pill-ghost" id="addRow" type="button">Add Row</button>
+        <button class="pill-btn pill-secondary" id="submitCv" type="button">Create CV Ticket</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- Critical test config ----
+const CRITICAL_TESTS = [
+{"Test":"Glucose","Critical Low":"<=40","Critical High":">=450","Unit":"mg/dL","Notes":"Immediate alert; add diabetic ketoacidosis/hypoglycaemia risk note."},
+{"Test":"Sodium","Critical Low":"<=120","Critical High":">=160","Unit":"mmol/L","Notes":"Immediate alert (seizure/coma risk)."},
+{"Test":"Potassium","Critical Low":"<=2.5","Critical High":">=6.5","Unit":"mmol/L","Notes":"Immediate alert (arrhythmia risk)."},
+{"Test":"Calcium (total)","Critical Low":"<=7.0","Critical High":">=13.0","Unit":"mg/dL","Notes":"Alert; consider albumin-corrected calcium if used."},
+{"Test":"Bilirubin – Total","Critical Low":"-","Critical High":">=20","Unit":"mg/dL","Notes":"Usually critical in neonates; for adults, alert if markedly high or acute. Consider neonatal bilirubin separate."},
+{"Test":"Troponin T","Critical Low":"-","Critical High":"Positive/Detected","Unit":"","Notes":"Treat as critical when positive per method cut-off; immediate clinician communication in ER/ICU settings."},
+{"Test":"Troponin I","Critical Low":"-","Critical High":"Positive/Detected","Unit":"","Notes":"Treat as critical when positive per method cut-off; immediate clinician communication in ER/ICU settings."},
+{"Test":"Hemoglobin","Critical Low":"<=6.0","Critical High":">=20.0","Unit":"g/dL","Notes":"Immediate alert; define paediatric/neonate separately."},
+{"Test":"Platelet count","Critical Low":"<=20","Critical High":">=1000","Unit":"x10^3/µL","Notes":"Alert; “<=10” often “immediate.” Include bleeding risk statement."},
+{"Test":"WBC (total leukocyte count)","Critical Low":"<=2.0","Critical High":">=50.0","Unit":"x10^3/µL","Notes":"Alert; some labs use >=30–50 depending on clinician agreement."},
+{"Test":"Peripheral smear","Critical Low":"Blasts suspected / Malaria parasite positive","Critical High":"-","Unit":"-","Notes":"Alert when blasts, malarial parasites, schistocytes (e.g., >=1%), etc., as per lab policy."},
+{"Test":"Positive blood culture","Critical Low":"Any positive signal / Gram stain positive","Critical High":"","Unit":"","Notes":"Immediate telephonic alert with Gram reaction and morphology; document read-back."},
+{"Test":"AFB smear","Critical Low":"AFB Positive","Critical High":"","Unit":"","Notes":"Immediate/urgent communication depending on OP/IP setting."},
+{"Test":"HIV","Critical Low":"Reactive/Positive (as per algorithm)","Critical High":"","Unit":"","Notes":"Follow national algorithm; alert/reflex confirmation and confidentiality controls."},
+{"Test":"HBsAg","Critical Low":"Reactive/Positive","Critical High":"","Unit":"","Notes":"Alert per clinician requirement; ensure confirmatory/reflex policy if used."},
+{"Test":"HCV","Critical Low":"Reactive/Positive","Critical High":"","Unit":"","Notes":"Same approach."},
+{"Test":"SARS-CoV-2","Critical Low":"Detected/Positive","Critical High":"","Unit":"","Notes":"Immediate as per clinical/public health requirement."},
+{"Test":"Influenza A/B, H1N1, H3N2, RSV","Critical Low":"Detected/Positive","Critical High":"","Unit":"","Notes":"Alert depends on setting (ER/ICU/high-risk). Define in policy."},
+{"Test":"Dengue NS1","Critical Low":"Positive","Critical High":"","Unit":"","Notes":"Urgent alert when NS1 is positive."},
+{"Test":"Dengue IgM","Critical Low":"Positive","Critical High":"","Unit":"","Notes":"Urgent alert when Dengue IgM is positive."},
+{"Test":"RPR","Critical Low":"Reactive (esp. high titre)","Critical High":"","Unit":"","Notes":"Define titre threshold if you want graded urgency."},
+{"Test":"Malaria antigen / PS for MP","Critical Low":"Positive","Critical High":"","Unit":"","Notes":"Immediate alert; document."},
+];
+
+function parseThreshold(th){
+  if(!th || th === "-" || th === "—") return null;
+  if (/[A-Za-z]/.test(th)) return {op:"text", val:th.replace(/^[≤>= ]+/,'').trim()};
+  const m = th.match(/^([<>]=?|=)?\s*([-+]?[0-9]*\.?[0-9]+)/);
+  if(!m) return null;
+  return {op: m[1] || ">=", val: parseFloat(m[2])};
+}
+function compareNumeric(v, thr){
+  switch(thr.op){
+    case "<": return v < thr.val;
+    case "<=": return v <= thr.val;
+    case ">": return v > thr.val;
+    case ">=": return v >= thr.val;
+    case "=": return v == thr.val;
+    default: return false;
+  }
+}
+
+function buildValueControl(row, cfg){
+  const cell = row.querySelector('.value-cell');
+  cell.innerHTML = "";
+  if(cfg.textOptions.length){
+    const sel = document.createElement('select');
+    sel.name = "value_text";
+    sel.className = "cv-input value-input";
+    sel.innerHTML = '<option value=\"\">-- select --</option>' + cfg.textOptions.map(t=>`<option>${t}</option>`).join('');
+    cell.appendChild(sel);
+    return sel;
+  } else {
+    const inp = document.createElement('input');
+    inp.name = "value_text";
+    inp.type = "number";
+    inp.step = "any";
+    inp.className = "cv-input value-input";
+    cell.appendChild(inp);
+    return inp;
+  }
+}
+
+function populateTestSelect(sel){
+  sel.innerHTML = '<option value=\"\">-- Select Test --</option>' + CRITICAL_TESTS.map(t=>`<option>${t.Test}</option>`).join('');
+}
+
+function attachRowLogic(tr){
+  const testSel = tr.querySelector('.test-select');
+  const resultInput = tr.querySelector('.result-input');
+  const interpInput = tr.querySelector('.interp-input');
+
+  const applyCfg = ()=>{
+    const cfg = CRITICAL_TESTS.find(t=>t.Test === testSel.value);
+    resultInput.value = ""; interpInput.value = "";
+    let cl_text=null, ch_text=null, lowThr=null, highThr=null;
+    if(cfg){
+      interpInput.value = cfg.Notes || "";
+      lowThr = parseThreshold(cfg["Critical Low"]);
+      highThr = parseThreshold(cfg["Critical High"]);
+      if(lowThr && lowThr.op==="text") cl_text = lowThr.val;
+      if(highThr && highThr.op==="text") ch_text = highThr.val;
+    }
+    const valCtrl = buildValueControl(tr, {textOptions: [cl_text, ch_text].filter(Boolean)});
+    const recompute = ()=>{
+      const v = valCtrl.value;
+      let res = "";
+      if(cl_text || ch_text){
+        if(v && cl_text && v===cl_text) res = "LOW";
+        if(!res && v && ch_text && v===ch_text) res = "HIGH";
+      } else {
+        const num = parseFloat(v);
+        if(!isNaN(num)){
+          if(lowThr && compareNumeric(num, lowThr)) res="LOW";
+          if(!res && highThr && compareNumeric(num, highThr)) res="HIGH";
+        }
+      }
+      resultInput.value = res;
+    };
+    valCtrl.addEventListener('input', recompute);
+    valCtrl.addEventListener('change', recompute);
+    recompute();
+  };
+  testSel.addEventListener('change', applyCfg);
+  applyCfg();
+}
+
+async function loadAssignees() {
+  try {
+    const r = await fetch('/api/users/customer-care');
+    const j = await r.json();
+    const sel = document.getElementById('assign_to_user_id');
+    (j.users || []).forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id; opt.textContent = u.name;
+      sel.appendChild(opt);
+    });
+    const meId = "{{ session.get('user_id') or '' }}";
+    const meOpt = [...sel.options].find(o => o.value === meId);
+    if (meOpt) sel.value = meId;
+    else if (sel.options.length) sel.selectedIndex = 0;
+  } catch(err) { console.error('assignees load error', err); }
+}
+
+document.getElementById('addRow').onclick = () => {
+  const tr = document.createElement('tr');
+  const idx = document.querySelectorAll('#testsTable tbody tr').length + 1;
+  tr.innerHTML = `
+    <td class="sr-col">${idx}</td>
+    <td><select name="test_name" class="cv-input test-select"></select></td>
+    <td class="value-cell"><input name="value_text" class="cv-input value-input"></td>
+    <td><input name="result_text" class="cv-input result-input" readonly></td>
+    <td><input name="interp_text" class="cv-input interp-input" readonly></td>
+  `;
+  document.querySelector('#testsTable tbody').appendChild(tr);
+  populateTestSelect(tr.querySelector('.test-select'));
+  attachRowLogic(tr);
+};
+
+let cvReportUrl = '';
+let cvSubmitInFlight = false;
+
+document.getElementById('submitCv').onclick = async () => {
+  const submitBtn = document.getElementById('submitCv');
+  if (cvSubmitInFlight) return;
+
+  const tests = [...document.querySelectorAll('#testsTable tbody tr')].map(tr => ({
+    test_name: tr.querySelector('select[name="test_name"]').value,
+    value_text: tr.querySelector('input[name="value_text"], select[name="value_text"]')?.value,
+    result_text: tr.querySelector('input[name="result_text"]').value,
+    interp_text: tr.querySelector('input[name="interp_text"]').value,
+  })).filter(t => t.test_name.trim());
+
+  const payload = {
+    patient_labmate_id: document.getElementById('patient_id').value,
+    patient_name: document.getElementById('patient_name').value,
+    mobile_number: document.getElementById('mobile_number').value,
+    country_code: '+91',
+    assign_to_user_id: document.getElementById('assign_to_user_id').value,
+    additional_info: document.getElementById('additional_info').value,
+    doctor: document.getElementById('doctor_name').value,
+    doctor_mobile: document.getElementById('doctor_mobile').value,
+    panel: document.getElementById('panel_name').value,
+    panel_mobile: document.getElementById('panel_mobile').value,
+    report_url: cvReportUrl,
+    tests
+  };
+
+  cvSubmitInFlight = true;
+  const prevText = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Creating...';
+
+  try {
+    const res = await fetch('/tickets/cv/create', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const j = await res.json();
+    if (j.ok) {
+      alert(`CV Ticket created successfully. Ticket ID: ${j.ticket_id}`);
+      window.location = `/tickets/${j.ticket_id}?mode=full`;
+      return;
+    }
+    alert('Error: ' + (j.error || 'Unable to create CV ticket'));
+  } catch (err) {
+    alert('Error: Unable to create CV ticket');
+  } finally {
+    cvSubmitInFlight = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = prevText;
+  }
+};
+
+document.getElementById('btnFetch').onclick = async () => {
+  const pid = document.getElementById('patient_id').value;
+  if (!pid) return alert('Enter Patient ID first');
+  const btn = document.getElementById('btnFetch');
+  const prevTxt = btn.textContent;
+  btn.textContent = 'Fetching...';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/proxy/labmate-patient', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ patientid: pid })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      document.getElementById('patient_name').value = j.name || '';
+      document.getElementById('mobile_number').value = j.mobileno || '';
+      document.getElementById('doctor_name').value = j.doctor || '';
+      document.getElementById('doctor_mobile').value = j.doctormobile || '';
+      document.getElementById('panel_name').value = j.panel || '';
+      // panel mobile -> whatsapp field (API gives panel contact here)
+      document.getElementById('panel_mobile').value = j.whatsapp || '';
+      // patient mobile -> mobileno; if blank, keep empty (no whatsapp fallback)
+      document.getElementById('mobile_number').value = j.mobileno || '';
+      cvReportUrl = j.report_url || j.report_link || j.link || j.url || j.pdffile || j.report || '';
+    } else { alert(j.error || 'No data found'); }
+  } catch(err) { alert('Fetch failed'); }
+  finally { btn.textContent = prevTxt; btn.disabled = false; }
+};
+
+// init
+loadAssignees();
+populateTestSelect(document.querySelector('.test-select'));
+attachRowLogic(document.querySelector('#testsTable tbody tr'));
+</script>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/happ.css', v='20260512-2') }}">
+<style>
+  .lb-filter-card { border-radius: 12px; border: 1px solid #dbe3ef; }
+  .lb-filter-card .card-body { padding: 10px 14px; }
+  .lb-filter-label { font-weight: 700; font-size: 12px; color: #334155; text-transform: uppercase; letter-spacing: .3px; }
+  .lb-title { font-size: 14px; font-weight: 800; letter-spacing: .2px; }
+  .lb-table-wrap { border: 1px solid #e5eaf3; border-radius: 12px; overflow: hidden; background: #fff; }
+  .lb-table thead th { text-align: center !important; padding: 8px 6px !important; }
+  .lb-table tbody td { text-align: center !important; padding: 3px 3px !important; font-size: 14px; }
+  .lb-table tbody tr { height: 34px; }
+  .lb-table tbody tr:nth-child(even) td { background: #f8fbff; }
+  .lb-table tbody tr:hover td { background: #eef5ff; }
+  .lb-count-chip { display: inline-block; min-width: 34px; padding: 2px 8px; border-radius: 999px; background: #e8f0ff; color: #0b3ea9; font-weight: 800; }
+</style>
+
+<div class="container-fluid pt-0 pb-3 h-dashboard-page is-ready" id="h-leaderboard-page">
+  <div class="d-flex justify-content-between align-items-start mb-2">
+    <h4 class="h-dashboard-title">Home Collection Leaderboard</h4>
+    <div class="d-flex gap-2 hc-top-nav">
+      <a class="btn btn-outline-primary btn-sm top-action-btn" href="/hhome-collection"><span class="me-1"><strong>+</strong></span>Add Booking</a>
+      <a class="btn btn-outline-primary btn-sm top-action-btn" href="/hhome-collection/dashboard"><span class="me-1">&#128196;</span>All Booking</a>
+      <a class="btn btn-outline-primary btn-sm top-action-btn" href="/hhome-collection/assign-booking"><span class="me-1">&#128203;</span>Asgn Booking</a>
+      <a class="btn btn-primary btn-sm top-action-btn" href="/hhome-collection/leaderboard" style="background:#0b1f4d;border-color:#0b1f4d;"><span class="me-1">&#127942;</span>Leaderboard</a>
+    </div>
+  </div>
+
+  <div class="card lb-filter-card mb-2">
+    <div class="card-body row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="lb-filter-label mb-1">From Date</label>
+        <input type="date" id="lb-date-from" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-3">
+        <label class="lb-filter-label mb-1">To Date</label>
+        <input type="date" id="lb-date-to" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-primary btn-sm w-100" id="lb-apply-filter">Apply</button>
+      </div>
+      <div class="col-md-4 text-md-end text-muted small" id="lb-range-text"></div>
+    </div>
+  </div>
+
+  <!-- TEMP FEATURE: Two leaderboard tables requested by user; remove later as documented in README. -->
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card dashboard-table-card h-100">
+        <div class="card-header lb-title">Booking Creation Leaderboard</div>
+        <div class="table-responsive lb-table-wrap">
+          <table class="table table-sm mb-0 dashboard-table lb-table" id="lb-booking-creator-table">
+            <thead>
+              <tr>
+                <th>Sr No</th>
+                <th>Name</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card dashboard-table-card h-100">
+        <div class="card-header lb-title">Phlebo Completion Leaderboard</div>
+        <div class="table-responsive lb-table-wrap">
+          <table class="table table-sm mb-0 dashboard-table lb-table" id="lb-phlebo-completion-table">
+            <thead>
+              <tr>
+                <th>Sr No</th>
+                <th>Name</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/hleaderboard.js', v='20260518-1') }}"></script>
+{% endblock %}

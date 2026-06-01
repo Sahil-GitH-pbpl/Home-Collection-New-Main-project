@@ -34,7 +34,7 @@ def submit_lead():
     if len(files) > 6:
         files = files[:6]
 
-    upload_folder = os.path.join(os.path.dirname(__file__), "..", "static", "uploads")
+    upload_folder = os.path.join(os.path.dirname(__file__), "..", "static", "uploads", "lead")
     upload_folder = os.path.abspath(upload_folder)
     os.makedirs(upload_folder, exist_ok=True)
 

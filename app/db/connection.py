@@ -19,17 +19,42 @@ LABMATE_DB = {
 }
 
 WHATSAPP_DB = {
-    "host": os.getenv("WA_HOST", "192.168.0.167"),
+    "host": os.getenv("WA_HOST", "10.1.1.51"),
     "user": os.getenv("WA_USER", "sahil"),
     "password": os.getenv("WA_PASSWORD", "sahil@123"),
     "database": os.getenv("WA_NAME", "creoianw_bhasin"),
 }
 
 FAIL_MSG_DB = {
-    "host": os.getenv("FAIL_HOST", "192.168.0.167"),
+    "host": os.getenv("FAIL_HOST", "10.1.1.51"),
     "user": os.getenv("FAIL_USER", "sahil"),
     "password": os.getenv("FAIL_PASSWORD", "sahil@123"),
     "database": os.getenv("FAIL_NAME", "labmaterecod"),
+}
+
+COMPLAINT_DB = {
+    "host": os.getenv("COMPLAINT_HOST", "10.1.1.53"),
+    "port": int(os.getenv("COMPLAINT_PORT", "3308")),
+    "user": os.getenv("COMPLAINT_USER", "arpra"),
+    "password": os.getenv("COMPLAINT_PASSWORD", "arpra"),
+    "database": os.getenv("COMPLAINT_NAME", "arpra_voc"),
+    "connection_timeout": int(os.getenv("COMPLAINT_TIMEOUT", "5")),
+}
+
+VENE_DB = {
+    "host": os.getenv("VENE_HOST", "10.1.1.53"),
+    "port": int(os.getenv("VENE_PORT", "8091")),
+    "user": os.getenv("VENE_USER", "root"),
+    "password": os.getenv("VENE_PASSWORD", "example"),
+    "database": os.getenv("VENE_NAME", "hiccup_ticket"),
+    "connection_timeout": int(os.getenv("VENE_TIMEOUT", "5")),
+}
+
+BHASIN7001_DB = {
+    "host": os.getenv("B7001_HOST", "localhost"),
+    "user": os.getenv("B7001_USER", "root"),
+    "password": os.getenv("B7001_PASSWORD", ""),
+    "database": os.getenv("B7001_NAME", "bhasin_7001_new"),
 }
 
 
@@ -55,6 +80,27 @@ def get_whatsapp_connection():
 def get_fail_message_connection():
     """Connection helper for fail message DB (labmatewhats)."""
     return mysql.connector.connect(**FAIL_MSG_DB)
+
+
+def get_complaint_connection():
+    """Connection helper for complaint counter DB."""
+    return mysql.connector.connect(**COMPLAINT_DB)
+
+
+def get_venepunchre_connection():
+    """Connection helper for venepunchre hiccup_ticket DB."""
+    conn = mysql.connector.connect(**VENE_DB)
+    cur = conn.cursor()
+    try:
+        cur.execute("SET time_zone = '+05:30'")
+    finally:
+        cur.close()
+    return conn
+
+
+def get_bhasin7001_connection():
+    """Connection helper for Home Collection panel/test catalog DB."""
+    return pymysql.connect(**BHASIN7001_DB, cursorclass=pymysql.cursors.DictCursor)
 
 
 def get_whatsapp_groups_connection():

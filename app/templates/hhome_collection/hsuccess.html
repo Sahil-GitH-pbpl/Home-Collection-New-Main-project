@@ -1,0 +1,15 @@
+{% if booking %}
+<div class="booking-success-wrap">
+  <div class="booking-success-card text-center">
+    <h3 class="text-success mb-2">Booking Created Successfully</h3>
+    <div class="display-5 fw-bold">{{ booking.booking_code }}</div>
+    <div class="d-flex justify-content-center gap-2 mt-3">
+      <a target="_blank" class="btn btn-primary" href="/hhome-collection/print/{{ booking.id }}">Print Slip</a>
+      <a class="btn btn-outline-secondary new-booking-btn" href="/hhome-collection">New Booking</a>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-warning">No booking found.</div>
+{% endif %}
+

@@ -48,6 +48,8 @@
       transition:transform .12s ease, box-shadow .12s ease, background .18s, color .18s, border-color .18s;
     }
     .mini-tile:hover{ transform:translateY(-1px); box-shadow:0 6px 16px rgba(0,0,0,.12) }
+    .mini-tile.static-chip{ cursor:default; }
+    .mini-tile.static-chip:hover{ transform:none; box-shadow:0 3px 10px rgba(0,0,0,.08); }
     .mini-tile .badge{
       min-width:18px; padding:1px 6px; border-radius:999px;
       background:var(--panel); border:1px solid rgba(0,0,0,.06);
@@ -145,13 +147,15 @@
     .menu-section + .menu-section{border-top:1px solid rgba(0,0,0,.05);}
     .section-label{
       display:flex; align-items:center; gap:8px; padding:12px 16px; font-weight:700; font-size:13px; color:#1f2937;
-      cursor:pointer;
+      cursor:pointer; text-decoration:none;
     }
     .section-label .icon{
       width:20px; text-align:center; font-size:14px;
     }
     .menu-section.has-sub:hover > .section-label,
-    .menu-section.has-sub:focus-within > .section-label{
+    .menu-section.has-sub:focus-within > .section-label,
+    .menu-section.direct-link:hover > .section-label,
+    .menu-section.direct-link:focus-within > .section-label{
       background:linear-gradient(90deg,var(--brand),var(--brand2));
       color:#fff;
       border-radius:10px;
@@ -336,7 +340,7 @@
         user-select:none;
         position:relative;
       }
-      .section-label:after{
+      .menu-section.has-sub > .section-label:after{
         content:"▸"; 
         position:absolute; 
         right:16px; 
@@ -369,8 +373,9 @@
 </head>
 <body>
   {% set designation = (session.get('designation') or '')|lower %}
-  {% set allowed_designations = ['marketing', 'customer care', 'admin'] %}
+  {% set allowed_designations = ['marketing', 'customer care', 'customer care and marketing', 'admin'] %}
   {% set is_allowed_user = designation in allowed_designations %}
+  {% set hide_header_counters = request.endpoint == 'hbatch_handover_ui.batch_handover_ui_page' %}
 
   <div class="header-wrap">
     <header class="header">
@@ -382,7 +387,7 @@
         </div>
       </div>
 
-      {% if is_allowed_user %}
+      {% if is_allowed_user and not hide_header_counters %}
       <div class="counters" aria-label="Ticket counters">
         <a href="{{ url_for('ticketlist.tickets_list') }}?view=my&filter=breached" class="mini-tile tile-breached hidden" id="btn-breached" title="My SLA breached">
           <span class="icon" aria-hidden="true">⏰</span>
@@ -396,17 +401,25 @@
           <span class="icon" aria-hidden="true">📵</span>
           <span class="lbl">Missed</span> <span class="badge" id="count-missed">0</span>
         </a>
-        <a href="{{ url_for('ticketlist.tickets_list') }}?origin=ODT&assigned=false" class="mini-tile tile-tagged hidden" id="btn-odt-unassigned" title="Unassigned ODT Tickets">
+        <a href="{{ url_for('ticketlist.tickets_list') }}" class="mini-tile tile-tagged hidden" id="btn-odt-rst-unassigned" title="Unassigned ODT and RST Tickets">
           <span class="icon" aria-hidden="true">📋</span>
-          <span class="lbl">ODT Unassigned</span> <span class="badge" id="count-odt-unassigned">0</span>
+          <span class="lbl">ODT &amp; RST</span> <span class="badge" id="count-odt-rst-unassigned">0</span>
         </a>
+        <a href="{{ url_for('ticketlist.tickets_list') }}?origin=CVT&view=all" class="mini-tile tile-tagged hidden" id="btn-cvt-open" title="Open CVT Tickets">
+          <span class="icon" aria-hidden="true">🧪</span>
+          <span class="lbl">Open CVT</span> <span class="badge" id="count-cvt-open">0</span>
+        </a>
+        <div class="mini-tile tile-breached hidden static-chip" id="btn-complaint" title="Complaint pending for review">
+          <span class="icon" aria-hidden="true">⚠️</span>
+          <span class="lbl">Complaint</span> <span class="badge" id="count-complaint">0</span>
+        </div>
         <a href="{{ url_for('failurereport.index') }}" class="mini-tile tile-breached hidden" id="btn-failed-messages" title="Failed WhatsApp Messages">
           <span class="icon" aria-hidden="true">📱</span>
           <span class="lbl">Fail Report</span> <span class="badge" id="count-failed-messages">0</span>
         </a>
       </div>
       {% else %}
-      <div class="counters"></div>
+      <div class="counters" aria-label="Ticket counters"></div>
       {% endif %}
 
       <nav class="right" aria-label="Primary">
@@ -442,6 +455,13 @@
                   <a href="{{ url_for('dashboard.tickets_page') }}#raise"><span class="icon">➕</span> Raise Ticket</a>
                   {% endif %}
                   <a href="{{ url_for('tickets.tickets_create_odt_page') }}"><span class="icon">➕</span> Raise ODT Ticket</a>
+                  {% set desig = ((session.get('designation') or session.get('role') or '')|lower|trim) %}
+                  {% if 'customer care' in desig or 'admin' in desig %}
+                  <a href="{{ url_for('tickets.tickets_cv_form') }}"><span class="icon">➕</span> Raise CV Ticket</a>
+                  {% endif %}
+                  {% if 'technical' in desig or 'tech' in desig or 'admin' in desig %}
+                  <a href="{{ url_for('tickets.tickets_rs_form') }}"><span class="icon">➕</span> Raise RS Ticket</a>
+                  {% endif %}
                   <a href="{{ url_for('ticketlist.tickets_list') }}"><span class="icon">📋</span> Open Tickets</a>
                   <a href="{{ url_for('closedlist.closed_list') }}"><span class="icon">✅</span> Closed Tickets</a>
                 </div>
@@ -460,6 +480,20 @@
                 </div>
               </div>
 
+              <div class="menu-section has-sub" id="hc-menu-section">
+                <span class="section-label" tabindex="0">
+                  <span class="icon">&#127968;</span> H Collection
+                </span>
+                <div class="submenu">
+                  <a href="{{ url_for('hhome_collection.wizard') }}"><span class="icon"><strong>+</strong></span> Add Booking</a>
+                  <a href="{{ url_for('hhome_collection_dashboard.dashboard') }}"><span class="icon">&#128196;</span> All Booking</a>
+                  <a href="{{ url_for('hbatch_handover_ui.batch_handover_ui_page') }}"><span class="icon">&#128230;</span> Batch Completion</a>
+                  <a href="{{ url_for('phlebo_summary.page') }}"><span class="icon">&#128203;</span> Phlebo Summary</a>
+                  <a href="{{ url_for('hcb_day_report.page') }}"><span class="icon">&#128202;</span> Reports</a>
+                  <a href="{{ url_for('hhome_collection.panel_test_master_page') }}"><span class="icon">&#128202;</span> Panel Co &amp; Test Mst</a>
+                </div>
+              </div>
+
               <div class="menu-section has-sub">
                 <span class="section-label" tabindex="0">
                   <span class="icon">📱</span> WFRepo
@@ -469,7 +503,24 @@
                   <a href="{{ url_for('completedreport.index') }}"><span class="icon">✅</span> Completed Reports</a>
                 </div>
               </div>
+
               {% endif %}
+
+              <div class="menu-section has-sub">
+                <span class="section-label" tabindex="0">
+                  <span class="icon">&#128137;</span> Venepuncture
+                </span>
+                <div class="submenu">
+                  <a href="{{ url_for('venepunchre.venepunchre_form') }}"><span class="icon">&#128137;</span> VENP FORM</a>
+                  <a href="{{ url_for('venepunchre.venepunchre_records') }}"><span class="icon">&#128196;</span> VENP RECORDS</a>
+                </div>
+              </div>
+
+              <div class="menu-section direct-link">
+                <a class="section-label" href="{{ url_for('consentform.index') }}">
+                  <span class="icon">📄</span> Consent Form
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -542,17 +593,41 @@
         setTile('btn-breached','count-breached', data.my_breached);
         setTile('btn-leads-fresh','count-leads-fresh', data.leads_fresh);
         setTile('btn-missed','count-missed', data.missed_calls);
-        setTile('btn-odt-unassigned','count-odt-unassigned', data.odt_unassigned);
-        setTile('btn-failed-messages','count-failed-messages', data.failed_messages);
+        setTile('btn-odt-rst-unassigned','count-odt-rst-unassigned', data.odt_rst_unassigned);
+        setTile('btn-cvt-open','count-cvt-open', data.cvt_open);
 
       } catch (e) {
       }
     }
 
+    async function refreshFailedMessages(){
+      try{
+        const res = await fetch("{{ url_for('base.tickets_failed_messages') }}", {
+          credentials: 'same-origin',
+          cache: 'no-store'
+        });
+        const data = await res.json();
+        if(!data || !data.ok) return;
+        setTile('btn-failed-messages','count-failed-messages', data.failed_messages);
+      }catch(e){}
+    }
+
+    async function refreshComplaintCount(){
+      try{
+        const res = await fetch("{{ url_for('base.tickets_complaint_count') }}", {
+          credentials: 'same-origin',
+          cache: 'no-store'
+        });
+        const data = await res.json();
+        if(!data || !data.ok) return;
+        setTile('btn-complaint','count-complaint', data.complaint_count);
+      }catch(e){}
+    }
+
     (function initialHide(){
       const ids = [
         'btn-breached', 'btn-leads-fresh', 'btn-missed',
-        'btn-odt-unassigned', 'btn-failed-messages'
+        'btn-odt-rst-unassigned', 'btn-cvt-open', 'btn-complaint', 'btn-failed-messages'
       ];
       ids.forEach(id => {
         const el = document.getElementById(id);
@@ -561,6 +636,8 @@
     })();
 
     refreshCounters();
+    refreshComplaintCount();
+    refreshFailedMessages();
 
     (function setupMenuToggle(){
       const menu = document.getElementById('main-nav-menu');

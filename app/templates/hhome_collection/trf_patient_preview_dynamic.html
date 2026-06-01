@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TRF Patient Preview</title>
+  <style>
+    body { margin:0; background:#dfe8f2; font-family:"Segoe UI",Arial,sans-serif; color:#18263a; }
+    .page { width:210mm; min-height:297mm; margin:8px auto; background:#fff; padding:10mm; }
+    .topbar{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:start;border-bottom:2px solid #cfd8e3;padding-bottom:8px;margin-bottom:10px}
+    .brand img{width:190px}
+    .center-meta{display:grid;gap:4px;justify-items:center;text-align:center;color:#123a67;font-size:13px}
+    .meta-strip{display:grid;gap:4px;text-align:right;color:#5e6b7f;font-size:13px}
+    .hero{display:grid;grid-template-columns:1.15fr 0.85fr;gap:12px;margin-bottom:12px}
+    .card,.section,.mini-card{border:1px solid #cfd8e3;border-radius:12px;overflow:hidden;background:#fff}
+    .card-head,.section-head{background:#eef4fb;color:#0f5ea8;font-weight:700;padding:5px 8px;border-bottom:1px solid #cfd8e3}
+    .card-body{padding:6px 8px}
+    .detail-grid{display:grid;grid-template-columns:minmax(0,1.5fr) .9fr 1fr;gap:6px 12px}
+    .label{display:block;font-size:11px;color:#5e6b7f;text-transform:uppercase}
+    .value{font-size:14px;font-weight:600}
+    .section-body{padding:8px}
+    .panel-meta{display:flex;justify-content:space-between;gap:8px;align-items:baseline;border-bottom:1px dashed #cfd8e3;padding-bottom:4px;margin-bottom:4px}
+    .panel-name{font-size:13px;font-weight:800;color:#0f5ea8}
+    .panel-count{font-size:12px;font-weight:800;color:#64748b}
+    .referred-by{color:#b22222}
+    .panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #eaf0f6;padding:5px 7px;font-size:13px}
+    th{background:#f4f8fc;color:#24415f;font-size:12px;text-transform:uppercase;text-align:left}
+    .inline-line{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .chip{padding:2px 7px;border-radius:999px;background:#6f4a2d;color:#fff7ef;font-size:11px;font-weight:700}
+    .tube-chip,.delivery-chip{background:#fff !important;color:#000 !important;font-size:12px !important;font-weight:900 !important}
+    .line-label{font-weight:800}
+    .plain-two-col{display:grid;grid-template-columns:1fr .45fr;gap:14px}
+    .plain-head{color:#0f5ea8;font-size:15px;font-weight:700;margin-bottom:6px}
+    .billing-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
+    .billing-line{font-size:14px}
+    .sample-grid{display:grid;gap:4px}
+    .sample-top-row{display:flex;gap:20px;flex-wrap:wrap}
+    @media print{body{background:#fff}.page{margin:0;width:auto;min-height:auto}.tube-chip,.delivery-chip{background:#fff !important;color:#000 !important;font-size:12px !important;font-weight:900 !important}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div class="brand"><img src="/static/assets/Logo1.png" alt="Logo" /></div>
+      <div class="center-meta">
+        <div><strong>{{ ctx.appointment_type }}</strong></div>
+        <div><span>Booking:</span> {{ ctx.booking_code }}</div>
+        <div><strong>Report Schedule: {{ ctx.report_schedule }}</strong></div>
+      </div>
+      <div class="meta-strip">
+        <div><strong>Booked By:</strong> {{ ctx.booked_by }}</div>
+        <div><strong>Phlebo:</strong> {{ ctx.phlebo_name }}</div>
+        <div><strong>Visit:</strong> {{ ctx.visit_text }}</div>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="card">
+        <div class="card-head">Patient Details</div>
+        <div class="card-body">
+          <div class="detail-grid">
+            {% if ctx.patient_name and ctx.patient_name != '-' %}<div><span class="label">Full Name</span><div class="value">{{ ctx.patient_name }}</div></div>{% endif %}
+            {% if ctx.gender and ctx.gender != '-' %}<div><span class="label">Gender</span><div class="value">{{ ctx.gender }}</div></div>{% endif %}
+            {% if ctx.age_years and ctx.age_years != '-' %}<div><span class="label">Age</span><div class="value">{{ ctx.age_years }} Years</div></div>{% endif %}
+            {% if ctx.dob and ctx.dob != '-' %}<div><span class="label">DOB</span><div class="value">{{ ctx.dob }}</div></div>{% endif %}
+            {% if ctx.pri_mobile and ctx.pri_mobile != '-' %}<div><span class="label">Pri Mobile</span><div class="value">{{ ctx.pri_mobile }}</div></div>{% endif %}
+            {% if ctx.alt_mobile and ctx.alt_mobile != '-' %}<div><span class="label">Alt Mobile</span><div class="value">{{ ctx.alt_mobile }}</div></div>{% endif %}
+            {% if ctx.internal_ref and ctx.internal_ref != '-' %}<div><span class="label">INT REF BY</span><div class="value">{{ ctx.internal_ref }}</div></div>{% endif %}
+            {% if ctx.card_no and ctx.card_no != '-' %}<div><span class="label">Card No.</span><div class="value">{{ ctx.card_no }}</div></div>{% endif %}
+            {% if ctx.patient_code and ctx.patient_code != '-' %}<div><span class="label">Labmate PID</span><div class="value">{{ ctx.patient_code }}</div></div>{% endif %}
+            {% if ctx.lead_id and ctx.lead_id != '-' %}<div><span class="label">Lead ID</span><div class="value">{{ ctx.lead_id }}</div></div>{% endif %}
+            {% if ctx.p_tag and ctx.p_tag != '-' %}<div><span class="label">P_Tag</span><div class="value">{{ ctx.p_tag }}</div></div>{% endif %}
+            {% if ctx.t_tag and ctx.t_tag != '-' %}<div><span class="label">T_Tag</span><div class="value">{{ ctx.t_tag }}</div></div>{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head">Address & Visit Details</div>
+        <div class="card-body">
+          <span class="label">Visit Address</span><div class="value">{{ ctx.visit_address }}</div>
+          <span class="label" style="margin-top:8px">Landmark</span><div class="value">{{ ctx.landmark }}</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div class="inline-line">
+          <span><strong>CCE TBS-</strong> {{ ctx.cce_tbs }}</span>
+          <span><strong>Phlebo TBS-</strong> {{ ctx.hcp_tbs }}</span>
+        </div>
+      </div>
+      <div class="section-body">
+        {% for panel in ctx.panels %}
+        <div class="panel-meta">
+          <div class="panel-name">{{ panel.name }}</div>
+          {% if loop.first %}<div class="panel-count referred-by">Referred By {{ ctx.referred_by }}</div>{% endif %}
+          <div class="panel-count">Total Tests {{ panel.tests|length }}</div>
+        </div>
+        {% set half = (panel.tests|length + 1) // 2 %}
+        <div class="panel-grid" style="margin-bottom:8px">
+          {% for side in [panel.tests[:half], panel.tests[half:]] %}
+          <table>
+            <thead><tr><th style="width:110px">Test Code</th><th>Test Name</th></tr></thead>
+            <tbody>
+              {% for t in side %}<tr><td>{{ t.code }}</td><td>{{ t.name }}</td></tr>{% endfor %}
+              {% if side|length == 0 %}<tr><td>-</td><td>-</td></tr>{% endif %}
+            </tbody>
+          </table>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section style="margin-bottom:12px">
+      <div class="inline-line"><span class="line-label">Mapped Sample Tube :-</span>{% for x in ctx.mapped_tubes %}<span class="chip tube-chip">{{ x }}</span>{% endfor %}</div>
+      <div class="inline-line" style="margin-top:6px"><span class="line-label">Additional Sample Tube :-</span>{% for x in ctx.additional_tubes %}<span class="chip tube-chip">{{ x }}</span>{% endfor %}</div>
+    </section>
+
+    <section style="margin-bottom:12px">
+      <div class="plain-two-col">
+        <div class="mini-card" style="padding:8px">
+          <div class="card-head" style="padding:0 0 6px 0;background:none;border:0">Billing Details</div>
+          <div class="billing-grid">
+            <div class="billing-line"><span class="line-label">Total Amount:</span> {{ ctx.total_amount }}</div>
+            <div class="billing-line"><span class="line-label">Default Discount:</span> {{ ctx.default_discount }}</div>
+            <div class="billing-line"><span class="line-label">Additional Discount:</span> {{ ctx.additional_discount }}</div>
+            <div class="billing-line"><span class="line-label">Final Amount:</span> {{ ctx.final_amount }}</div>
+            <div class="billing-line"><span class="line-label">Payment Mode:</span> {{ ctx.payment_mode }}</div>
+            <div class="billing-line"><span class="line-label">Received Amount:</span> {{ ctx.received_amount }}</div>
+            <div class="billing-line"><span class="line-label">Due Amount:</span> {{ ctx.due_amount }}</div>
+            <div class="billing-line"><span class="line-label">Extra Amount:</span> {{ ctx.extra_amount }}</div>
+          </div>
+        </div>
+        <div class="mini-card" style="padding:8px">
+          <div class="card-head" style="padding:0 0 6px 0;background:none;border:0">Report Delivery Option</div>
+          <div class="inline-line">{% for x in ctx.delivery_options %}<span class="chip delivery-chip">{{ x }}</span>{% endfor %}</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mini-card" style="padding:8px">
+      <div class="card-head" style="padding:0 0 6px 0;background:none;border:0">Sample Collection</div>
+      <div class="sample-grid">
+        <div class="sample-top-row">
+          <div><span class="line-label">No. of Pricks:</span> {{ ctx.no_of_pricks }}</div>
+          <div><span class="line-label">Collection Type:</span> {{ ctx.collection_type }}</div>
+          <div><span class="line-label">Collected Tube Count:</span> {{ ctx.collected_tube_count }}</div>
+          <div><span class="line-label">Pending Tube Count:</span> {{ ctx.pending_tube_count }}</div>
+        </div>
+        <div><span class="line-label">Pending Tube Names:</span> {{ ctx.pending_tube_names|join(', ') if ctx.pending_tube_names else '-' }}</div>
+        <div><span class="line-label">Pending Test Names:</span> {{ ctx.pending_test_names|join(', ') if ctx.pending_test_names else '-' }}</div>
+      </div>
+    </section>
+  </main>
+  <script>
+    window.onload = function () {
+      try {
+        const qp = new URLSearchParams(window.location.search || "");
+        const autoPrint = String(qp.get("autoprint") || "1").toLowerCase();
+        if (autoPrint !== "0" && autoPrint !== "false") {
+          window.print();
+        }
+      } catch (e) {}
+    };
+  </script>
+</body>
+</html>

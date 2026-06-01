@@ -1,0 +1,252 @@
+{% extends 'base.html' %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/happ.css', v='20260531-4') }}">
+<div class="container-fluid pt-0 pb-3 h-dashboard-page" id="h-dashboard-page">
+  <div class="d-flex justify-content-between align-items-start mb-2">
+    <h4 class="h-dashboard-title">Home Collection Dashboard</h4>
+    <div class="d-flex gap-2 hc-top-nav">
+      <a class="btn btn-outline-primary btn-sm top-action-btn" href="/hhome-collection"><span class="me-1"><strong>+</strong></span>Add Booking</a>
+      <a class="btn btn-primary btn-sm top-action-btn" href="/hhome-collection/dashboard" style="background:#0b1f4d;border-color:#0b1f4d;"><span class="me-1">&#128196;</span>All Booking</a>
+      <a class="btn btn-outline-primary btn-sm top-action-btn" id="btn-go-assign-booking" href="/hhome-collection/assign-booking"><span class="me-1">&#128203;</span>Asgn Booking</a>
+      <!-- TEMP FEATURE: Leaderboard button. Remove later with related files listed in README. -->
+      <a class="btn btn-outline-primary btn-sm top-action-btn" href="/hhome-collection/leaderboard"><span class="me-1">&#127942;</span>Leaderboard</a>
+    </div>
+  </div>
+
+  <div class="card mb-3 dashboard-filter-card">
+    <div class="card-body row g-2 align-items-center">
+      <div class="col-md-2">
+        <div class="dashboard-filter-inline"><label class="form-label mb-0">Date</label><input type="text" id="f-date-range" class="form-control form-control-sm" placeholder="YYYY-MM-DD" readonly></div>
+      </div>
+      <div class="col-md-2">
+        <div class="dashboard-filter-inline"><label class="form-label mb-0">Status</label><select id="f-status" class="form-select form-select-sm"><option value="">All</option><option value="0">Pending</option><option value="1">Assigned</option><option value="2">Started</option><option value="3">Completed</option><option value="4">Cancelled</option><option value="5">P Completed</option></select></div>
+      </div>
+      <div class="col-md-2">
+        <div class="dashboard-filter-inline"><label class="form-label mb-0">CCE_TBS</label><select id="f-cce-tbs" class="form-select form-select-sm"><option value="">All</option><option value="Test confirmed and booked">Confirmed</option><option value="Prescription attached but test not booked">pres.. Only</option><option value="No test information: ask to patient for tests">No Test</option><option value="Incompleted test, phlebo verification pending to confirm and book">Verify Pending</option></select></div>
+      </div>
+      <div class="col-md-3">
+        <div class="dashboard-filter-inline"><label class="form-label mb-0">&#128269;</label><input id="f-search" class="form-control form-control-sm" placeholder="name/ mobile/ book by / booking_id"></div>
+      </div>
+      <div class="col-md-1 d-flex align-items-center"><button class="btn btn-primary btn-sm" id="btn-filter">Apply</button></div>
+      <div class="col-md-2">
+        <div id="dashboard-mini-stats" class="dash-mini-stats">
+          <div class="dash-mini-chip dash-mini-chip-total"><span class="k">total:</span><span class="v" id="dash-chip-total">0</span></div>
+          <div class="dash-mini-chip dash-mini-chip-pending"><span class="k">Pending:</span><span class="v" id="dash-chip-pending">0</span></div>
+          <div class="dash-mini-chip dash-mini-chip-started"><span class="k">Start:</span><span class="v" id="dash-chip-started">0</span></div>
+          <div class="dash-mini-chip dash-mini-chip-cancelled"><span class="k">Cancel:</span><span class="v" id="dash-chip-cancelled">0</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card dashboard-table-card">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 dashboard-table" id="dashboard-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Patient / Mobile</th>
+            <th>CCE_TBS</th>
+            <th>Visit Date</th>
+            <th>Time Slot</th>
+            <th class="sortable-col" data-sort-key="route">Colony / Route <span class="sort-indicator">⇅</span></th>
+            <th class="sortable-col" data-sort-key="total_amount">Charge <span class="sort-indicator">⇅</span></th>
+            <th>Book By</th>
+            <th>Status</th>
+            <th class="sortable-col" data-sort-key="assigned_phlebo">Asgn_Phlebo <span class="sort-indicator">⇅</span></th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top bg-light" id="dashboard-pagination-bar">
+      <div class="d-flex align-items-center gap-2">
+        <label class="mb-0 fw-semibold" for="dashboard-page-size">Table size:</label>
+        <select id="dashboard-page-size" class="form-select form-select-sm" style="width:110px;">
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-success btn-sm" id="dashboard-page-first">&laquo; First</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="dashboard-page-prev">Prev</button>
+        <span class="fw-semibold" id="dashboard-page-info">Page 1 / 1</span>
+        <button type="button" class="btn btn-success btn-sm" id="dashboard-page-next">Next</button>
+        <button type="button" class="btn btn-success btn-sm" id="dashboard-page-last">Last &raquo;</button>
+      </div>
+      <div class="fw-semibold" id="dashboard-total-info">Total: 0</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="docPreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Document Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img id="doc-preview-image" src="" alt="preview" class="img-fluid rounded border">
+        <iframe id="doc-preview-pdf" src="" class="w-100 rounded border d-none" style="height:70vh;" title="PDF Preview"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="hd-page-loader" class="hd-page-loader">
+  <div class="hd-loader-card">
+    <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+    <div class="hd-loader-text">Loading All Booking...</div>
+  </div>
+</div>
+
+<div class="modal fade" id="bookingModal" tabindex="-1">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Booking Detail</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body" id="booking-modal-body"></div>
+    <div class="modal-footer justify-content-end d-none" id="booking-modal-footer">
+      <button type="button" class="btn btn-primary btn-sm" id="booking-modal-print-btn">Print Slip</button>
+    </div>
+  </div></div>
+</div>
+
+<div class="modal fade" id="cancelReasonModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Cancel Booking</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="cancel-booking-id">
+        <input type="hidden" id="cancel-appointment-id">
+        <input type="hidden" id="cancel-booking-code">
+
+        <label class="form-label">Cancellation Reason *</label>
+        <select id="cancel-reason-select" class="form-select mb-2" required>
+          <option value="" selected>Select</option>
+          <option value="Patient requested cancellation">Patient requested cancellation</option>
+          <option value="Duplicate / wrong booking created">Duplicate / wrong booking created</option>
+          <option value="Operational inability to service">Operational inability to service</option>
+          <option value="Address not serviceable">Address not serviceable</option>
+          <option value="Doctor / company cancelled request">Doctor / company cancelled request</option>
+          <option value="Billing / approval issue">Billing / approval issue</option>
+          <option value="Test no longer required">Test no longer required</option>
+          <option value="Phlebotomist delay">Phlebotomist delay</option>
+          <option value="High charges / booked at another lab">High charges / booked at another lab</option>
+        </select>
+
+        <div class="mb-2">
+          <label class="form-label d-block">Reschedule requested? *</label>
+          <div class="d-flex gap-3">
+            <label class="form-check"><input class="form-check-input" type="radio" name="cancel-reschedule-requested" value="yes"><span class="form-check-label">Yes</span></label>
+            <label class="form-check"><input class="form-check-input" type="radio" name="cancel-reschedule-requested" value="no" checked><span class="form-check-label">No</span></label>
+          </div>
+        </div>
+
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label">New Visit Date</label>
+            <input type="date" id="cancel-new-date" class="form-control">
+          </div>
+          <div class="col-6">
+            <label class="form-label">New Time Slot</label>
+            <select id="cancel-new-slot" class="form-select"></select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-danger btn-sm" id="btn-confirm-cancel-reason">Confirm Cancel Booking</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modifyReasonModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Modify Booking</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Reason for Modification *</label>
+        <div id="modify-reason-options">
+          <label class="form-check"><input class="form-check-input modify-reason-opt" type="checkbox" value="Patient requested change"><span class="form-check-label">Patient requested change</span></label>
+          <label class="form-check"><input class="form-check-input modify-reason-opt" type="checkbox" value="Wrong patient selected"><span class="form-check-label">Wrong patient selected</span></label>
+          <label class="form-check"><input class="form-check-input modify-reason-opt" type="checkbox" value="Wrong address selected / Address corrected"><span class="form-check-label">Wrong address selected / Address corrected</span></label>
+          <label class="form-check"><input class="form-check-input modify-reason-opt" type="checkbox" value="Test details corrected"><span class="form-check-label">Test details corrected</span></label>
+          <label class="form-check"><input class="form-check-input modify-reason-opt" type="checkbox" value="Prescription / test clarification updated"><span class="form-check-label">Prescription / test clarification updated</span></label>
+          <label class="form-check"><input class="form-check-input modify-reason-opt" type="checkbox" value="Tags / operational instructions updated"><span class="form-check-label">Tags / operational instructions updated</span></label>
+          <label class="form-check"><input class="form-check-input modify-reason-opt" type="checkbox" value="Billing details corrected"><span class="form-check-label">Billing details corrected</span></label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary btn-sm" id="btn-open-modify-flow">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="rescheduleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="reschedule-booking-title">Reschedule Booking</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="reschedule-booking-id">
+        <div class="row g-2 mb-2">
+          <div class="col-md-6">
+            <label class="form-label">Current Date</label>
+            <input type="text" class="form-control" id="reschedule-old-date" readonly>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Current Slot</label>
+            <input type="text" class="form-control" id="reschedule-old-slot" readonly>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">New Visit Date *</label>
+            <input type="date" class="form-control" id="reschedule-new-date" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">New Time Slot *</label>
+            <select class="form-select" id="reschedule-new-slot" required></select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Reason for Reschedule *</label>
+            <select class="form-select" id="reschedule-reason" required>
+              <option value="" selected>Select</option>
+              <option value="Patient requested different time/date">Patient requested different time/date</option>
+              <option value="Operational capacity issue">Operational capacity issue</option>
+              <option value="Address / location timing issue">Address / location timing issue</option>
+              <option value="Doctor / company requested change">Doctor / company requested change</option>
+            </select>
+          </div>
+        </div>
+        <div class="alert alert-light border mb-0" id="reschedule-summary-line"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-success btn-sm" id="btn-confirm-reschedule">Confirm Reschedule</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="{{ url_for('static', filename='js/hassign_user_picker.js') }}"></script>
+<script src="{{ url_for('static', filename='js/hdashboard.js', v='20260531-2') }}"></script>
+{% endblock %}
+
+
+
+

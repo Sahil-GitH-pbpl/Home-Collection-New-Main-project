@@ -123,7 +123,7 @@
               <div class="presc-row">
                 <div class="presc-thumbs">
                   {% for file in files %}
-                  <img src="{{ url_for('static', filename='uploads/' ~ file) }}" class="thumb" alt="Prescription" />
+                  <img src="{{ url_for('static', filename='uploads/lead/' ~ file) }}" class="thumb" alt="Prescription" />
                   {% endfor %}
                 </div>
                 <div class="presc-actions">
@@ -228,7 +228,7 @@
 </div>
 
 <!-- JSON data blocks: keep JS 100% pure (no Jinja inside JS) -->
-<script type="application/json" id="presc-data">{ "files": {{ files | tojson }}, "baseUrl": "{{ url_for('static', filename='uploads/') }}" }</script>
+<script type="application/json" id="presc-data">{ "files": {{ files | tojson }}, "baseUrl": "{{ url_for('static', filename='uploads/lead/') }}" }</script>
 <script type="application/json" id="page-flags">{ "viewOnly": {{ is_view_only | tojson }} }</script>
 <!-- Lead basics for WA compose -->
 <script type="application/json" id="lead-data">{
@@ -296,6 +296,7 @@
     "Charges are high",
     "Not interested in our lab",
     "Already tested somewhere else",
+    "Double Lead Booked",
     "Patient visit lab",
     "Age less than 13 years",
     "Documents not complete",

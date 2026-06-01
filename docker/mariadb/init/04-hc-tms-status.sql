@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS hc_tms_status (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  booking_id INT NOT NULL,
+  booking_code VARCHAR(50) NULL,
+  booking_patient_id INT NULL,
+  patient_id INT NOT NULL,
+  cghs_id VARCHAR(100) NULL,
+  status VARCHAR(60) NOT NULL DEFAULT 'Verification Pending',
+  reg_no VARCHAR(100) NULL,
+  proof_file VARCHAR(500) NULL,
+  block_reason VARCHAR(255) NULL,
+  block_notes TEXT NULL,
+  override_flag TINYINT(1) NOT NULL DEFAULT 0,
+  history_json LONGTEXT NULL,
+  created_by VARCHAR(100) NULL,
+  updated_by VARCHAR(100) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_hc_tms_booking_patient (booking_id, patient_id),
+  KEY idx_hc_tms_status (status),
+  KEY idx_hc_tms_patient (patient_id),
+  KEY idx_hc_tms_booking (booking_id)
+);

@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}Venepuncture Form{% endblock %}
+
+{% block content %}
+<style>
+  .vene-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 8px 20px rgba(0,0,0,.08);padding:20px;max-width:1100px;margin:0 auto;}
+  .vene-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;}
+  .patient-top-grid{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr) auto;gap:14px;align-items:end;}
+  .vene-field{display:flex;flex-direction:column;gap:6px;}
+  .vene-field.inline-action{justify-content:flex-end;}
+  .vene-field label{font-weight:700;font-size:13px;color:#374151;}
+  .vene-field input,.vene-field select,.vene-field textarea{border:1px solid #d1d5db;border-radius:12px;padding:10px;font-size:14px;width:100%;background:#f9fafb;transition:background-color .15s ease,border-color .15s ease;}
+  .vene-field input:hover,.vene-field select:hover,.vene-field textarea:hover{background:#f3f4f6;border-color:#9ca3af;}
+  .vene-field textarea{min-height:90px;resize:vertical;}
+  .vene-actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:14px;}
+  .btn-primary{background:#2563eb;color:#fff;border:none;padding:10px 16px;border-radius:10px;font-weight:700;cursor:pointer;}
+  .btn-secondary{background:#fff;color:#2563eb;border:1px solid #2563eb;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;}
+  #btn-fetch-patient{background:#166534;color:#fff;border:1px solid #14532d;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;}
+  #btn-fetch-patient:hover{background:#14532d;}
+  .helper{font-size:12px;color:#6b7280;}
+  .banner{border-radius:10px;padding:10px 12px;margin-bottom:12px;font-weight:600;}
+  .banner.success{background:#d4efe3;border:1px solid #86efac;color:#0f5132;font-weight:700;}
+  .banner.error{background:#fef2f2;border:1px solid #fecdd3;color:#991b1b;}
+  .staff-suggestions{
+    position:absolute;
+    z-index:20;
+    list-style:none;
+    margin:55px 0 0;
+    padding:6px;
+    background:linear-gradient(180deg,#d9edf5,#e6eef8);
+    border:1px solid #d1d5db;
+    border-radius:12px;
+    width:100%;
+    max-height:240px;
+    overflow-y:auto;
+    box-shadow:0 8px 16px rgba(0,0,0,.08);
+  }
+  .staff-suggestions li{
+    padding:8px 6px;
+    border-radius:8px;
+    cursor:pointer;
+  }
+  .staff-suggestions li:hover{
+    background:#ffffff;
+  }
+  /* prevent enter submit */
+  form#venepunchre-form input, form#venepunchre-form select, form#venepunchre-form textarea{
+    ime-mode:active;
+  }
+  @media (max-width: 768px){
+    .patient-top-grid{grid-template-columns:1fr;}
+    .vene-field.inline-action{justify-content:flex-start;}
+  }
+</style>
+
+<div class="vene-card">
+  <h2 style="margin:0 0 4px;font-size:22px;">Venepuncture Record</h2>
+  <p style="margin:0 0 12px;color:#6b7280;">Report venepuncture incidents with patient + staff info.</p>
+
+  {% set flashes = get_flashed_messages(with_categories=true) %}
+  {% for category, message in flashes %}
+    <p class="banner {{ category }}">{{ message }}</p>
+  {% endfor %}
+
+  <form id="venepunchre-form" method="post" action="{{ url_for('venepunchre.venepunchre_submit') }}" enctype="multipart/form-data">
+    <h4 style="margin:12px 0 6px;">Reporter & Collection</h4>
+    <div class="vene-grid" id="reporter-grid">
+      <div class="vene-field">
+        <label for="reported_by">Reported By</label>
+        <select id="reported_by" name="reported_by" required>
+          <option value="" disabled {% if not form_values.reported_by %}selected{% endif %}>Select</option>
+          <option value="patient" {% if form_values.reported_by=='patient' %}selected{% endif %}>Patient</option>
+          <option value="staff" {% if form_values.reported_by=='staff' %}selected{% endif %}>Staff</option>
+          <option value="self" {% if form_values.reported_by in ['self','sellf'] %}selected{% endif %}>Self</option>
+        </select>
+      </div>
+      <div class="vene-field">
+        <label for="reported_name">Reporter Name</label>
+        <input id="reported_name" name="reported_name" type="text" value="{{ form_values.reported_name }}" required />
+        <input id="reported_staff_id" name="reported_staff_id" type="hidden" value="{{ form_values.reported_staff_id }}" />
+      </div>
+      <div class="vene-field">
+        <label for="location_name">Location</label>
+        <select id="location_name" name="location_name" required>
+          <option value="" disabled {% if not form_values.location_name %}selected{% endif %}>Select</option>
+          <option value="home collection" {% if form_values.location_name=='home collection' %}selected{% endif %}>Home Collection</option>
+          <option value="S-35 (Sample collection unit)" {% if form_values.location_name in ['S-35 (Sample collection unit)','s35 scu','s-35 scu'] %}selected{% endif %}>S-35 (Sample collection unit)</option>
+        </select>
+      </div>
+      <div class="vene-field">
+        <label for="venepunchre_done_by">Venepuncture Done By</label>
+        <input id="venepunchre_done_by" name="venepunchre_done_by" type="text" value="{{ form_values.venepunchre_done_by }}" required autocomplete="off" />
+        <input id="venepunchre_staff_id" name="venepunchre_staff_id" type="hidden" value="{{ form_values.venepunchre_staff_id }}" />
+      </div>
+    </div>
+
+    <h4 style="margin:18px 0 6px;">Description</h4>
+    <div class="vene-field">
+      <textarea id="description" name="description" placeholder="Issue summary" required>{{ form_values.description }}</textarea>
+    </div>
+    <div class="vene-field" style="margin-top:8px;">
+      <label for="evidence_image">Evidence (image)</label>
+      <input id="evidence_image" name="evidence_image" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
+      <span class="helper">JPG/JPEG/PNG/WEBP up to 5 MB.</span>
+    </div>
+
+    <h4 style="margin:18px 0 6px;">Patient</h4>
+    <div class="patient-top-grid">
+      <div class="vene-field">
+        <label for="patient_billing_done">Registration/Billing done?</label>
+        <select id="patient_billing_done" name="patient_billing_done" required>
+          <option value="" disabled {% if not form_values.patient_billing_done %}selected{% endif %}>Select</option>
+          <option value="yes" {% if form_values.patient_billing_done=='yes' %}selected{% endif %}>Yes</option>
+          <option value="no" {% if form_values.patient_billing_done=='no' %}selected{% endif %}>No</option>
+        </select>
+      </div>
+      <div class="vene-field">
+        <label for="patient_id">Patient ID</label>
+        <input id="patient_id" name="patient_id" type="text" value="{{ form_values.patient_id }}" />
+      </div>
+      <div class="vene-field inline-action">
+        <label>&nbsp;</label>
+        <button type="button" id="btn-fetch-patient">Fetch</button>
+      </div>
+    </div>
+    <small class="helper" id="patient-fetch-status"></small>
+    <div class="vene-grid" id="patient-grid" style="margin-top:10px;">
+      <div class="vene-field">
+        <label for="name">Patient Name</label>
+        <input id="name" name="name" type="text" value="{{ form_values.name }}" required />
+      </div>
+      <div class="vene-field">
+        <label for="age">Age</label>
+        <input id="age" name="age" type="text" value="{{ form_values.age }}" />
+      </div>
+      <div class="vene-field">
+        <label for="gender">Gender</label>
+        <select id="gender" name="gender">
+          <option value="" {% if not form_values.gender %}selected{% endif %}>Select</option>
+          <option value="Male" {% if form_values.gender=='Male' %}selected{% endif %}>Male</option>
+          <option value="Female" {% if form_values.gender=='Female' %}selected{% endif %}>Female</option>
+          <option value="Other" {% if form_values.gender=='Other' %}selected{% endif %}>Other</option>
+        </select>
+      </div>
+      <div class="vene-field">
+        <label for="mobile_no">Mobile</label>
+        <input id="mobile_no" name="mobile_no" type="text" value="{{ form_values.mobile_no }}" />
+      </div>
+    </div>
+
+    <div class="vene-actions">
+      <button class="btn-primary" type="submit">Submit</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  // simple debounce
+  function debounce(fn, wait){let t; return (...args)=>{clearTimeout(t); t=setTimeout(()=>fn(...args), wait)};}
+
+  const staffApi = "{{ url_for('venepunchre.venepunchre_staff_search') }}";
+  const patientApiBase = "{{ url_for('venepunchre.venepunchre_patient_lookup', patient_id='__PID__') }}".replace('__PID__','');
+  const currentUser = {
+    id: "{{ current_user_id }}".trim(),
+    name: "{{ current_user_name }}".trim()
+  };
+
+  function attachSuggest(inputId, hiddenId, opts={}){
+    const input = document.getElementById(inputId);
+    const hidden = document.getElementById(hiddenId);
+    const list = document.createElement('ul');
+    list.className = 'staff-suggestions';
+    list.hidden = true;
+    input.parentNode.style.position='relative';
+    input.parentNode.appendChild(list);
+
+    const runFetch = debounce(async(q)=>{
+      q = (q||'').trim();
+      if(!q){ list.hidden=true; return; }
+      try{
+        const res = await fetch(`${staffApi}?q=${encodeURIComponent(q)}${opts.phleboOnly ? '&phlebo=1' : ''}`);
+        if(!res.ok){ throw new Error('net'); }
+        const rows = await res.json();
+        list.innerHTML = '';
+        if(!rows.length){ list.hidden=true; return; }
+        rows.forEach(r=>{
+          const li=document.createElement('li');
+          li.textContent = `${r.name}${r.designation ? ' ('+r.designation+')':''}`;
+          li.onmousedown = ()=>{
+            input.value = r.name;
+            if(hidden) hidden.value = r.id || '';
+            list.hidden=true;
+          };
+          list.appendChild(li);
+        });
+        list.hidden=false;
+      }catch(e){ list.hidden=true; }
+    }, 200);
+    input.addEventListener('input', e=>{ if(hidden) hidden.value=''; runFetch(e.target.value); });
+    input.addEventListener('blur', ()=> setTimeout(()=>list.hidden=true,150));
+  }
+
+  attachSuggest('reported_name','reported_staff_id');
+  attachSuggest('venepunchre_done_by','venepunchre_staff_id', { phleboOnly:true });
+
+  // Auto-fill when "Self" chosen
+  const reportedBySelect = document.getElementById('reported_by');
+  const reportedNameInput = document.getElementById('reported_name');
+  const reportedIdInput = document.getElementById('reported_staff_id');
+  reportedBySelect?.addEventListener('change', ()=>{
+    if(reportedBySelect.value === 'self' || reportedBySelect.value === 'sellf'){
+      if(currentUser.name){ reportedNameInput.value = currentUser.name; }
+      if(currentUser.id){ reportedIdInput.value = currentUser.id; }
+      reportedNameInput.dataset.autofilled = "1";
+    }else{
+      if(reportedNameInput.dataset.autofilled === "1"){
+        reportedNameInput.value = "";
+        reportedIdInput.value = "";
+        delete reportedNameInput.dataset.autofilled;
+      }
+    }
+  });
+
+  // Patient fetch
+  document.getElementById('btn-fetch-patient').addEventListener('click', async ()=>{
+    const pid = document.getElementById('patient_id').value.trim();
+    const statusEl = document.getElementById('patient-fetch-status');
+    if(!pid){ statusEl.textContent='Enter patient ID'; return; }
+    statusEl.textContent='Fetching...';
+    try{
+      const res = await fetch(patientApiBase + encodeURIComponent(pid));
+      const data = await res.json();
+      if(!res.ok){ statusEl.textContent = data.message || 'Not found'; return; }
+      document.getElementById('name').value = data.name || '';
+      document.getElementById('age').value = data.age || '';
+      document.getElementById('gender').value = data.gender || '';
+      document.getElementById('mobile_no').value = data.mobile_no || '';
+      statusEl.textContent='Fetched';
+    }catch(e){ statusEl.textContent='Error fetching'; }
+  });
+
+  // block Enter key submit except inside textarea (just unfocus)
+  const formEl = document.getElementById('venepunchre-form');
+  formEl.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter' && e.target.tagName !== 'TEXTAREA'){
+      e.preventDefault();
+    }
+  });
+</script>
+{% endblock %}

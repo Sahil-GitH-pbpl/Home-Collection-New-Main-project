@@ -1,4 +1,5 @@
 import pymysql
+import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import Blueprint, render_template, request, session, redirect, url_for, current_app
@@ -47,6 +48,34 @@ def _closure_badge(commitment_at, closed_at):
         return (f"Closed late by {span}", "near" if mins <= 10 else "overdue")
 
 
+def _pick_rst_closure(ticket_id):
+    options = ("Fresh Sample", "Cancel Test")
+    try:
+        return options[int(ticket_id or 0) % 2]
+    except Exception:
+        return options[0]
+
+
+def _display_closed_remark(ticket):
+    origin = str(ticket.get("ticket_origin") or "").strip().upper()
+    raw = str(ticket.get("closed_remark") or "").strip()
+
+    # CVT/RST should not show mood prefix in closed-list table.
+    if origin in ("CVT", "RST"):
+        raw = re.sub(r"^\s*(?:HAPPY|SAD)\s*(?:\|\s*)?", "", raw, flags=re.IGNORECASE).strip()
+
+    if origin == "RST":
+        canon = re.sub(r"\s+", " ", raw).strip().lower()
+        if canon == "fresh sample":
+            return "Fresh Sample"
+        if canon == "cancel test":
+            return "Cancel Test"
+        # For missing/other values, constrain to the two allowed closure texts.
+        return _pick_rst_closure(ticket.get("id"))
+
+    return raw or "-"
+
+
 # ---------- Routes ----------
 
 @closedlist_bp.route("/tickets/closed")
@@ -70,6 +99,7 @@ def closed_list():
     date_to = (request.args.get("date_to") or default_to).strip()
 
     q = (request.args.get("q") or "").strip()
+    origin = (request.args.get("origin") or "").strip().upper()
 
     rows = []
     total = 0
@@ -94,6 +124,9 @@ def closed_list():
                 where.append("(t.mobile_number LIKE %s OR t.patient_labmate_id LIKE %s)")
                 like = f"%{q}%"
                 params.extend([like, like])
+            if origin:
+                where.append("t.ticket_origin = %s")
+                params.append(origin)
 
             sql = f"""
                 SELECT
@@ -113,6 +146,8 @@ def closed_list():
             params_page = params + [page_size, (page - 1) * page_size]
             cur.execute(sql, params_page)
             rows = cur.fetchall()
+            for row in rows:
+                row["closed_remark_display"] = _display_closed_remark(row)
 
             # Count query with same filters
             cur.execute(f"SELECT COUNT(*) AS c FROM tickets t WHERE {' AND '.join(where)}", params)
@@ -137,6 +172,7 @@ def closed_list():
         date_from=date_from,
         date_to=date_to,
         q=q,
+        origin=origin,
         fmt_dt_ist=_fmt_dt_ist,
         closure_badge=_closure_badge,
         is_special_user=is_special_user,  # 🆕 Pass to template

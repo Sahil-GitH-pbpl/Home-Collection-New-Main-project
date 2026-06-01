@@ -83,6 +83,27 @@ def _resolve_exotel_creds() -> Tuple[str, str, str, str]:
 def _digits_only(num: str) -> str:
     return "".join([c for c in (num or "") if c.isdigit()])
 
+
+def _get_incoming_call_type(call_sid: Optional[str]) -> Optional[str]:
+    if not call_sid:
+        return None
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor(DictCursor) as cur:
+            cur.execute("""
+                SELECT call_type
+                FROM exotel_incoming_calls
+                WHERE call_sid = %s
+                LIMIT 1
+            """, (call_sid,))
+            row = cur.fetchone() or {}
+            return row.get("call_type")
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
 # ------------------ Routes ------------------
 
 @cce_bp.route("/cce")
@@ -421,6 +442,8 @@ def cce_callback():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+    missed_reason = _get_incoming_call_type(incoming_sid)
+
     conn = get_db_connection()
     row_id: Optional[int] = None
     try:
@@ -429,8 +452,8 @@ def cce_callback():
             cur.execute("""
                 INSERT INTO exotel_outgoing_calls
                     (call_sid, from_number, to_number, call_status, dial_call_status,
-                     dial_call_duration, callback_by_id, callback_by_name)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                     dial_call_duration, callback_by_id, callback_by_name, missed_reason)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 init_sid,
                 from_number,
@@ -440,6 +463,7 @@ def cce_callback():
                 0,
                 user_id,
                 user_name,
+                missed_reason,
             ))
             row_id = cur.lastrowid
         conn.commit()
@@ -628,6 +652,8 @@ def make_call():
     if not cce_number:
         return jsonify({"status": "error", "message": "CCE number missing"}), 400
 
+    missed_reason = _get_incoming_call_type(incoming_sid)
+
     try:
         api_key, api_token, exo_sid, caller_id = _resolve_exotel_creds()
     except Exception as e:
@@ -679,8 +705,8 @@ def make_call():
             cur.execute("""
                 INSERT INTO exotel_outgoing_calls
                     (call_sid, from_number, to_number, call_status, dial_call_status,
-                     dial_call_duration, callback_by_id, callback_by_name)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                     dial_call_duration, callback_by_id, callback_by_name, missed_reason)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 call_sid or incoming_sid or f"CB_{int(time.time())}",
                 cce_number,
@@ -690,6 +716,7 @@ def make_call():
                 int(dial_duration or 0),
                 user_id,
                 user_name,
+                missed_reason,
             ))
         conn.commit()
     except Exception as e:

@@ -1,6 +1,6 @@
 # base.py
 from flask import Blueprint, render_template, redirect, url_for, session, jsonify, current_app
-from app.db.connection import get_db_connection
+from app.db.connection import get_complaint_connection, get_db_connection
 import pymysql
 import json
 from datetime import datetime
@@ -150,15 +150,24 @@ def tickets_counters():
             """)
             missed_calls = cur.fetchone().get("missed_calls", 0) or 0
 
-            # 6) NEW: Unassigned ODT Tickets
+            # 6) Unassigned ODT + RST Tickets
             cur.execute("""
-                SELECT COUNT(*) AS odt_unassigned
+                SELECT COUNT(*) AS odt_rst_unassigned
                 FROM tickets
                 WHERE (status IS NULL OR status='' OR status='Open' OR status='open')
-                  AND ticket_origin = 'ODT'
+                  AND ticket_origin IN ('ODT', 'RST')
                   AND assign_to_user_id IS NULL
             """)
-            odt_unassigned = cur.fetchone().get("odt_unassigned", 0) or 0
+            odt_rst_unassigned = cur.fetchone().get("odt_rst_unassigned", 0) or 0
+
+            # 7) Open CVT tickets (all open, regardless of assignee)
+            cur.execute("""
+                SELECT COUNT(*) AS cvt_open
+                FROM tickets
+                WHERE (status IS NULL OR status='' OR status='Open' OR status='open')
+                  AND ticket_origin = 'CVT'
+            """)
+            cvt_open = cur.fetchone().get("cvt_open", 0) or 0
 
     except Exception as e:
         current_app.logger.error(f"[tickets_counters] DB error: {e}")
@@ -203,9 +212,25 @@ def tickets_counters():
 
      # 7) NEW: Failed WhatsApp Messages Count from LabMate database
     failed_messages = 0
+    return jsonify({
+        "ok": True,
+        "assigned": assigned,
+        "tagged": tagged,
+        "my_breached": my_breached,
+        "leads_fresh": int(leads_fresh),
+        "missed_calls": int(missed_calls),
+        "odt_rst_unassigned": int(odt_rst_unassigned),
+        "cvt_open": cvt_open
+    })
+
+
+# ---------------- FAILED MESSAGES COUNTER (separate) ----------------
+@base_bp.route("/api/tickets/failed-messages")
+def tickets_failed_messages():
+    failed_messages = 0
     try:
         labmate_conn = mysql.connector.connect(
-            host='192.168.0.167',
+            host='10.1.1.51',
             user='sahil',
             password='sahil@123',
             database='labmaterecod'
@@ -226,14 +251,37 @@ def tickets_counters():
     except Exception as e:
         current_app.logger.error(f"Failed to fetch failed messages count: {e}")
         failed_messages = 0
+    return jsonify({"ok": True, "failed_messages": failed_messages})
 
-    return jsonify({
-        "ok": True,
-        "assigned": assigned,
-        "tagged": tagged,
-        "my_breached": my_breached,
-        "leads_fresh": int(leads_fresh),
-        "missed_calls": int(missed_calls),
-        "odt_unassigned": int(odt_unassigned),
-        "failed_messages": failed_messages  # NEW FIELD
-    })
+
+@base_bp.route("/api/tickets/complaint-count")
+def tickets_complaint_count():
+    complaint_count = 0
+    conn = None
+    cursor = None
+    try:
+        conn = get_complaint_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS complaint_count
+            FROM feedback_responses
+            WHERE has_updates = 0
+              AND status IN ('manual_review', 'ticket_created')
+            """
+        )
+        result = cursor.fetchone()
+        complaint_count = int((result or {}).get("complaint_count") or 0)
+    except Exception as exc:
+        current_app.logger.error(f"Failed to fetch complaint count: {exc}")
+        complaint_count = 0
+    finally:
+        try:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+    return jsonify({"ok": True, "complaint_count": complaint_count})

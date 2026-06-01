@@ -35,6 +35,17 @@
   .cols-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .mb8{margin-bottom:8px}.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}
   .divider{height:1px;background:#eef2f7;margin:10px 0}
+  .contact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+  .contact-box{border:1px solid #e5e7eb;border-radius:10px;padding:10px;background:#f8fafc}
+  .contact-box h4{margin:0 0 8px 0;font-size:14px}
+  .clear-contact{
+    background:#e04f4f;color:#fff;border:none;padding:4px 10px;border-radius:10px;cursor:pointer;font-size:12px;float:right;
+  }
+  .contact-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+  .contact-row label{font-size:13px;font-weight:600}
+  .contact-tags{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{padding:6px 10px;border-radius:999px;border:1px solid #d1d5db;cursor:pointer;display:flex;align-items:center;gap:4px;font-size:12px;background:#fff;}
+  .pill input{margin:0;}
 
   /* ===== Searchable staff picker (Tag -> Add New) ===== */
   .search-wrap{position:relative}
@@ -75,6 +86,7 @@
      data-assignee-name="{{ current_assignee.name or '' }}"
      data-me-id="{{ session.get('user_id') or '' }}"
      data-me-name="{{ session.get('username') or '' }}"
+     data-origin="{{ ticket.ticket_origin or '' }}"
 ></div>
 <div class="page-head"><h2>🎫 Ticket #{{ ticket.id }}</h2></div>
 
@@ -102,6 +114,14 @@
         {# WhatsApp Opt-in is meaningful even if false → force show #}
         <div class="muted">WhatsApp Opt-in</div><div>{{ 'Yes' if ticket.whatsapp_opt_in==1 else 'No' }}</div>
         <div class="muted">Ticket Category</div><div>{{ ticket.ticket_category }}</div>
+        {{ kv_row('Sample Type', ticket.sample_type) }}
+        {{ kv_row('Rejection Reason', ticket.rejection_reason) }}
+        {% if doc_pan %}
+          {{ kv_row('Doctor', doc_pan.get('doctor', {}).get('name')) }}
+          {{ kv_row('Doctor Mobile', doc_pan.get('doctor', {}).get('mobile')) }}
+          {{ kv_row('Panel', doc_pan.get('panel', {}).get('name')) }}
+          {{ kv_row('Panel Mobile', doc_pan.get('panel', {}).get('mobile')) }}
+        {% endif %}
         {# Commitment row shows when there is either a display string or a state #}
         {% set has_commit = commitment.display %}
 {% if has_commit %}
@@ -121,9 +141,33 @@
         {{ kv_row('Created By', ticket.created_by) }}
         {{ kv_row('Created At', ticket.created_at) }}
         {{ kv_row('Additional Info', ticket.additional_info) }}
+        {% if ticket.ticket_origin == 'CVT' and cv_tests %}
+          <div class="muted" style="margin-top:8px;">CV Tests</div>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;font-size:13px;margin-top:4px;">
+            <thead>
+              <tr style="background:#f3f4f6;">
+                <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Test</th>
+                <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Value</th>
+                <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Result</th>
+                <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Interpretation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in cv_tests %}
+              <tr>
+                <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.test_name }}</td>
+                <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.value_text or '-' }}</td>
+                <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.result_text or '-' }}</td>
+                <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.interp_text or '-' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
       </div>
     </div>
 
+    {% if ticket.ticket_origin not in ['CVT','RST'] %}
     <!-- Box 2: Tagged Staff & Updates -->
     <div class="card">
       <h3>Tagged Staff (Name + Latest Remark)</h3>
@@ -145,6 +189,7 @@
       </table>
       {% endif %}
     </div>
+    {% endif %}
 
     <!-- Box 3: Assignment Updates (history) -->
     <div class="card">
@@ -173,6 +218,7 @@
   <!-- RIGHT COLUMN (order updated) -->
   <div class="right-col" style="display:grid;gap:16px">
 
+    {% if ticket.ticket_origin not in ['CVT','RST'] %}
     <!-- 1) Tag: Add New (SEARCHABLE staff) -->
     <div class="card">
       <h3>Tag</h3>
@@ -261,7 +307,7 @@
 
         <div class="mb12">
           <label class="muted mb8">Remark</label>
-          <textarea name="remark" required placeholder="Write your update..."></textarea>
+          <textarea name="remark" placeholder="Write your update..."></textarea>
         </div>
 
         <div class="flex">
@@ -273,6 +319,7 @@
         {% endif %}
       </form>
     </div>
+    {% endif %}
 
     <!-- 4) Update (Quick Remark) / Close -->
     <div class="card">
@@ -281,10 +328,55 @@
         <input type="hidden" name="closure_mood" id="closure_mood" value="">
         <input type="hidden" name="confirm_cross_close" id="confirm_cross_close" value="0">
         <input type="hidden" name="close_ticket" id="close_ticket_hidden" value="0">
+        {% if ticket.ticket_origin in ['CVT','RST'] %}
+        <div class="mb12">
+          <label class="muted mb8">Contact Attempts</label>
+          <div class="contact-grid">
+            {% set cl = contact_log or {} %}
+            {% set patient = cl.get('patient', {}) %}
+            {% set doctor = cl.get('doctor', {}) %}
+            {% set hospital = cl.get('hospital', {}) %}
+            {% for label, key, data in [
+              ('Patient','patient', patient),
+              ('Doctor','doctor', doctor),
+              ('Hospital / Clinic','hospital', hospital)
+            ] %}
+            <div class="contact-box" data-key="{{key}}">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <h4 style="margin:0">{{ label }}</h4>
+                <button type="button" class="clear-contact" data-key="{{key}}">Clear</button>
+              </div>
+              <div class="contact-row">
+                <label><input type="checkbox" class="called-toggle" name="called_{{key}}" value="1" {% if data.get('called') %}checked{% endif %}> Called</label>
+              </div>
+              <div class="contact-tags">
+                {% for val, txt in [('spoken','Spoken'),('no_response','No response'),('not_reachable','Switched off / Not reachable')] %}
+                <label class="pill">
+                  <input type="radio" class="status-radio" name="status_{{key}}" value="{{val}}" {% if data.get('status')==val %}checked{% endif %}>
+                  {{ txt }}
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {% if ticket.ticket_origin == 'RST' %}
+        <div class="mb12">
+          <label class="muted mb8">Update Remark</label>
+          <select class="input" name="remark">
+            <option value="">-- Select Update --</option>
+            <option value="Fresh Sample">Fresh Sample</option>
+            <option value="Cancel Test">Cancel Test</option>
+          </select>
+        </div>
+        {% else %}
         <div class="mb12">
           <label class="muted mb8">Remark</label>
           <textarea name="remark" placeholder="Write your update..."></textarea>
         </div>
+        {% endif %}
         <div class="flex">
           <button class="btn" type="submit">Submit Remark</button>
           <button class="btn secondary" type="submit" name="close_ticket" value="1" formaction="{{ url_for('ticket_detail.ticket_quick_remark', ticket_id=ticket.id) }}">
@@ -336,6 +428,34 @@
   function minutesBetween(a,b){ return Math.floor((b - a)/60000); }
   const debounce = (fn,delay=180)=>{ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args),delay); }; };
   const pad = n => String(n).padStart(2,'0');
+
+  // ---------- Clear contact selections ----------
+  document.querySelectorAll('.clear-contact').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const key = btn.dataset.key;
+      if(!key) return;
+      const called = document.querySelector(`input[name="called_${key}"]`);
+      if(called) called.checked = false;
+      document.querySelectorAll(`input[name="status_${key}"]`).forEach(r=> r.checked = false);
+      toggleStatusEnabled(key, false);
+    });
+  });
+
+  function toggleStatusEnabled(key, enabled){
+    document.querySelectorAll(`input[name="status_${key}"]`).forEach(r=>{
+      r.disabled = !enabled;
+      if(!enabled) r.checked = false;
+    });
+  }
+
+  // Initialize and bind enable/disable on Called checkbox
+  document.querySelectorAll('.called-toggle').forEach(cb=>{
+    const key = cb.name.replace('called_','');
+    toggleStatusEnabled(key, cb.checked);
+    cb.addEventListener('change', ()=>{
+      toggleStatusEnabled(key, cb.checked);
+    });
+  });
 
   // ---------- Populate ONLY CCE for Shift To ----------
   async function populateCCE(){
@@ -616,14 +736,48 @@
 
     // Intercept submit: only when it's a close attempt
     form.addEventListener('submit', function(e){
+      const origin = (root?.dataset.origin || '').toUpperCase();
+      const remarkField = form.querySelector('textarea[name="remark"]') || form.querySelector('select[name="remark"]');
+      const remarkVal = (remarkField?.value || '').trim();
+
+      // Hospital called -> remark mandatory (CVT/RST) for any submit
+      if (origin === 'CVT' || origin === 'RST') {
+        const hospCalled = form.querySelector('input[name="called_hospital"]')?.checked;
+        if (hospCalled && !remarkVal){
+          e.preventDefault();
+          alert('Remark required when Hospital is marked Called. Please add hospital/clinic name in remark.');
+          return;
+        }
+        // If any Called checked, require a status selected for that block
+        ['patient','doctor','hospital'].forEach(k=>{
+          const called = form.querySelector(`input[name="called_${k}"]`)?.checked;
+          const status = form.querySelector(`input[name="status_${k}"]:checked`)?.value;
+          if (called && !status){
+            e.preventDefault();
+            alert(`${k.charAt(0).toUpperCase()+k.slice(1)}: Select a status when Called is ticked.`);
+          }
+        });
+      }
+
       if (!isClosingAttempt) return; // simple remark
 
       e.preventDefault();
 
-      const remark = (form.querySelector('textarea[name="remark"]').value || '').trim();
-      if (!remark){
-        alert('Remark is required');
-        return;
+      // CVT/RST: must have at least one Called + Spoken before close
+      if (origin === 'CVT' || origin === 'RST'){
+        const cats = ['patient','doctor','hospital'];
+        let spokenOk = false;
+        cats.forEach(k=>{
+          const called = form.querySelector(`input[name="called_${k}"]`)?.checked;
+          const status = form.querySelector(`input[name="status_${k}"]:checked`)?.value;
+          if (called && status === 'spoken') spokenOk = true;
+        });
+        if (!spokenOk){
+          alert('Close blocked: Mark at least one as Called + Spoken (Patient/Doctor/Hospital).');
+          document.getElementById('close_ticket_hidden').value = "0";
+          isClosingAttempt = false;
+          return;
+        }
       }
 
       startCloseFlow();
@@ -664,6 +818,7 @@
       disableFormById('tagUpdateForm');
     }
   })();
+
 </script>
 
 {% endblock %}

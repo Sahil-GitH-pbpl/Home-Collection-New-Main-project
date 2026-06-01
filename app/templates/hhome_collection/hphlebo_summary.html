@@ -1,0 +1,431 @@
+﻿{% extends 'base.html' %}
+{% block title %}Home Collection Phlebo Summary{% endblock %}
+{% block content %}
+<style>
+  .phlebo-summary-page { font-family: 'Segoe UI', sans-serif; background-color: #f4f4f4; min-height: calc(100vh - 120px); padding: 0 0 20px; }
+    .phlebo-summary-page .summary-shell {
+      margin: -10px 4px 0;
+    border: 1px solid #d8dde6;
+    border-radius: 14px;
+    box-shadow: 0 6px 18px rgba(5, 72, 228, 0.4);
+    padding: 8px 12px;
+  }
+  .phlebo-summary-page .header-container { display: flex; justify-content: space-between; align-items: stretch; gap: 16px; flex-wrap: nowrap; }
+  .phlebo-summary-page .left-header { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; flex: 1 1 62%; }
+  .phlebo-summary-page .right-header { display: flex; align-items: flex-start; justify-content: flex-end; gap: 14px; min-width: 0; flex: 0 0 auto; }
+  .phlebo-summary-page .header-title { color: #037a35; margin: -3px 0 7px; font-size: 23px; }
+  .phlebo-summary-page .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .phlebo-summary-page input[type="date"], .phlebo-summary-page button, .phlebo-summary-page select { padding: 4px 10px; font-size: 13px; }
+  .phlebo-summary-page button {
+    font-weight: 700;
+    background: #9a3412;
+    color: white;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1.1;
+    min-height: 26px;
+    padding: 3px 8px;
+    font-size: 12px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.35) inset;
+  }
+  .phlebo-summary-page button:hover { background: #7c2d12; }
+  .phlebo-summary-page button.active { background: linear-gradient(to right, blue, green) !important; color: white; }
+  .phlebo-summary-page .center-summary { display: flex; flex-direction: row; justify-content: flex-start; align-items: flex-start; font-size: 14px; font-weight: bold; color: #1b5e20; gap: 24px; min-width: 0; }
+  .phlebo-summary-page .left-counts { display: flex; flex-direction: column; gap: 12px; }
+  .phlebo-summary-page .late-counts-container { display: flex; flex-direction: column; gap: 12px; padding-left: 0; margin-left: 0; border-left: none; }
+  .phlebo-summary-page .legend {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #333;
+    min-width: 150px;
+    padding-top: 0;
+    margin-top: -2px;
+  }
+  .phlebo-summary-page .center-summary .summary-item span { color: black; font-weight: bold; }
+  .phlebo-summary-page .legend span { display: flex; align-items: center; gap: 6px; }
+  .phlebo-summary-page .legend .dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; }
+    .phlebo-summary-page .legend .status-0 { background-color: #c9c4c4; }
+    .phlebo-summary-page .legend .status-2 { background-color: #559bf7; }
+    .phlebo-summary-page .legend .status-3 { background-color: #b4e2b6; }
+    .phlebo-summary-page .legend .status-4 { background-color: #ebaeb4; }
+    .phlebo-summary-page .table-wrapper { display: flex; flex-direction: column; margin: 6px 4px; background: white; border: 1px solid #ccc; }
+  .phlebo-summary-page .table-horizontal-scroll { overflow-x: auto; overflow-y: hidden; width: 100%; scrollbar-color: #0D47A1 #BBDEFB; scrollbar-width: thin; }
+  .phlebo-summary-page .table-horizontal-scroll::-webkit-scrollbar { height: 20px; }
+  .phlebo-summary-page .table-horizontal-scroll::-webkit-scrollbar-track { background: #BBDEFB; }
+  .phlebo-summary-page .table-horizontal-scroll::-webkit-scrollbar-thumb { background-color: #0D47A1; border-radius: 10px; border: 4px solid #BBDEFB; }
+  .phlebo-summary-page .table-horizontal-scroll::-webkit-scrollbar-thumb:hover { background-color: #08306b; }
+  .phlebo-summary-page .table-vertical-scroll { overflow-y: auto; max-height: calc(100vh - 200px); }
+  .phlebo-summary-page table { border-collapse: collapse; width: auto; min-width: 100%; font-size: 13px; background: white; }
+    .phlebo-summary-page th, .phlebo-summary-page td { border: 1px solid #ccc; padding: 4px; text-align: center; min-width: 120px; line-height: 1.15; }
+  .phlebo-summary-page th { background-color: #2e7d32; color: white; position: sticky; top: 0; z-index: 1; }
+  .phlebo-summary-page .time-slot { background-color: #e0f2f1; font-weight: bold; min-width: 150px; }
+  .phlebo-summary-page tr:nth-child(even) { background-color: #f9f9f9; }
+  .phlebo-summary-page .loading { font-style: italic; color: #777; padding: 20px; }
+    .phlebo-summary-page .booking-cell-stack { display: flex; flex-direction: column; gap: 3px; align-items: center; }
+    .phlebo-summary-page .booking-chip { display: inline-block; width: 100%; max-width: 250px; line-height: 1.18; }
+    .phlebo-summary-page .status-0 { background-color: #c9c4c4 !important; padding: 4px 0; border-radius: 3px; margin: 0 1px; }
+    .phlebo-summary-page .status-1 { background-color: #c9c4c4 !important; padding: 4px 0; border-radius: 3px; margin: 0 1px; }
+    .phlebo-summary-page .status-2 { background-color: #559bf7 !important; padding: 4px 0; border-radius: 3px; margin: 0 1px; }
+    .phlebo-summary-page .status-3 { background-color: #b4e2b6 !important; padding: 4px 0; border-radius: 3px; margin: 0 1px; }
+    .phlebo-summary-page .status-4 { background-color: #ebaeb4 !important; padding: 4px 0; border-radius: 3px; margin: 0 1px; }
+    .phlebo-summary-page .late-indicator { display: inline-block; margin-left: 3px; padding: 0 4px; font-size: 9px; font-weight: bold; border-radius: 3px; color: white; line-height: 1.25; }
+  .phlebo-summary-page .ls-indicator { background-color: #ff9800; }
+  .phlebo-summary-page .lc-indicator { background-color: #f44336; }
+  .phlebo-summary-page .ns-indicator { background-color: #9c27b0; }
+  .phlebo-summary-page .booking-colony { font-weight: 700; color: navy; font-size: 12px; }
+  .phlebo-summary-page .loader-container { display: flex; justify-content: center; align-items: center; height: 200px; }
+  .phlebo-summary-page .loader-dots { display: flex; gap: 12px; }
+  .phlebo-summary-page .loader-dot { width: 16px; height: 16px; border-radius: 50%; animation: bounce 0.6s infinite alternate; }
+  .phlebo-summary-page .loader-dot:nth-child(1) { background-color: green; animation-delay: 0s; }
+  .phlebo-summary-page .loader-dot:nth-child(2) { background-color: blue; animation-delay: 0.2s; }
+  .phlebo-summary-page .loader-dot:nth-child(3) { background-color: red; animation-delay: 0.4s; }
+  @keyframes bounce { to { transform: translateY(-12px); opacity: 0.6; } }
+  @page { size: A0 landscape; margin: 0mm; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; zoom: 100%; }
+    .phlebo-summary-page .table-wrapper { margin: 0 !important; border: none !important; width: 100% !important; }
+    .phlebo-summary-page .table-horizontal-scroll, .phlebo-summary-page .table-vertical-scroll { overflow: visible !important; width: 100% !important; max-width: 100% !important; }
+    .phlebo-summary-page table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; page-break-inside: auto !important; }
+    .phlebo-summary-page thead { display: table-header-group !important; }
+    .phlebo-summary-page tr { page-break-inside: avoid !important; }
+    .phlebo-summary-page th, .phlebo-summary-page td { padding: 4px !important; font-size: 11px !important; width: 35px !important; max-width: 35px !important; white-space: normal !important; word-wrap: break-word !important; overflow-wrap: break-word !important; }
+    .phlebo-summary-page th { background-color: #2e7d32 !important; color: white !important; }
+    .phlebo-summary-page button, .phlebo-summary-page input, .phlebo-summary-page select, .phlebo-summary-page .controls, .phlebo-summary-page .loader-container { display: none !important; }
+    ::-webkit-scrollbar { display: none !important; }
+    .phlebo-summary-page th:last-child, .phlebo-summary-page td:last-child { display: none !important; }
+  }
+  .phlebo-summary-page .late-column { background-color: #ffebee !important; }
+  .phlebo-summary-page .summary-item { white-space: nowrap; }
+</style>
+
+<div class="phlebo-summary-page">
+  <div class="summary-shell">
+    <div class="header-container">
+      <div class="left-header">
+        <h2 class="header-title">Home Collection Phlebo Summary</h2>
+        <div class="controls">
+          <label for="date">Select Date:</label>
+          <input type="date" id="date" />
+          <label for="timeFilter">Show From:</label>
+          <select id="timeFilter">
+            <option value="all">All Time Slots</option>
+            <option value="06:00">6:00 AM</option>
+            <option value="07:00">7:00 AM</option>
+            <option value="08:00">8:00 AM</option>
+            <option value="09:00">9:00 AM</option>
+            <option value="10:00">10:00 AM</option>
+            <option value="11:00">11:00 AM</option>
+            <option value="12:00">12:00 PM</option>
+            <option value="13:00">1:00 PM</option>
+            <option value="14:00">2:00 PM</option>
+            <option value="15:00">3:00 PM</option>
+            <option value="16:00">4:00 PM</option>
+            <option value="17:00">5:00 PM</option>
+            <option value="18:00">6:00 PM</option>
+            <option value="19:00">7:00 PM</option>
+            <option value="20:00">8:00 PM</option>
+            <option value="21:00">9:00 PM</option>
+            <option value="22:00">10:00 PM</option>
+            <option value="23:00">11:00 PM</option>
+            <option value="00:00">12:00 AM</option>
+          </select>
+          <button type="button" onclick="fetchSummary('phlebo')">Phlebo Wise</button>
+          <button type="button" onclick="fetchSummary('route')">Route Wise</button>
+          <button type="button" onclick="window.print()">Print</button>
+          <button type="button" onclick="exportToExcel()">Export to Excel</button>
+        </div>
+      </div>
+      <div class="right-header">
+        <div class="center-summary" id="summary-counts">
+          <div class="left-counts">
+            <div class="summary-item">📊 <strong>Total:</strong> <span id="total">00</span></div>
+            <div class="summary-item">✅ <strong>Assigned:</strong> <span id="assigned">00</span></div>
+            <div class="summary-item">🚫 <strong>Skipped:</strong> <span id="skipped">00</span></div>
+          </div>
+          <div class="late-counts-container">
+            <div class="summary-item">⚠️ <strong>Late Start:</strong> <span id="lateStart">00</span></div>
+            <div class="summary-item">⏰ <strong>Late Complete:</strong> <span id="lateComplete">00</span></div>
+            <div class="summary-item">🚷 <strong>Not Start:</strong> <span id="noStart">00</span></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span><span class="dot status-0"></span> Not Started</span>
+          <span><span class="dot status-2"></span> Running</span>
+          <span><span class="dot status-3"></span> Completed</span>
+          <span><span class="dot status-4"></span> Cancelled</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrapper">
+    <div class="table-horizontal-scroll">
+      <div class="table-vertical-scroll" id="summary-area">
+        <p class="loading">Please select a date and click a view type.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+  const DATA_URL = "{{ url_for('phlebo_summary.summary_data') }}";
+  document.getElementById("date").valueAsDate = new Date();
+
+  function generateTimeSlots() {
+    const slots = [];
+    let start = new Date("2000-01-01T06:00:00");
+    for (let i = 0; i < 36; i++) {
+      const end = new Date(start.getTime() + 30 * 60000);
+      const format = (t) => t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+      slots.push(`${format(start)} - ${format(end)}`);
+      start = end;
+    }
+    return slots;
+  }
+
+  function parseTimeToMinutes(timeStr) {
+    if (!timeStr) return null;
+    if (timeStr.includes(":") && !timeStr.includes(" ")) {
+      const [hourStr, minuteStr] = timeStr.split(":");
+      const hours = parseInt(hourStr, 10);
+      const minutes = parseInt(minuteStr, 10);
+      if (!isNaN(hours) && !isNaN(minutes)) return hours * 60 + minutes;
+    }
+    const parts = String(timeStr).trim().split(" ");
+    if (parts.length < 2) return null;
+    const [hourStr, minuteStr] = parts[0].split(":");
+    let hours = parseInt(hourStr, 10);
+    const minutes = parseInt(minuteStr, 10);
+    const modifier = parts[1].toUpperCase();
+    if (isNaN(hours) || isNaN(minutes)) return null;
+    if (modifier === "PM" && hours !== 12) hours += 12;
+    if (modifier === "AM" && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  }
+
+  function parseSlotStart(slotStr) {
+    if (!slotStr) return null;
+    const cleaned = String(slotStr).replace(/[â€“â€”]/g, "-").replace(/\s+/g, " ").trim();
+    const parts = cleaned.split("-");
+    return parts[0] ? parseTimeToMinutes(parts[0].trim()) : null;
+  }
+
+  function parseSlotEnd(slotStr) {
+    if (!slotStr) return null;
+    const cleaned = String(slotStr).replace(/[â€“â€”]/g, "-").replace(/\s+/g, " ").trim();
+    const parts = cleaned.split("-");
+    return parts[1] ? parseTimeToMinutes(parts[1].trim()) : null;
+  }
+
+  function getCurrentTimeInMinutes() {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  }
+
+  function checkLateStatus(booking, slotStartMins, slotEndMins) {
+    const status = parseInt(booking.status || 0, 10);
+    const startTimeMins = parseTimeToMinutes(booking.strt_time);
+    const completeTimeMins = parseTimeToMinutes(booking.cmplt_time);
+    const nowMins = getCurrentTimeInMinutes();
+    const indicators = [];
+    if ((status === 0 || status === 1) && !booking.strt_time) {
+      if (nowMins > slotStartMins + 5) indicators.push({ type: "NS", text: "NS" });
+    }
+    if (booking.strt_time && startTimeMins > slotStartMins + 5) {
+      indicators.push({ type: "LS", text: "LS" });
+    }
+    if (status === 2 && booking.cmplt_time) {
+      if (completeTimeMins > slotEndMins + 5) indicators.push({ type: "LC", text: "LC" });
+    }
+    return { indicators, shouldColumnBeRed: indicators.length > 0 && (status === 0 || status === 1) };
+  }
+
+  function getStatusText(status) {
+    const num = parseInt(status || 0, 10);
+    return ({ 0: "Pending", 1: "Assigned", 2: "Started", 3: "Completed", 4: "Cancelled" })[num] || "Unknown";
+  }
+
+  function getVisualStatusClass(booking) {
+    const status = parseInt((booking && booking.status) || 0, 10);
+    if (status === 4) return "status-4";
+    if (status === 3) return "status-3";
+    if (status === 2) return "status-2";
+    return "status-0";
+  }
+
+  async function fetchSummary(view = "phlebo") {
+    document.querySelectorAll(".controls button").forEach(btn => btn.classList.remove("active"));
+    const activeBtn = view === "phlebo" ? document.querySelector('button[onclick*="phlebo"]') : document.querySelector('button[onclick*="route"]');
+    if (activeBtn) activeBtn.classList.add("active");
+
+    const date = document.getElementById("date").value;
+    const summaryArea = document.getElementById("summary-area");
+    summaryArea.innerHTML = `<div class="loader-container"><div class="loader-dots"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div></div></div>`;
+
+    try {
+      const res = await fetch(`${DATA_URL}?date=${encodeURIComponent(date)}&view=${encodeURIComponent(view)}`);
+      const data = await res.json();
+      if (!data.ok) {
+        summaryArea.innerHTML = `<p class="loading">ðŸš¨ Error: ${data.error || "Unknown error"}</p>`;
+        return;
+      }
+
+      document.getElementById("total").innerText = data.total_bookings ?? 0;
+      document.getElementById("assigned").innerText = data.assigned_bookings ?? 0;
+      document.getElementById("skipped").innerText = data.skipped_assignments ?? 0;
+
+      const timeSlots = generateTimeSlots();
+      let entries = view === "phlebo" ? (data.phlebos || []) : (data.routes || []);
+      const bookings = data.bookings || [];
+
+      if (entries.includes("UNASSIGNED")) {
+        entries = entries.filter((e) => e !== "UNASSIGNED");
+        entries.push("UNASSIGNED");
+      }
+      if (!entries.length) {
+        summaryArea.innerHTML = `<p class="loading">âš ï¸ No ${view === "phlebo" ? "phlebos" : "routes"} found for selected date.</p>`;
+        return;
+      }
+
+      let lateStartCount = 0, lateCompleteCount = 0, noStartCount = 0;
+      const redColumns = new Set();
+      const bookingsByColumn = {};
+
+      entries.forEach(entry => {
+        bookingsByColumn[entry] = bookings.filter(b => {
+          const label = view === "phlebo" ? b.phlebo : b.route;
+          return label && String(label).trim() === String(entry).trim();
+        });
+      });
+
+      bookings.forEach(booking => {
+        const slotStartMins = parseSlotStart(booking.slot);
+        const slotEndMins = parseSlotEnd(booking.slot);
+        if (!slotStartMins || !slotEndMins) return;
+        const lateStatus = checkLateStatus(booking, slotStartMins, slotEndMins);
+        lateStatus.indicators.forEach(ind => {
+          if (ind.type === "LS") lateStartCount++;
+          if (ind.type === "LC") lateCompleteCount++;
+          if (ind.type === "NS") noStartCount++;
+        });
+      });
+
+      document.getElementById("lateStart").innerText = lateStartCount;
+      document.getElementById("lateComplete").innerText = lateCompleteCount;
+      document.getElementById("noStart").innerText = noStartCount;
+
+      entries.forEach(entry => {
+        const columnBookings = bookingsByColumn[entry] || [];
+        let columnShouldBeRed = false;
+        for (const booking of columnBookings) {
+          const slotStartMins = parseSlotStart(booking.slot);
+          const slotEndMins = parseSlotEnd(booking.slot);
+          if (!slotStartMins || !slotEndMins) continue;
+          const lateStatus = checkLateStatus(booking, slotStartMins, slotEndMins);
+          if (lateStatus.shouldColumnBeRed) { columnShouldBeRed = true; break; }
+        }
+        if (columnShouldBeRed) redColumns.add(entry);
+      });
+
+      const selectedTime = document.getElementById("timeFilter").value;
+      let filteredTimeSlots = timeSlots;
+      if (selectedTime !== "all") {
+        const filterTimeMins = parseTimeToMinutes(selectedTime);
+        filteredTimeSlots = timeSlots.filter(slot => parseSlotStart(slot) >= filterTimeMins);
+      }
+
+      let html = "<table><thead><tr><th>Time Slot</th>";
+      entries.forEach((name) => {
+        const isUnassigned = name === "UNASSIGNED";
+        const isRed = redColumns.has(name);
+        let style = "";
+        if (isUnassigned) style += "background-color: orange;";
+        if (isRed) style += "background-color: #ffcdd2;";
+        html += `<th style="${style}">${name}</th>`;
+      });
+      html += "</tr></thead><tbody>";
+
+      filteredTimeSlots.forEach((slot) => {
+        const slotStartMins = parseSlotStart(slot);
+        const slotEndMins = parseSlotEnd(slot);
+        html += `<tr><td class="time-slot">${slot}</td>`;
+        entries.forEach((entry) => {
+          const matchingBookings = bookings.filter((b) => {
+            if (!b.slot || !(view === "phlebo" ? b.phlebo : b.route)) return false;
+            const bSlotStartMins = parseSlotStart(b.slot);
+            const label = view === "phlebo" ? b.phlebo : b.route;
+            return bSlotStartMins === slotStartMins && String(label).trim() === String(entry).trim();
+          });
+            const cellContents = matchingBookings.map((b) => {
+              const colony = (b.colony_name_snapshot || b.colony_name || "").trim();
+              const city = (b.city || "").trim();
+              const mobile = (b.caller_mobile || "").trim();
+              const line1 = colony ? `<span class="booking-colony">${colony}</span>` : (city || "-");
+              const line2 = [city, mobile].filter(Boolean).join(", ") || "-";
+              const text = `${line1}<br>${line2}`;
+            const stat = getVisualStatusClass(b);
+            const lateStatus = checkLateStatus(b, slotStartMins, slotEndMins);
+            let indicatorsHtml = "";
+            lateStatus.indicators.forEach(ind => { indicatorsHtml += `<span class="late-indicator ${ind.type.toLowerCase()}-indicator">${ind.text}</span>`; });
+            const addrParts = [
+              b.house_flat_no,
+              b.floor,
+              b.street_line,
+              b.landmark,
+              b.colony_name_snapshot,
+              b.city,
+              b.pincode_snapshot
+            ].map(v => (v || "").trim()).filter(Boolean);
+            const addrText = addrParts.length ? addrParts.join(", ") : "N/A";
+            const tooltip = `Collection details:\nAddress: ${addrText}\nMobile: ${b.caller_mobile || "N/A"}\nPatients: ${b.patient_names || "N/A"}\nPatient Mobiles: ${b.patient_mobiles || "N/A"}\nStatus: ${getStatusText(b.status)}\nStart Time: ${b.strt_time || "Not started"}\nComplete Time: ${b.cmplt_time || "Not completed"}`;
+            return `<div class="booking-chip ${stat}" title="${tooltip.replace(/"/g, "&quot;")}">${text} ${indicatorsHtml}</div>`;
+            }).join("");
+            let tdStyle = "";
+            if (entry === "UNASSIGNED") tdStyle += "background-color: #ffe0b2;";
+            if (redColumns.has(entry)) tdStyle += "background-color: #ffebee;";
+            html += `<td style="${tdStyle}">${cellContents ? `<div class="booking-cell-stack">${cellContents}</div>` : "-"}</td>`;
+          });
+        html += "</tr>";
+      });
+
+      html += "</tbody></table>";
+      summaryArea.innerHTML = html;
+    } catch (e) {
+      summaryArea.innerHTML = `<p class="loading">ðŸš¨ Error: ${e.message}</p>`;
+    }
+  }
+
+  function exportToExcel() {
+    const table = document.querySelector("#summary-area table");
+    if (!table) { alert("Please load data into the table first."); return; }
+    const ws = XLSX.utils.table_to_sheet(table);
+    const range = XLSX.utils.decode_range(ws["!ref"]);
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const cell_address = XLSX.utils.encode_cell({ r: 0, c: C });
+      if (!ws[cell_address]) continue;
+      ws[cell_address].s = { fill: { fgColor: { rgb: "D9EAF7" } }, font: { bold: true, sz: 12 }, alignment: { horizontal: "center", vertical: "center" } };
+    }
+    const colWidths = [];
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      let maxLen = 10;
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        const cell_address = XLSX.utils.encode_cell({ r: R, c: C });
+        if (ws[cell_address] && ws[cell_address].v) maxLen = Math.max(maxLen, String(ws[cell_address].v).length);
+      }
+      colWidths.push({ wch: Math.min(maxLen + 2, 40) });
+    }
+    ws["!cols"] = colWidths;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Summary");
+    XLSX.writeFile(wb, "phlebo_summary.xlsx");
+  }
+
+</script>
+{% endblock %}

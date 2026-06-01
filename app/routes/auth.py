@@ -45,7 +45,7 @@ def login():
         conn = get_db_connection()
         with conn.cursor(pymysql.cursors.DictCursor) as cursor:
             cursor.execute("""
-                SELECT id, name, designation,
+                SELECT id, name, designation, contact,
                        COALESCE(
                          DATE_FORMAT(dob, '%%d%%m%%Y'),
                          DATE_FORMAT(STR_TO_DATE(dob, '%%d-%%m-%%Y'), '%%d%%m%%Y'),
@@ -55,14 +55,18 @@ def login():
                        ) AS dob_ddmmyyyy
                 FROM users
                 WHERE LOWER(TRIM(name)) = %s
+                  AND LOWER(TRIM(status)) = 'active'
                 LIMIT 1
             """, (username.lower(),))
             user = cursor.fetchone()
         
         if user and user.get("dob_ddmmyyyy") == password:
-            # 🆕 MANUAL OVERRIDE: Aman Shukla 
+            # Manual designation overrides for specific users.
             designation = user["designation"]
+            contact_norm = "".join(ch for ch in str(user.get("contact") or "") if ch.isdigit())
             if user["name"].lower().strip() == "aman shukla":
+                designation = "Admin"
+            if contact_norm == "9821957370":
                 designation = "Admin"
             
             session["user_id"] = user["id"]

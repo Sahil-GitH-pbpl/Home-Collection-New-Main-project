@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Venepuncture Records{% endblock %}
+{% block content %}
+<style>
+  .vene-card{background:#fff;border:1px solid #d5dbea;border-radius:14px;box-shadow:0 8px 20px rgba(0,0,0,.08);padding:18px;max-width:1200px;margin:0 auto;}
+  .records-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;}
+  .records-toolbar input,.records-toolbar select{padding:8px 10px;border:1px solid #d1d5db;border-radius:10px;background:#f9fafb;}
+  .table-wrap{
+    border:1px solid #cdd7e6;
+    border-radius:10px;
+    overflow:auto;
+    background:#fff;
+  }
+  .records-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;min-width:1080px;}
+  .records-table th,.records-table td{padding:10px 10px;border-bottom:1px solid #dfe4ef;text-align:center;vertical-align:middle;line-height:1.2;}
+  .records-table th{
+    background:#cfd6e3;
+    color:#0f2f7a;
+    font-weight:700;
+    border-bottom:1px solid #bcc8db;
+    white-space:nowrap;
+  }
+  .records-table tbody tr:last-child td{border-bottom:none;}
+  .records-table a.id-link{color:#0b3fcc;text-decoration:none;font-weight:700;}
+  .records-table a.id-link:hover{text-decoration:underline;}
+  .records-table a.id-link,
+  .btn-action{
+    animation:none !important;
+    transition:none !important;
+  }
+  .records-table a.id-link:focus,
+  .btn-action:focus{
+    outline:none;
+    box-shadow:none;
+  }
+  .action-col{white-space:nowrap;}
+  .action-stack{display:flex;flex-direction:column;gap:6px;align-items:center;}
+  .badge{display:inline-flex;padding:4px 8px;border-radius:999px;font-weight:700;font-size:12px;line-height:1;}
+  .badge.open{background:#ecfeff;color:#0ea5e9;}
+  .badge.responded{background:#fef3c7;color:#b45309;}
+  .badge.closed{background:#e5e7eb;color:#374151;}
+  .badge.escalated{background:#fee2e2;color:#b91c1c;}
+  .btn-action{
+    display:inline-block;
+    padding:6px 10px;
+    border-radius:8px;
+    color:#fff;
+    text-decoration:none;
+    font-weight:700;
+    font-size:12px;
+    line-height:1.1;
+  }
+  .btn-blue{background:#254ecb;}
+  .btn-red{background:#d11d1d;}
+  .pager{display:flex;gap:8px;align-items:center;margin-top:12px;}
+  .pager a{padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;text-decoration:none;color:#111827;}
+</style>
+<div class="vene-card">
+  <h2 style="margin:0 0 6px;">Venepuncture Records</h2>
+  <p style="margin:0 0 12px;color:#6b7280;">Latest submissions from venepuncture form.</p>
+
+  <form class="records-toolbar" method="get">
+    <input type="text" name="q" placeholder="Search by ID / name / patient ID" value="{{ search_query }}" />
+    <select name="status">
+      <option value="">All status</option>
+      <option value="Open" {% if status_filter=='Open' %}selected{% endif %}>Open</option>
+      <option value="Responded" {% if status_filter=='Responded' %}selected{% endif %}>Responded</option>
+      <option value="Closed" {% if status_filter=='Closed' %}selected{% endif %}>Closed</option>
+    </select>
+    <button type="submit" class="btn-primary" style="padding:8px 12px;border:none;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;">Apply</button>
+    {% if search_query or status_filter %}<a href="{{ url_for('venepunchre.venepunchre_records') }}">Clear</a>{% endif %}
+    <span style="margin-left:auto;font-size:12px;color:#6b7280;">Showing {{ start_row }}-{{ end_row }}{% if total_records is not none %} of {{ total_records }}{% endif %}</span>
+  </form>
+
+  {% if records %}
+    <div class="table-wrap">
+      <table class="records-table">
+        <thead>
+          <tr>
+            <th>Venepuncture ID</th>
+            <th>Reported By</th>
+            <th>Reported Name</th>
+            <th>Created By</th>
+            <th>Venepuncture Done By</th>
+            <th>Patient Name</th>
+            <th>Patient ID</th>
+            <th>Status</th>
+            <th>Created At</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in records %}
+            <tr>
+              <td><a class="id-link" href="{{ url_for('venepunchre.venepunchre_record_detail', hiccup_id=row.hiccup_id) }}">{{ row.hiccup_id }}</a></td>
+              <td>{{ row.reported_by_option or '-' }}</td>
+              <td>{{ row.reported_name_input or '-' }}</td>
+              <td>{{ row.created_by_name or '-' }}</td>
+              <td>{{ row.raised_against or '-' }}</td>
+              <td>{{ row.patient_name_input or '-' }}</td>
+              <td>{{ row.patient_identifier or '-' }}</td>
+              {% set status_cls = 'open' %}
+              {% if row.status == 'Closed' %}
+                {% set status_cls = 'closed' %}
+              {% elif row.status == 'Responded' %}
+                {% set status_cls = 'responded' %}
+              {% elif row.status == 'Escalated to NC' %}
+                {% set status_cls = 'escalated' %}
+              {% endif %}
+              <td><span class="badge {{ status_cls }}">{{ row.status or '-' }}</span></td>
+              <td>{{ row.created_at|fmt_dt }}</td>
+              <td class="action-col">
+                {% set assigned_to_logged_user = row.nc_assigned_staff_id and (row.nc_assigned_staff_id|int == current_ui_user_id|int) %}
+                {% set can_access_nc_actions = can_manage_case or assigned_to_logged_user %}
+                {% set was_escalated_in_past = row.escalated_by or row.nc_assigned_staff_id %}
+                {% set is_escalated_to_nc = row.status == 'Escalated to NC' %}
+                {% set is_closed_after_nc = (row.status == 'Closed') and was_escalated_in_past %}
+                {% set show_update_nc = is_escalated_to_nc and can_access_nc_actions %}
+                {% set show_view_nc = is_closed_after_nc and can_access_nc_actions %}
+                <div class="action-stack">
+                  <a class="btn-action btn-blue" href="{{ url_for('venepunchre.venepunchre_record_detail', hiccup_id=row.hiccup_id) }}">View Details</a>
+                  {% if show_update_nc %}
+                    <a class="btn-action btn-red" href="{{ url_for('venepunchre.venepunchre_record_detail', hiccup_id=row.hiccup_id, open_nc='1') }}">Update NC Form</a>
+                  {% elif show_view_nc %}
+                    <a class="btn-action btn-blue" href="{{ url_for('venepunchre.venepunchre_record_detail', hiccup_id=row.hiccup_id, open_nc='1') }}">View NC Form</a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>No records found.</p>
+  {% endif %}
+
+  <div class="pager">
+    {% if page > 1 %}<a href="{{ url_for('venepunchre.venepunchre_records', q=search_query, status=status_filter, page=page-1) }}">&laquo; Prev</a>{% endif %}
+    {% if has_next_page %}<a href="{{ url_for('venepunchre.venepunchre_records', q=search_query, status=status_filter, page=page+1) }}">Next &raquo;</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

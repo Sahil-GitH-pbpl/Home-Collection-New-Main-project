@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>Open Critical Value Tickets</h3>
+<table border="1" cellpadding="6" style="border-collapse:collapse; width:100%;">
+  <thead>
+    <tr>
+      <th>ID</th><th>Patient</th><th>Mobile</th><th>Assigned To</th>
+      <th>Commitment</th><th>Status</th><th>Tests</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for t in tickets %}
+    <tr>
+      <td>{{ t.id }}</td>
+      <td>{{ t.patient_name }} ({{ t.patient_labmate_id }})</td>
+      <td>{{ t.mobile_number }}</td>
+      <td>{{ t.assign_to_user_id }}</td>
+      <td>{{ t.commitment_at }}</td>
+      <td>{{ t.status }}</td>
+      <td>
+        {% for r in tests_by.get(t.id, []) %}
+          <div>{{ r.test_name }}: {{ r.value_text or '-' }} ({{ r.result_text or '-' }})</div>
+        {% endfor %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

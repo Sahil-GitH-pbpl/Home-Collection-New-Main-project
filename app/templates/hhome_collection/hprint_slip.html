@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Print Booking {{ booking.booking_code }}</title>
+  <style>
+    body{font-family:Arial,sans-serif;padding:16px}
+    h2{margin:0}
+    .print-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:0 0 10px}
+    .print-logo{width:170px;height:auto;object-fit:contain}
+    .print-title{text-align:right;flex:1}
+    .box{border:1px solid #333;padding:12px;margin:10px 0}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #999;padding:6px;text-align:left}
+  </style>
+</head>
+<body>
+  <div class="print-head">
+    <img class="print-logo" src="{{ url_for('static', filename='assets/Logo1.png') }}" alt="Logo">
+    <h2 class="print-title">ARPRA CRM - Home Collection Slip</h2>
+  </div>
+  <div class="box">
+    <strong>Booking:</strong> {{ booking.booking_code }}<br>
+    <strong>Visit:</strong> {{ booking.preferred_visit_date }} | {{ booking.preferred_time_slot }}<br>
+    <strong>Caller:</strong> {{ booking.caller_name }} ({{ booking.primary_mobile }})
+  </div>
+  <div class="box">
+    <strong>Address:</strong><br>
+    {{ booking.house_flat_no }}, {{ booking.floor }}, {{ booking.block_tower_no }}, {{ booking.street_line }}, {{ booking.landmark }}<br>
+    {{ booking.colony_name_snapshot }}, {{ booking.city }} - {{ booking.pincode_snapshot }} ({{ booking.route_no_snapshot }})
+  </div>
+  <table>
+    <thead><tr><th>Patient</th><th>Booked Tests</th></tr></thead>
+    <tbody>
+      {% for p in booking.patients %}
+      <tr>
+        <td>{{ p.full_name }} ({{ p.patient_code }})</td>
+        <td>{{ p.tests_display or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <script>window.print()</script>
+</body>
+</html>
