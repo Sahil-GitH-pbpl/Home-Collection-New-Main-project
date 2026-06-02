@@ -387,6 +387,8 @@ function renderDashboardRows(rows) {
     const mobileText = String(r.primary_mobile || '-');
     const batchBadge = Number(r.is_batched || 0) === 1 ? ' <span class="dash-batched-badge">(Batched)</span>' : '';
     const hasPatientTag = Number(r.has_patient_tag || 0) === 1;
+    const hasBookingTag = String(r.booking_tags || '').trim() && String(r.booking_tags || '').trim() !== '-';
+    const hasAnyTag = hasPatientTag || hasBookingTag;
     const colonyText = String(r.colony_name_snapshot || r.colony_name || '-');
     const routeText = String(r.route_no_snapshot || r.route_no || '-');
     const rowExpandId = `dash-expand-${bookingId}-${idx}`;
@@ -401,7 +403,7 @@ function renderDashboardRows(rows) {
           <div class="dash-patient-mobile">
             <div>
               ${r.row_type === 'APPOINTMENT' ? `[A${r.appointment_no || '-'}] ` : ''}${patientText}
-              ${hasPatientTag ? '<span title="Patient tag exists" style="color:#dc2626;font-size:15px;margin-left:6px;vertical-align:middle;">🏷️</span>' : ''}
+              ${hasAnyTag ? '<span title="Patient or booking tag exists" style="color:#dc2626;font-size:15px;margin-left:6px;vertical-align:middle;">🏷️</span>' : ''}
             </div>
             <div class="dash-mobile-sub">${mobileText}${batchBadge}</div>
           </div>
