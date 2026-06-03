@@ -42,6 +42,7 @@ def create_app():
     from app.routes.phlebo_summary import phlebo_summary_bp
     from app.routes.hcb_day_report import hcb_day_report_bp
     from app.routes.hbatch_handover_ui import hbatch_handover_ui_bp
+    from app.routes.cghs_api import cghs_api_bp
     
 
     app.register_blueprint(auth_bp)
@@ -70,6 +71,7 @@ def create_app():
     app.register_blueprint(phlebo_summary_bp)
     app.register_blueprint(hcb_day_report_bp)
     app.register_blueprint(hbatch_handover_ui_bp)
+    app.register_blueprint(cghs_api_bp)
 
     # Warm once on server start: panel/company + GST catalog for fast HC test booking.
     try:

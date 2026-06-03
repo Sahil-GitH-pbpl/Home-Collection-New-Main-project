@@ -622,7 +622,6 @@ def batch_handover_ui_data():
                 FROM hhome_collection_booking hcb
                 WHERE hcb.id IN ({placeholders_all})
                 ORDER BY hcb.id DESC
-                LIMIT 100
                 """
                 ,
                 all_booking_ids

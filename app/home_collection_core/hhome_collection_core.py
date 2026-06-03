@@ -99,6 +99,31 @@ class HHomeCollectionCore:
             return digits
         return ""
 
+    def _patient_whatsapp_recipients(self, rows) -> list[str]:
+        recipients = []
+        seen = set()
+        for row in rows or []:
+            mobile = self._normalize_indian_whatsapp_number((row or {}).get("contact_mobile"))
+            if not mobile or mobile in seen:
+                continue
+            seen.add(mobile)
+            recipients.append(mobile)
+        return recipients
+
+    def _assignment_experience_values(self, experience_value) -> tuple[str, str, str]:
+        try:
+            exp = Decimal(str(experience_value or 0))
+        except Exception:
+            exp = Decimal("0")
+        total_exp = exp + Decimal("2")
+        sample_count = exp * Decimal("3000")
+
+        def _fmt(value: Decimal) -> str:
+            value = value.quantize(Decimal("0.01")).normalize()
+            return format(value, "f")
+
+        return _fmt(total_exp), _fmt(sample_count), _fmt(exp)
+
     def _format_patient_names_for_whatsapp(self, rows) -> str:
         names = []
         for row in rows or []:
@@ -269,9 +294,9 @@ class HHomeCollectionCore:
                 whatsapp_payload.get("patient_names") or "",
                 whatsapp_payload.get("phlebo_name") or "",
                 whatsapp_payload.get("phlebo_mobile") or "",
-                "5 ",
-                "1000",
-                "3",
+                whatsapp_payload.get("total_experience") or "",
+                whatsapp_payload.get("sample_count") or "",
+                whatsapp_payload.get("bhasin_experience") or "",
             ],
         )
 
@@ -4134,25 +4159,27 @@ class HHomeCollectionCore:
                 if patient_ids:
                     placeholders = ",".join(["%s"] * len(patient_ids))
                     cur.execute(
-                        f"SELECT title, full_name FROM hpatient_master WHERE id IN ({placeholders}) ORDER BY full_name",
+                        f"SELECT title, full_name, contact_mobile FROM hpatient_master WHERE id IN ({placeholders}) ORDER BY full_name",
                         tuple(patient_ids),
                     )
                     patient_rows = cur.fetchall() or []
-                cur.execute("SELECT primary_mobile FROM hcaller_master WHERE id=%s LIMIT 1", (caller_id,))
-                caller_row = cur.fetchone() or {}
 
                 self._recalculate_followup_required(cur, booking_id)
                 conn.commit()
 
-                whatsapp_payload = {
-                    "booking_id": booking_id,
-                    "booking_code": booking_code,
-                    "recipient": self._normalize_indian_whatsapp_number((caller_row or {}).get("primary_mobile")),
-                    "patient_names": self._format_patient_names_for_whatsapp(patient_rows),
-                    "preferred_time_slot": self._norm_code(preferred_time_slot),
-                    "preferred_visit_date": self._format_booking_date_for_whatsapp(preferred_visit_date),
-                    "address": self._format_booking_address_for_whatsapp(selected_snapshot),
-                }
+                whatsapp_payloads = []
+                for recipient in self._patient_whatsapp_recipients(patient_rows):
+                    whatsapp_payloads.append(
+                        {
+                            "booking_id": booking_id,
+                            "booking_code": booking_code,
+                            "recipient": recipient,
+                            "patient_names": self._format_patient_names_for_whatsapp(patient_rows),
+                            "preferred_time_slot": self._norm_code(preferred_time_slot),
+                            "preferred_visit_date": self._format_booking_date_for_whatsapp(preferred_visit_date),
+                            "address": self._format_booking_address_for_whatsapp(selected_snapshot),
+                        }
+                    )
 
                 prescription_merge = {"ok": True, "moved": 0}
                 if payload.get("_session_ref") is not None:
@@ -4167,7 +4194,7 @@ class HHomeCollectionCore:
                     "booking_id": booking_id,
                     "booking_code": booking_code,
                     "print_url": f"/hhome-collection/print/{booking_id}",
-                    "whatsapp_queued": bool(self._queue_booking_whatsapp(app_obj, whatsapp_payload)),
+                    "whatsapp_queued": sum(1 for item in whatsapp_payloads if self._queue_booking_whatsapp(app_obj, item)),
                 }
                 if not prescription_merge.get("ok"):
                     result["prescription_warning"] = prescription_merge.get("message") or "Prescription files could not be finalized"
@@ -5129,35 +5156,53 @@ class HHomeCollectionCore:
                 SELECT
                     b.id AS booking_id,
                     b.booking_code,
-                    cm.primary_mobile,
                     u.name AS phlebo_name,
                     u.contact AS phlebo_mobile,
-                    GROUP_CONCAT(
-                        DISTINCT TRIM(CONCAT_WS(' ', p.title, p.full_name))
-                        ORDER BY p.full_name SEPARATOR ', '
-                    ) AS patient_names
+                    u.experience AS phlebo_experience,
+                    p.title,
+                    p.full_name,
+                    p.contact_mobile
                 FROM hhome_collection_booking b
-                INNER JOIN hcaller_master cm ON cm.id = b.caller_id
                 INNER JOIN users u ON u.id = b.assigned_phlebotomist_id
                 LEFT JOIN hhome_collection_booking_patient bp ON bp.booking_id = b.id
                 LEFT JOIN hpatient_master p ON p.id = bp.patient_id
                 WHERE b.id IN ({",".join(["%s"] * len(booking_ids))})
-                GROUP BY b.id, b.booking_code, cm.primary_mobile, u.name, u.contact
-                ORDER BY b.id
+                ORDER BY b.id, p.full_name
                 """,
                 booking_ids,
             )
+            grouped = {}
             for row in cur.fetchall() or []:
-                payloads.append(
+                bid = int(row.get("booking_id") or 0)
+                if bid <= 0:
+                    continue
+                node = grouped.setdefault(
+                    bid,
                     {
-                        "booking_id": int(row.get("booking_id") or 0),
                         "booking_code": self._norm_code(row.get("booking_code")),
-                        "recipient": self._normalize_indian_whatsapp_number(row.get("primary_mobile")),
-                        "patient_names": self._norm_code(row.get("patient_names")),
                         "phlebo_name": self._norm_code(row.get("phlebo_name")),
                         "phlebo_mobile": self._format_mobile_for_template(row.get("phlebo_mobile")),
-                    }
+                        "experience": row.get("phlebo_experience"),
+                        "patients": [],
+                    },
                 )
+                node["patients"].append(row)
+            for bid, node in grouped.items():
+                total_exp, sample_count, bhasin_exp = self._assignment_experience_values(node.get("experience"))
+                for recipient in self._patient_whatsapp_recipients(node.get("patients")):
+                    payloads.append(
+                        {
+                            "booking_id": bid,
+                            "booking_code": node.get("booking_code"),
+                            "recipient": recipient,
+                            "patient_names": self._format_patient_names_for_whatsapp(node.get("patients")),
+                            "phlebo_name": node.get("phlebo_name"),
+                            "phlebo_mobile": node.get("phlebo_mobile"),
+                            "total_experience": total_exp,
+                            "sample_count": sample_count,
+                            "bhasin_experience": bhasin_exp,
+                        }
+                    )
 
         if appointment_ids:
             cur.execute(
@@ -5166,13 +5211,12 @@ class HHomeCollectionCore:
                     ap.id AS appointment_id,
                     ap.booking_id,
                     b.booking_code,
-                    cm.primary_mobile,
                     u.name AS phlebo_name,
                     u.contact AS phlebo_mobile,
+                    u.experience AS phlebo_experience,
                     ap.selected_patient_ids_json
                 FROM hhome_collection_booking_appointment ap
                 INNER JOIN hhome_collection_booking b ON b.id = ap.booking_id
-                INNER JOIN hcaller_master cm ON cm.id = b.caller_id
                 INNER JOIN users u ON u.id = ap.assigned_phlebotomist_id
                 WHERE ap.id IN ({",".join(["%s"] * len(appointment_ids))})
                 ORDER BY ap.id
@@ -5180,32 +5224,35 @@ class HHomeCollectionCore:
                 appointment_ids,
             )
             for row in cur.fetchall() or []:
-                patient_names = ""
+                patient_rows = []
                 selected_ids = self._patient_ids_from_json(row.get("selected_patient_ids_json"))
                 if selected_ids:
                     placeholders = ",".join(["%s"] * len(selected_ids))
                     cur.execute(
                         f"""
-                        SELECT TRIM(CONCAT_WS(' ', title, full_name)) AS patient_name
+                        SELECT title, full_name, contact_mobile
                         FROM hpatient_master
                         WHERE id IN ({placeholders})
                         ORDER BY full_name
                         """,
                         tuple(selected_ids),
                     )
-                    patient_names = ", ".join(
-                        [self._norm_code(x.get("patient_name")) for x in (cur.fetchall() or []) if self._norm_code(x.get("patient_name"))]
+                    patient_rows = cur.fetchall() or []
+                total_exp, sample_count, bhasin_exp = self._assignment_experience_values(row.get("phlebo_experience"))
+                for recipient in self._patient_whatsapp_recipients(patient_rows):
+                    payloads.append(
+                        {
+                            "booking_id": int(row.get("booking_id") or 0),
+                            "booking_code": self._norm_code(row.get("booking_code")),
+                            "recipient": recipient,
+                            "patient_names": self._format_patient_names_for_whatsapp(patient_rows),
+                            "phlebo_name": self._norm_code(row.get("phlebo_name")),
+                            "phlebo_mobile": self._format_mobile_for_template(row.get("phlebo_mobile")),
+                            "total_experience": total_exp,
+                            "sample_count": sample_count,
+                            "bhasin_experience": bhasin_exp,
+                        }
                     )
-                payloads.append(
-                    {
-                        "booking_id": int(row.get("booking_id") or 0),
-                        "booking_code": self._norm_code(row.get("booking_code")),
-                        "recipient": self._normalize_indian_whatsapp_number(row.get("primary_mobile")),
-                        "patient_names": patient_names,
-                        "phlebo_name": self._norm_code(row.get("phlebo_name")),
-                        "phlebo_mobile": self._format_mobile_for_template(row.get("phlebo_mobile")),
-                    }
-                )
 
         return payloads
 
