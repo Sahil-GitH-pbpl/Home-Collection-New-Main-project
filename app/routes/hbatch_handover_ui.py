@@ -217,7 +217,7 @@ def trf_patient_preview_page():
                   b.preferred_time_slot,
                   COALESCE(NULLIF(TRIM(u.name), ''), '-') AS booked_by,
                   COALESCE(NULLIF(TRIM(up.name), ''), '-') AS phlebo_name,
-                  bp.referred_by,
+                  bp.ref_by AS referred_by,
                   b.intrnl_rfrncd_by,
                   b.lead_id,
                   b.booking_tags,

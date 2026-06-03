@@ -4052,7 +4052,7 @@ class HHomeCollectionCore:
                     cur.execute(
                         """
                         INSERT INTO hhome_collection_booking_patient
-                        (booking_id, patient_id, cce_level_TBS, referred_by,
+                        (booking_id, patient_id, cce_level_TBS, ref_by,
                          selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies, patient_final_amount, additional_discount_amount, created_by)
                         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         """,
@@ -4155,7 +4155,6 @@ class HHomeCollectionCore:
 
                 patient_ids = sorted([int(x) for x in seen_patients if int(x) > 0])
                 patient_rows = []
-                caller_row = {}
                 if patient_ids:
                     placeholders = ",".join(["%s"] * len(patient_ids))
                     cur.execute(
@@ -4163,7 +4162,6 @@ class HHomeCollectionCore:
                         tuple(patient_ids),
                     )
                     patient_rows = cur.fetchall() or []
-
                 self._recalculate_followup_required(cur, booking_id)
                 conn.commit()
 
@@ -4194,8 +4192,13 @@ class HHomeCollectionCore:
                     "booking_id": booking_id,
                     "booking_code": booking_code,
                     "print_url": f"/hhome-collection/print/{booking_id}",
-                    "whatsapp_queued": sum(1 for item in whatsapp_payloads if self._queue_booking_whatsapp(app_obj, item)),
                 }
+                queued_count = 0
+                for item in whatsapp_payloads:
+                    if self._queue_booking_whatsapp(app_obj, item):
+                        queued_count += 1
+                result["whatsapp_queued"] = bool(queued_count)
+                result["whatsapp_queued_count"] = queued_count
                 if not prescription_merge.get("ok"):
                     result["prescription_warning"] = prescription_merge.get("message") or "Prescription files could not be finalized"
                 return result
@@ -5226,6 +5229,17 @@ class HHomeCollectionCore:
             for row in cur.fetchall() or []:
                 patient_rows = []
                 selected_ids = self._patient_ids_from_json(row.get("selected_patient_ids_json"))
+                if not selected_ids:
+                    cur.execute(
+                        """
+                        SELECT patient_id
+                        FROM hhome_collection_booking_patient
+                        WHERE booking_id=%s
+                        ORDER BY id
+                        """,
+                        (int(row.get("booking_id") or 0),),
+                    )
+                    selected_ids = [int(x.get("patient_id") or 0) for x in (cur.fetchall() or []) if int(x.get("patient_id") or 0) > 0]
                 if selected_ids:
                     placeholders = ",".join(["%s"] * len(selected_ids))
                     cur.execute(
@@ -5253,7 +5267,6 @@ class HHomeCollectionCore:
                             "bhasin_experience": bhasin_exp,
                         }
                     )
-
         return payloads
 
     def assign_phlebotomist(self, booking_id: int, user_id: int, actor_user_id=None, appointment_id: int = 0, app_obj=None):
@@ -5738,7 +5751,7 @@ class HHomeCollectionCore:
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
-                    SELECT hcbp.patient_id, hcbp.cce_level_TBS, hcbp.referred_by,
+                    SELECT hcbp.patient_id, hcbp.cce_level_TBS, hcbp.ref_by AS referred_by,
                            hcbp.selected_comp_cat_ids, hcbp.selected_cat_details, hcbp.selected_charge_modes, hcbp.selected_panel_companies,
                            t.comp_cat_id, '' AS cat_details, '' AS selected_charge_mode, t.booked_code, t.test_name,
                            t.charge, t.mrp, t.max_discount
@@ -5881,7 +5894,7 @@ class HHomeCollectionCore:
                 self.preload_panel_catalog()
                 cur.execute(
                     """
-                    SELECT patient_id, cce_level_TBS, referred_by, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies
+                    SELECT patient_id, cce_level_TBS, ref_by AS referred_by, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies
                     FROM hhome_collection_booking_patient
                     WHERE booking_id=%s
                     ORDER BY id
@@ -6412,7 +6425,7 @@ class HHomeCollectionCore:
                     placeholders = ",".join(["%s"] * len(selected_patient_ids))
                     cur.execute(
                         f"""
-                        SELECT patient_id, cce_level_TBS, referred_by, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies
+                        SELECT patient_id, cce_level_TBS, ref_by AS referred_by, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies
                         FROM hhome_collection_booking_patient
                         WHERE booking_id=%s
                           AND patient_id IN ({placeholders})
@@ -6755,7 +6768,7 @@ class HHomeCollectionCore:
                         """
                         UPDATE hhome_collection_booking_patient
                         SET cce_level_TBS=%s,
-                            referred_by=%s,
+                            ref_by=%s,
                             selected_comp_cat_ids=%s,
                             selected_cat_details=%s,
                             selected_charge_modes=%s,
@@ -7020,7 +7033,7 @@ class HHomeCollectionCore:
                         """
                         UPDATE hhome_collection_booking_patient
                         SET cce_level_TBS=%s,
-                            referred_by=%s,
+                            ref_by=%s,
                             selected_comp_cat_ids=%s,
                             selected_cat_details=%s,
                             selected_charge_modes=%s,
@@ -7348,7 +7361,7 @@ class HHomeCollectionCore:
                             """
                             INSERT INTO hhome_collection_booking_patient
                             (booking_id, patient_id, booking_patient_status, cce_level_TBS,
-                             referred_by, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies, patient_final_amount, additional_discount_amount, created_by)
+                             ref_by, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies, patient_final_amount, additional_discount_amount, created_by)
                             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                             """,
                             (
@@ -7374,7 +7387,7 @@ class HHomeCollectionCore:
                         """
                         UPDATE hhome_collection_booking_patient
                         SET cce_level_TBS=%s,
-                            referred_by=%s,
+                            ref_by=%s,
                             selected_comp_cat_ids=%s,
                             selected_cat_details=%s,
                             selected_charge_modes=%s,
