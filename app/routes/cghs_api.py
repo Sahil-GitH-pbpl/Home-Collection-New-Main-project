@@ -34,6 +34,10 @@ def _split_csv(value) -> list[str]:
     return [x.strip().lstrip("/") for x in text.split(",") if x.strip()]
 
 
+def _panel_value_allowed(value) -> bool:
+    return any(_norm_panel(part) in ALLOWED_PANELS for part in _split_csv(value))
+
+
 def _fmt_dt(value) -> str:
     if hasattr(value, "strftime"):
         return value.strftime("%Y-%m-%d %H:%M:%S")
@@ -137,6 +141,8 @@ def _get_cghs_patients(from_date: date, to_date: date) -> list[dict]:
                     hcbp.id AS booking_patient_id,
                     hcbp.patient_id,
                     hcbp.prescription_files,
+                    hcbp.selected_panel_companies AS selected_panel_companies_raw,
+                    p.panel_company AS master_panel_company,
                     COALESCE(NULLIF(TRIM(hcbp.selected_panel_companies), ''), NULLIF(TRIM(p.panel_company), '')) AS panel_company,
                     COALESCE(NULLIF(TRIM(p.patient_code), ''), CONCAT('PT', p.id)) AS patient_code,
                     NULLIF(TRIM(p.labmate_pid), '') AS labmate_pid,
@@ -150,10 +156,14 @@ def _get_cghs_patients(from_date: date, to_date: date) -> list[dict]:
                 WHERE hcb.preferred_visit_date BETWEEN %s AND %s
                   AND IFNULL(hcb.booking_status, 0) <> 4
                   AND IFNULL(hcbp.booking_patient_status, 0) <> 4
-                  AND LOWER(TRIM(COALESCE(NULLIF(TRIM(hcbp.selected_panel_companies), ''), NULLIF(TRIM(p.panel_company), '')))) IN (%s, %s)
+                  AND (
+                    LOWER(COALESCE(hcbp.selected_panel_companies, '')) LIKE %s
+                    OR LOWER(COALESCE(hcbp.selected_panel_companies, '')) LIKE %s
+                    OR LOWER(TRIM(COALESCE(p.panel_company, ''))) IN (%s, %s)
+                  )
                 ORDER BY hcb.preferred_visit_date DESC, hcb.id DESC, p.full_name
                 """,
-                (from_date, to_date, "nha cghs", "capf ayushman"),
+                (from_date, to_date, "%nha cghs%", "%capf ayushman%", "nha cghs", "capf ayushman"),
             )
             rows = cur.fetchall() or []
     finally:
@@ -161,6 +171,10 @@ def _get_cghs_patients(from_date: date, to_date: date) -> list[dict]:
 
     patients = []
     for row in rows:
+        panel_value = _norm(row.get("selected_panel_companies_raw")) or _norm(row.get("master_panel_company"))
+        if not _panel_value_allowed(panel_value):
+            continue
+
         booking_code = _norm(row.get("booking_code")) or f"HC26-{int(row.get('booking_id') or 0)}"
         patient_id = int(row.get("patient_id") or 0)
         docs: list[dict] = []
