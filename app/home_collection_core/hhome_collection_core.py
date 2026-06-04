@@ -151,13 +151,19 @@ class HHomeCollectionCore:
     def _format_booking_address_for_whatsapp(self, snapshot) -> str:
         snap = snapshot or {}
         parts = []
-        house_flat_no = self._norm_code(snap.get("house_flat_no"))
-        if house_flat_no:
-            parts.append(f"House/Flat No - {house_flat_no}")
-        for key in ("floor", "block_tower_no", "street_line", "landmark", "colony_name", "city"):
+        field_labels = [
+            ("house_flat_no", "House/Flat No"),
+            ("floor", "Floor"),
+            ("block_tower_no", "Block/Tower No"),
+            ("street_line", "Street/Sector"),
+            ("landmark", "Landmark"),
+            ("colony_name", "Colony"),
+            ("city", "City"),
+        ]
+        for key, label in field_labels:
             value = self._norm_code(snap.get(key))
             if value:
-                parts.append(value)
+                parts.append(f"{label} - {value}")
         return ", ".join(parts)
 
     def _booking_local_whatsapp_message(self, whatsapp_payload: dict) -> str:
@@ -242,6 +248,51 @@ class HHomeCollectionCore:
         finally:
             conn.close()
 
+    def _lookup_patient_ref_by_ofax_targets(self, patient_rows: list[dict]) -> list[str]:
+        ref_names = []
+        seen_names = set()
+        for row in patient_rows or []:
+            ref_name = self._norm_code((row or {}).get("ref_by") or (row or {}).get("referred_by"))
+            key = ref_name.lower()
+            if not ref_name or key in seen_names:
+                continue
+            seen_names.add(key)
+            ref_names.append(ref_name)
+        if not ref_names:
+            return []
+
+        conn = get_bhasin7001_connection()
+        try:
+            with conn.cursor() as cur:
+                placeholders = ",".join(["%s"] * len(ref_names))
+                params = tuple(name.lower() for name in ref_names)
+                cur.execute(
+                    f"""
+                    SELECT DISTINCT OFax
+                    FROM address
+                    WHERE Active=1
+                      AND UPPER(TRIM(Atype))='D'
+                      AND OFax IS NOT NULL
+                      AND TRIM(OFax) <> ''
+                      AND (
+                        LOWER(TRIM(pname)) IN ({placeholders})
+                        OR LOWER(TRIM(ABARID)) IN ({placeholders})
+                      )
+                    """,
+                    params + params,
+                )
+                targets = []
+                seen = set()
+                for row in cur.fetchall() or []:
+                    target = self._norm_code(row.get("OFax"))
+                    if not target or target in seen:
+                        continue
+                    seen.add(target)
+                    targets.append(target)
+                return targets
+        finally:
+            conn.close()
+
     def _lookup_internal_ref_contact(self, cur, internal_ref: str | None) -> str:
         value = self._norm_code(internal_ref)
         if not value:
@@ -277,6 +328,10 @@ class HHomeCollectionCore:
         targets = []
         seen = set()
         for target in self._lookup_panel_ofax_targets(patient_rows):
+            if target and target not in seen:
+                seen.add(target)
+                targets.append(target)
+        for target in self._lookup_patient_ref_by_ofax_targets(patient_rows):
             if target and target not in seen:
                 seen.add(target)
                 targets.append(target)
@@ -4337,8 +4392,15 @@ class HHomeCollectionCore:
                 if patient_ids:
                     placeholders = ",".join(["%s"] * len(patient_ids))
                     cur.execute(
-                        f"SELECT title, full_name, contact_mobile, panel_company FROM hpatient_master WHERE id IN ({placeholders}) ORDER BY full_name",
-                        tuple(patient_ids),
+                        f"""
+                        SELECT p.title, p.full_name, p.contact_mobile, p.panel_company, bp.ref_by
+                        FROM hhome_collection_booking_patient bp
+                        INNER JOIN hpatient_master p ON p.id = bp.patient_id
+                        WHERE bp.booking_id=%s
+                          AND bp.patient_id IN ({placeholders})
+                        ORDER BY p.full_name
+                        """,
+                        (booking_id, *tuple(patient_ids)),
                     )
                     patient_rows = cur.fetchall() or []
                 local_whatsapp_targets = self._extra_local_whatsapp_targets(
@@ -5368,7 +5430,8 @@ class HHomeCollectionCore:
                     p.title,
                     p.full_name,
                     p.contact_mobile,
-                    p.panel_company
+                    p.panel_company,
+                    bp.ref_by
                 FROM hhome_collection_booking b
                 INNER JOIN users u ON u.id = b.assigned_phlebotomist_id
                 LEFT JOIN hhome_collection_booking_patient bp ON bp.booking_id = b.id
@@ -5456,12 +5519,14 @@ class HHomeCollectionCore:
                     placeholders = ",".join(["%s"] * len(selected_ids))
                     cur.execute(
                         f"""
-                        SELECT title, full_name, contact_mobile, panel_company
-                        FROM hpatient_master
-                        WHERE id IN ({placeholders})
-                        ORDER BY full_name
+                        SELECT p.title, p.full_name, p.contact_mobile, p.panel_company, bp.ref_by
+                        FROM hhome_collection_booking_patient bp
+                        INNER JOIN hpatient_master p ON p.id = bp.patient_id
+                        WHERE bp.booking_id=%s
+                          AND bp.patient_id IN ({placeholders})
+                        ORDER BY p.full_name
                         """,
-                        tuple(selected_ids),
+                        (int(row.get("booking_id") or 0), *tuple(selected_ids)),
                     )
                     patient_rows = cur.fetchall() or []
                 total_exp, sample_count, bhasin_exp = self._assignment_experience_values(row.get("phlebo_experience"))
