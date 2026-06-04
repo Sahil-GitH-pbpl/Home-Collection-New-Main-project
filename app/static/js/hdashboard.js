@@ -527,8 +527,8 @@ function renderExpandedDetails(b, rowStatusCode, bookingId, appointmentId, rowTy
         ${(!isAppointment && Number(rowStatusCode || 0) !== 4)
           ? `<button class="btn btn-sm btn-outline-info dash-action-btn dash-expand-action-bookappt" data-booking-id="${Number(bookingId || b.id || 0)}">Book Appt</button>`
           : ''}
-        ${[0, 1].includes(Number(rowStatusCode || 0))
-          ? `<button class="btn btn-sm btn-outline-secondary dash-action-btn dash-expand-action-reschedule" data-booking-id="${Number(bookingId || b.id || 0)}">Reschedule</button>`
+        ${[0, 1, 2].includes(Number(rowStatusCode || 0))
+          ? `<button class="btn btn-sm btn-outline-secondary dash-action-btn dash-expand-action-reschedule" data-booking-id="${Number(bookingId || b.id || 0)}" data-appointment-id="${Number(appointmentId || 0)}">Reschedule</button>`
           : ''}
         ${[3, 4, 5].includes(Number(rowStatusCode || 0))
           ? `<button class="btn btn-sm btn-outline-secondary dash-action-btn" type="button" disabled>Cancel</button>`
@@ -574,7 +574,10 @@ function bindExpandActions() {
         openBookAppointmentReasonModal(Number($(this).data('booking-id') || 0));
       });
       $content.find('.dash-expand-action-reschedule').off('click').on('click', function () {
-        openRescheduleModal(Number($(this).data('booking-id') || 0));
+        openRescheduleModal({
+          booking_id: Number($(this).data('booking-id') || 0),
+          appointment_id: Number($(this).data('appointment-id') || 0),
+        });
       });
       $content.find('.dash-expand-action-cancel').off('click').on('click', function () {
         openCancelReasonModal({
@@ -846,26 +849,39 @@ function openModifyReasonModal(bookingTarget) {
   });
 }
 
-function openRescheduleModal(bookingId) {
-  const bid = Number(bookingId || 0);
+function openRescheduleModal(bookingTarget) {
+  let bid = 0;
+  let appointmentId = 0;
+  if (typeof bookingTarget === 'object' && bookingTarget !== null) {
+    bid = Number(bookingTarget.booking_id || bookingTarget.id || 0);
+    appointmentId = Number(bookingTarget.appointment_id || 0);
+  } else {
+    bid = Number(bookingTarget || 0);
+  }
   if (bid <= 0) return;
   const modalEl = document.getElementById('rescheduleModal');
   if (!modalEl) return;
   const m = new bootstrap.Modal(modalEl);
-  $.get(`/hhome-collection/booking/${bid}`, function (res) {
+  const detailUrl = appointmentId > 0
+    ? `/hhome-collection/booking/${bid}?appointment_id=${appointmentId}`
+    : `/hhome-collection/booking/${bid}`;
+  $.get(detailUrl, function (res) {
     const b = res?.booking || {};
     const bookingCode = String(b.booking_code || `Booking ${bid}`).trim();
+    const rowLabel = appointmentId > 0 ? `${bookingCode} Appointment` : `Booking ${bookingCode}`;
     const oldDateIso = String(b.preferred_visit_date || '').trim();
     const oldSlot = String(b.preferred_time_slot || '').trim();
     const oldDateDisplay = formatDateForReschedule(oldDateIso);
 
     $('#reschedule-booking-id').val(String(bid));
+    $('#reschedule-appointment-id').remove();
+    $('#reschedule-booking-id').after(`<input type="hidden" id="reschedule-appointment-id" value="${appointmentId}">`);
     $('#reschedule-old-date').val(oldDateDisplay || '-');
     $('#reschedule-old-slot').val(oldSlot || '-');
     $('#reschedule-new-date').val(oldDateIso || '');
     $('#reschedule-new-date').attr('min', todayIsoLocal());
     $('#reschedule-reason').val('');
-    $('#reschedule-booking-title').text(`Reschedule Booking - ${bookingCode}`);
+    $('#reschedule-booking-title').text(`Reschedule ${appointmentId > 0 ? 'Appointment' : 'Booking'} - ${bookingCode}`);
 
     const allSlots = generateRescheduleSlots();
     const options = allSlots.map((slot) => `<option value="${slot}">${slot}</option>`).join('');
@@ -877,7 +893,7 @@ function openRescheduleModal(bookingId) {
       const ns = String($('#reschedule-new-slot').val() || '').trim();
       const newDateDisplay = formatDateForReschedule(nd);
       $('#reschedule-summary-line').html(
-        `Booking ${bookingCode} will move from <strong>${oldDateDisplay}, ${oldSlot || '-'}</strong> -> <strong>${newDateDisplay}, ${ns || '-'}</strong>.`,
+        `${rowLabel} will move from <strong>${oldDateDisplay}, ${oldSlot || '-'}</strong> -> <strong>${newDateDisplay}, ${ns || '-'}</strong>.`,
       );
     }
 
@@ -891,6 +907,7 @@ function openRescheduleModal(bookingId) {
   $('#btn-confirm-reschedule').off('click').on('click', function () {
     const payload = {
       booking_id: Number($('#reschedule-booking-id').val() || 0),
+      appointment_id: Number($('#reschedule-appointment-id').val() || 0),
       preferred_visit_date: String($('#reschedule-new-date').val() || '').trim(),
       preferred_time_slot: String($('#reschedule-new-slot').val() || '').trim(),
       reason_text: String($('#reschedule-reason').val() || '').trim(),
@@ -969,7 +986,10 @@ function bindRowActions() {
   });
 
   $('.btn-reschedule').off('click').on('click', function () {
-    openRescheduleModal(Number($(this).data('booking-id') || 0));
+    openRescheduleModal({
+      booking_id: Number($(this).data('booking-id') || 0),
+      appointment_id: Number($(this).data('appointment-id') || 0),
+    });
   });
 }
 

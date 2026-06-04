@@ -168,6 +168,7 @@ def reschedule_booking():
     payload = request.get_json(silent=True) or {}
     result = service.reschedule_booking(
         booking_id=int(payload.get("booking_id", 0)),
+        appointment_id=int(payload.get("appointment_id", 0)),
         preferred_visit_date=(payload.get("preferred_visit_date") or "").strip(),
         preferred_time_slot=(payload.get("preferred_time_slot") or "").strip(),
         reason_text=(payload.get("reason_text") or "").strip(),

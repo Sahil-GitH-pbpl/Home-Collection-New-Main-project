@@ -160,6 +160,186 @@ class HHomeCollectionCore:
                 parts.append(value)
         return ", ".join(parts)
 
+    def _booking_local_whatsapp_message(self, whatsapp_payload: dict) -> str:
+        patient_names = self._norm_code(whatsapp_payload.get("patient_names")) or "-"
+        slot = self._norm_code(whatsapp_payload.get("preferred_time_slot")) or "-"
+        visit_date = self._norm_code(whatsapp_payload.get("preferred_visit_date")) or "-"
+        address = self._norm_code(whatsapp_payload.get("address")) or "-"
+        lines = [
+            f"Hello {patient_names},",
+            "Your home sample collection is confirmed - a responsible step you've taken today towards taking care of your health.",
+            "Appointment Details",
+            f"Date/Time: {slot} | {visit_date}",
+            f"Address: {address}",
+            "Thank you for choosing Dr Bhasin's Lab. For over 25 years, we've handled diagnostic testing with the understanding that accuracy directly impacts health decisions.",
+            "Every sample represents a person, and is treated with care and responsibility we would show for our loved one.",
+            "If any details need correction, please let us know.",
+            "With care,",
+            "Dr Vishu Bhasin & Dr Vipul Bhasin",
+            "Dr Bhasin's Lab",
+        ]
+        return "\n".join(lines)
+
+    def _assignment_local_whatsapp_message(self, whatsapp_payload: dict) -> str:
+        patient_names = self._norm_code(whatsapp_payload.get("patient_names")) or "-"
+        phlebo_name = self._norm_code(whatsapp_payload.get("phlebo_name")) or "-"
+        phlebo_mobile = self._norm_code(whatsapp_payload.get("phlebo_mobile")) or "-"
+        total_exp = self._norm_code(whatsapp_payload.get("total_experience")) or "-"
+        sample_count = self._norm_code(whatsapp_payload.get("sample_count")) or "-"
+        bhasin_exp = self._norm_code(whatsapp_payload.get("bhasin_experience")) or "-"
+        lines = [
+            f"Hello {patient_names},",
+            f"To ensure a safe and hygienic sample collection as part of your health journey, we've assigned {phlebo_name} to visit you.",
+            f"His mobile number is {phlebo_mobile}.",
+            "",
+            f"He is a qualified and trained phlebotomist, with {total_exp}years of experience, has collected {sample_count}+ samples, and has been part of Dr Bhasin's Lab for {bhasin_exp} years.",
+            "",
+            "He is trained to carry out the collection gently and with minimal discomfort, while maintaining strict hygiene and respecting your privacy.",
+            "",
+            "With care,",
+            "Dr Vishu Bhasin & Dr Vipul Bhasin",
+            "Dr Bhasin's Lab",
+        ]
+        return "\n".join(lines)
+
+    def _lookup_panel_ofax_targets(self, patient_rows: list[dict]) -> list[str]:
+        panel_names = []
+        seen_names = set()
+        for row in patient_rows or []:
+            panel_name = self._norm_code((row or {}).get("panel_company"))
+            key = panel_name.lower()
+            if not panel_name or key in seen_names:
+                continue
+            seen_names.add(key)
+            panel_names.append(panel_name)
+        if not panel_names:
+            return []
+
+        conn = get_bhasin7001_connection()
+        try:
+            with conn.cursor() as cur:
+                placeholders = ",".join(["%s"] * len(panel_names))
+                cur.execute(
+                    f"""
+                    SELECT DISTINCT OFax
+                    FROM address
+                    WHERE Active=1
+                      AND OFax IS NOT NULL
+                      AND TRIM(OFax) <> ''
+                      AND LOWER(TRIM(pname)) IN ({placeholders})
+                    """,
+                    tuple(name.lower() for name in panel_names),
+                )
+                targets = []
+                seen = set()
+                for row in cur.fetchall() or []:
+                    target = self._norm_code(row.get("OFax"))
+                    if not target or target in seen:
+                        continue
+                    seen.add(target)
+                    targets.append(target)
+                return targets
+        finally:
+            conn.close()
+
+    def _lookup_internal_ref_contact(self, cur, internal_ref: str | None) -> str:
+        value = self._norm_code(internal_ref)
+        if not value:
+            return ""
+        if value.isdigit():
+            cur.execute(
+                """
+                SELECT contact
+                FROM users
+                WHERE id=%s AND contact IS NOT NULL AND TRIM(contact) <> ''
+                LIMIT 1
+                """,
+                (int(value),),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT contact
+                FROM users
+                WHERE status='Active'
+                  AND contact IS NOT NULL
+                  AND TRIM(contact) <> ''
+                  AND LOWER(TRIM(name))=LOWER(TRIM(%s))
+                ORDER BY id
+                LIMIT 1
+                """,
+                (value,),
+            )
+        row = cur.fetchone() or {}
+        return self._norm_code(row.get("contact"))
+
+    def _extra_local_whatsapp_targets(self, cur, patient_rows: list[dict], internal_ref: str | None) -> list[str]:
+        targets = []
+        seen = set()
+        for target in self._lookup_panel_ofax_targets(patient_rows):
+            if target and target not in seen:
+                seen.add(target)
+                targets.append(target)
+        internal_contact = self._lookup_internal_ref_contact(cur, internal_ref)
+        if internal_contact and internal_contact not in seen:
+            seen.add(internal_contact)
+            targets.append(internal_contact)
+        return targets
+
+    def _queue_local_whatsapp_message(self, app_obj, *, log_prefix: str, booking_id: int, targets: list[str], message: str) -> int:
+        deduped = []
+        seen = set()
+        for target in targets or []:
+            clean = self._norm_code(target)
+            if not clean or clean in seen:
+                continue
+            seen.add(clean)
+            deduped.append(clean)
+        if not deduped or not self._norm_code(message):
+            return 0
+
+        def _runner():
+            try:
+                from app.alerts import send_whatsapp_to_number
+                for target in deduped:
+                    status, resp = send_whatsapp_to_number(target, message)
+                    if app_obj:
+                        app_obj.logger.info(
+                            "[%s] local send booking_id=%s target=%s status=%s response=%s",
+                            log_prefix,
+                            booking_id,
+                            target,
+                            status,
+                            (resp[:300] if resp else ""),
+                        )
+            except Exception as exc:
+                if app_obj:
+                    app_obj.logger.error("[%s] local send failed booking_id=%s error=%s", log_prefix, booking_id, exc)
+
+        Thread(target=_runner, daemon=True).start()
+        return len(deduped)
+
+    def _queue_assignment_local_whatsapp(self, app_obj, assignment_payloads: list[dict]) -> int:
+        queued = 0
+        seen = set()
+        for item in assignment_payloads or []:
+            booking_id = int((item or {}).get("booking_id") or 0)
+            targets = tuple(self._norm_code(x) for x in ((item or {}).get("_local_whatsapp_targets") or []) if self._norm_code(x))
+            if not booking_id or not targets:
+                continue
+            key = (booking_id, targets)
+            if key in seen:
+                continue
+            seen.add(key)
+            queued += self._queue_local_whatsapp_message(
+                app_obj,
+                log_prefix="hc assignment local whatsapp",
+                booking_id=booking_id,
+                targets=list(targets),
+                message=self._assignment_local_whatsapp_message(item),
+            )
+        return queued
+
     def _queue_booking_whatsapp(self, app_obj, whatsapp_payload: dict) -> bool:
         if not app_obj:
             return False
@@ -1675,12 +1855,11 @@ class HHomeCollectionCore:
             comp = self._norm_code(billing.get("comp_cat_id"))
             mode = self._selected_charge_mode(billing)
             pname = self._norm_code(panel.get("pname"))
-            if comp and comp not in comp_ids:
-                comp_ids.append(comp)
-            if mode and mode not in charge_modes:
-                charge_modes.append(mode)
-            if pname and pname not in panel_names:
-                panel_names.append(pname)
+            if not comp or comp in comp_ids:
+                continue
+            comp_ids.append(comp)
+            charge_modes.append(mode)
+            panel_names.append(pname)
         return ",".join(comp_ids), ",".join(charge_modes), ",".join(panel_names)
 
     def _patient_cat_details_csv(self, patient_meta: dict) -> str:
@@ -4158,10 +4337,15 @@ class HHomeCollectionCore:
                 if patient_ids:
                     placeholders = ",".join(["%s"] * len(patient_ids))
                     cur.execute(
-                        f"SELECT title, full_name, contact_mobile FROM hpatient_master WHERE id IN ({placeholders}) ORDER BY full_name",
+                        f"SELECT title, full_name, contact_mobile, panel_company FROM hpatient_master WHERE id IN ({placeholders}) ORDER BY full_name",
                         tuple(patient_ids),
                     )
                     patient_rows = cur.fetchall() or []
+                local_whatsapp_targets = self._extra_local_whatsapp_targets(
+                    cur,
+                    patient_rows,
+                    payload.get("intrnl_rfrncd_by"),
+                )
                 self._recalculate_followup_required(cur, booking_id)
                 conn.commit()
 
@@ -4178,6 +4362,14 @@ class HHomeCollectionCore:
                             "address": self._format_booking_address_for_whatsapp(selected_snapshot),
                         }
                     )
+                local_whatsapp_payload = {
+                    "booking_id": booking_id,
+                    "booking_code": booking_code,
+                    "patient_names": self._format_patient_names_for_whatsapp(patient_rows),
+                    "preferred_time_slot": self._norm_code(preferred_time_slot),
+                    "preferred_visit_date": self._format_booking_date_for_whatsapp(preferred_visit_date),
+                    "address": self._format_booking_address_for_whatsapp(selected_snapshot),
+                }
 
                 prescription_merge = {"ok": True, "moved": 0}
                 if payload.get("_session_ref") is not None:
@@ -4197,8 +4389,18 @@ class HHomeCollectionCore:
                 for item in whatsapp_payloads:
                     if self._queue_booking_whatsapp(app_obj, item):
                         queued_count += 1
+                local_queued_count = 0
+                if local_whatsapp_targets:
+                    local_queued_count = self._queue_local_whatsapp_message(
+                        app_obj,
+                        log_prefix="hc booking local whatsapp",
+                        booking_id=int(booking_id),
+                        targets=local_whatsapp_targets,
+                        message=self._booking_local_whatsapp_message(local_whatsapp_payload),
+                    )
                 result["whatsapp_queued"] = bool(queued_count)
                 result["whatsapp_queued_count"] = queued_count
+                result["local_whatsapp_queued_count"] = local_queued_count
                 if not prescription_merge.get("ok"):
                     result["prescription_warning"] = prescription_merge.get("message") or "Prescription files could not be finalized"
                 return result
@@ -5159,12 +5361,14 @@ class HHomeCollectionCore:
                 SELECT
                     b.id AS booking_id,
                     b.booking_code,
+                    b.intrnl_rfrncd_by,
                     u.name AS phlebo_name,
                     u.contact AS phlebo_mobile,
                     u.experience AS phlebo_experience,
                     p.title,
                     p.full_name,
-                    p.contact_mobile
+                    p.contact_mobile,
+                    p.panel_company
                 FROM hhome_collection_booking b
                 INNER JOIN users u ON u.id = b.assigned_phlebotomist_id
                 LEFT JOIN hhome_collection_booking_patient bp ON bp.booking_id = b.id
@@ -5186,13 +5390,18 @@ class HHomeCollectionCore:
                         "phlebo_name": self._norm_code(row.get("phlebo_name")),
                         "phlebo_mobile": self._format_mobile_for_template(row.get("phlebo_mobile")),
                         "experience": row.get("phlebo_experience"),
+                        "internal_ref": self._norm_code(row.get("intrnl_rfrncd_by")),
                         "patients": [],
                     },
                 )
                 node["patients"].append(row)
             for bid, node in grouped.items():
                 total_exp, sample_count, bhasin_exp = self._assignment_experience_values(node.get("experience"))
-                for recipient in self._patient_whatsapp_recipients(node.get("patients")):
+                local_targets = self._extra_local_whatsapp_targets(cur, node.get("patients"), node.get("internal_ref"))
+                recipients = self._patient_whatsapp_recipients(node.get("patients"))
+                if not recipients and local_targets:
+                    recipients = [""]
+                for recipient in recipients:
                     payloads.append(
                         {
                             "booking_id": bid,
@@ -5204,6 +5413,8 @@ class HHomeCollectionCore:
                             "total_experience": total_exp,
                             "sample_count": sample_count,
                             "bhasin_experience": bhasin_exp,
+                            "_local_whatsapp_targets": local_targets,
+                            "_local_only": not bool(recipient),
                         }
                     )
 
@@ -5214,6 +5425,7 @@ class HHomeCollectionCore:
                     ap.id AS appointment_id,
                     ap.booking_id,
                     b.booking_code,
+                    b.intrnl_rfrncd_by,
                     u.name AS phlebo_name,
                     u.contact AS phlebo_mobile,
                     u.experience AS phlebo_experience,
@@ -5244,7 +5456,7 @@ class HHomeCollectionCore:
                     placeholders = ",".join(["%s"] * len(selected_ids))
                     cur.execute(
                         f"""
-                        SELECT title, full_name, contact_mobile
+                        SELECT title, full_name, contact_mobile, panel_company
                         FROM hpatient_master
                         WHERE id IN ({placeholders})
                         ORDER BY full_name
@@ -5253,7 +5465,11 @@ class HHomeCollectionCore:
                     )
                     patient_rows = cur.fetchall() or []
                 total_exp, sample_count, bhasin_exp = self._assignment_experience_values(row.get("phlebo_experience"))
-                for recipient in self._patient_whatsapp_recipients(patient_rows):
+                local_targets = self._extra_local_whatsapp_targets(cur, patient_rows, row.get("intrnl_rfrncd_by"))
+                recipients = self._patient_whatsapp_recipients(patient_rows)
+                if not recipients and local_targets:
+                    recipients = [""]
+                for recipient in recipients:
                     payloads.append(
                         {
                             "booking_id": int(row.get("booking_id") or 0),
@@ -5265,6 +5481,8 @@ class HHomeCollectionCore:
                             "total_experience": total_exp,
                             "sample_count": sample_count,
                             "bhasin_experience": bhasin_exp,
+                            "_local_whatsapp_targets": local_targets,
+                            "_local_only": not bool(recipient),
                         }
                     )
         return payloads
@@ -5388,9 +5606,12 @@ class HHomeCollectionCore:
                 conn.commit()
                 queued = 0
                 for item in assignment_payloads:
+                    if item.get("_local_only"):
+                        continue
                     if self._queue_assignment_whatsapp(app_obj, item):
                         queued += 1
-                return {"ok": True, "whatsapp_queued": queued}
+                local_queued = self._queue_assignment_local_whatsapp(app_obj, assignment_payloads)
+                return {"ok": True, "whatsapp_queued": queued, "local_whatsapp_queued_count": local_queued}
         except Exception as exc:
             conn.rollback()
             return {"ok": False, "message": str(exc)}
@@ -5617,7 +5838,7 @@ class HHomeCollectionCore:
         finally:
             conn.close()
 
-    def reschedule_booking(self, booking_id: int, preferred_visit_date: str, preferred_time_slot: str, reason_text: str = "", actor_user_id=None):
+    def reschedule_booking(self, booking_id: int, preferred_visit_date: str, preferred_time_slot: str, reason_text: str = "", actor_user_id=None, appointment_id: int = 0):
         if booking_id <= 0:
             return {"ok": False, "message": "booking_id is required"}
         if not preferred_visit_date or not preferred_time_slot:
@@ -5632,6 +5853,87 @@ class HHomeCollectionCore:
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
+                if int(appointment_id or 0) > 0:
+                    cur.execute(
+                        """
+                        SELECT id, booking_id, appointment_status, assigned_phlebotomist_id,
+                               preferred_visit_date, preferred_time_slot
+                        FROM hhome_collection_booking_appointment
+                        WHERE id=%s AND booking_id=%s
+                        LIMIT 1
+                        """,
+                        (int(appointment_id), booking_id),
+                    )
+                    old_appt = cur.fetchone()
+                    if not old_appt:
+                        return {"ok": False, "message": "Appointment not found"}
+                    status_code = int(old_appt.get("appointment_status") or 0)
+                    if status_code not in (0, 1, 2):
+                        return {"ok": False, "message": "Only Pending/Assigned/Started appointments can be rescheduled"}
+                    if status_code == 3:
+                        return {"ok": False, "message": "Completed appointment cannot be rescheduled"}
+                    if status_code == 4:
+                        return {"ok": False, "message": "Cancelled appointment cannot be rescheduled"}
+
+                    old_date = str(old_appt.get("preferred_visit_date") or "")
+                    old_slot = self._norm_code(old_appt.get("preferred_time_slot"))
+                    new_date = str(preferred_visit_date or "")
+                    new_slot = self._norm_code(preferred_time_slot)
+                    if old_date == new_date and old_slot == new_slot:
+                        return {"ok": False, "message": "No change detected in date or slot"}
+
+                    date_changed = old_date != new_date
+                    next_status = 0 if date_changed else status_code
+                    next_assigned_user = None if date_changed else old_appt.get("assigned_phlebotomist_id")
+
+                    cur.execute(
+                        """
+                        UPDATE hhome_collection_booking_appointment
+                        SET preferred_visit_date=%s,
+                            preferred_time_slot=%s,
+                            appointment_status=%s,
+                            assigned_phlebotomist_id=%s,
+                            updated_by=%s
+                        WHERE id=%s AND booking_id=%s
+                        """,
+                        (
+                            preferred_visit_date,
+                            preferred_time_slot,
+                            next_status,
+                            next_assigned_user,
+                            actor,
+                            int(appointment_id),
+                            booking_id,
+                        ),
+                    )
+
+                    old_values = {
+                        "appointment_id": int(appointment_id),
+                        "preferred_visit_date": old_date,
+                        "preferred_time_slot": old_slot,
+                        "appointment_status": status_code,
+                        "assigned_phlebotomist_id": int(old_appt.get("assigned_phlebotomist_id") or 0),
+                    }
+                    new_values = {
+                        "appointment_id": int(appointment_id),
+                        "preferred_visit_date": new_date,
+                        "preferred_time_slot": new_slot,
+                        "appointment_status": next_status,
+                        "assigned_phlebotomist_id": int(next_assigned_user or 0),
+                    }
+
+                    self._insert_booking_action_audit(
+                        cur,
+                        booking_id=booking_id,
+                        action_type="RESCHEDULE_APPOINTMENT",
+                        reason_text=reason,
+                        old_values=old_values,
+                        new_values=new_values,
+                        done_by=actor,
+                    )
+                    conn.commit()
+                    return {"ok": True, "booking_id": booking_id, "appointment_id": int(appointment_id)}
+
                 cur.execute(
                     """
                     SELECT id, booking_code, booking_status, assigned_phlebotomist_id,
@@ -7964,8 +8266,11 @@ class HHomeCollectionCore:
             conn.commit()
             queued = 0
             for item in assignment_payloads:
+                if item.get("_local_only"):
+                    continue
                 if self._queue_assignment_whatsapp(app_obj, item):
                     queued += 1
+            local_queued = self._queue_assignment_local_whatsapp(app_obj, assignment_payloads)
             updated_count = len(valid_booking_ids) + len(valid_appointment_ids)
             return {
                 "ok": True,
@@ -7974,6 +8279,7 @@ class HHomeCollectionCore:
                 "updated_appointment_count": len(valid_appointment_ids),
                 "skipped_assigned_count": max(len(normalized) - updated_count, 0),
                 "whatsapp_queued": queued,
+                "local_whatsapp_queued_count": local_queued,
             }
         except Exception as exc:
             conn.rollback()

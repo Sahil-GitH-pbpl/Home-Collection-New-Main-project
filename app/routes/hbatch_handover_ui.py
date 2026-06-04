@@ -266,6 +266,9 @@ def trf_patient_preview_page():
             visit_date = row.get("preferred_visit_date")
             visit_date_txt = visit_date.strftime("%d-%m-%Y") if hasattr(visit_date, "strftime") else "-"
             visit_slot = str(row.get("preferred_time_slot") or "-").strip() or "-"
+            display_phlebo_name = row.get("phlebo_name") or "-"
+            display_visit_date_txt = visit_date_txt
+            display_visit_slot = visit_slot
             patient_name = " ".join([x for x in [row.get("title"), row.get("full_name")] if str(x or "").strip()])
             dob = row.get("date_of_birth")
             dob_txt = dob.strftime("%d-%m-%Y") if hasattr(dob, "strftime") else "-"
@@ -284,14 +287,29 @@ def trf_patient_preview_page():
             if appointment_id > 0:
                 cur.execute(
                     """
-                    SELECT appointment_tests_snapshot_json, payment_snapshot_json
-                    FROM hhome_collection_booking_appointment
-                    WHERE id=%s AND booking_id=%s
+                    SELECT
+                      ap.appointment_tests_snapshot_json,
+                      ap.payment_snapshot_json,
+                      ap.preferred_visit_date,
+                      ap.preferred_time_slot,
+                      COALESCE(NULLIF(TRIM(uap.name), ''), '-') AS appointment_phlebo_name
+                    FROM hhome_collection_booking_appointment ap
+                    LEFT JOIN users uap ON uap.id = ap.assigned_phlebotomist_id
+                    WHERE ap.id=%s AND ap.booking_id=%s
                     LIMIT 1
                     """,
                     (appointment_id, booking_id),
                 )
                 ap = cur.fetchone() or {}
+                ap_visit_date = ap.get("preferred_visit_date")
+                if hasattr(ap_visit_date, "strftime"):
+                    display_visit_date_txt = ap_visit_date.strftime("%d-%m-%Y")
+                elif str(ap_visit_date or "").strip():
+                    display_visit_date_txt = str(ap_visit_date).strip()
+                ap_visit_slot = str(ap.get("preferred_time_slot") or "").strip()
+                if ap_visit_slot:
+                    display_visit_slot = ap_visit_slot
+                display_phlebo_name = ap.get("appointment_phlebo_name") or display_phlebo_name
                 snap = _as_json(ap.get("appointment_tests_snapshot_json"))
                 tbm = (snap.get("tests_billing_map") or {}).get(str(patient_id)) or (snap.get("tests_billing_map") or {}).get(patient_id) or {}
                 panels = tbm.get("panels") or []
@@ -451,8 +469,8 @@ def trf_patient_preview_page():
                     "appointment_type": "Link Appointment" if appointment_id > 0 else "New Appointment",
                     "booking_code": row.get("booking_code") or f"Booking-{booking_id}",
                     "booked_by": row.get("booked_by") or "-",
-                    "phlebo_name": row.get("phlebo_name") or "-",
-                    "visit_text": f"{visit_date_txt} | {visit_slot}",
+                    "phlebo_name": display_phlebo_name,
+                    "visit_text": f"{display_visit_date_txt} | {display_visit_slot}",
                     "report_schedule": str(row.get("report_schedule") or "Routine").strip().title(),
                     "patient_name": patient_name or "-",
                     "gender": row.get("gender") or "-",
