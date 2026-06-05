@@ -4935,10 +4935,12 @@ class HHomeCollectionCore:
                     SELECT p.id AS patient_id, p.patient_code, CONCAT_WS(' ', p.title, p.full_name) AS full_name,
                            hcbp.cce_level_TBS, hcbp.selected_comp_cat_ids, hcbp.selected_charge_modes, hcbp.selected_panel_companies,
                            hcbp.payment_mode, hcbp.due_amount, hcbp.extra_amount,
+                           hcbp.ref_by,
                            p.tag, COALESCE(hcbp.selected_panel_companies, '') AS panel_company, p.patient_documents, COALESCE(hcbp.prescription_files, '') AS prescription_files
                     FROM hhome_collection_booking_patient hcbp
                     INNER JOIN hpatient_master p ON p.id = hcbp.patient_id
                     WHERE hcbp.booking_id=%s
+                      AND COALESCE(hcbp.booking_patient_status, 0) <> 4
                     ORDER BY p.full_name
                     """,
                     (booking_id,),
@@ -5201,6 +5203,7 @@ class HHomeCollectionCore:
                             if str(name or "").lower().startswith(prefix)
                         ]
                     p["panel_company"] = self._norm_code(p.get("panel_company"))
+                    p["ref_by"] = self._norm_code(p.get("ref_by"))
                     p["panel_companies"] = panels_by_patient.get(pid, [])
                     p["selected_charge_modes"] = self._norm_code(p.get("selected_charge_modes"))
                     p["tag"] = self._norm_code(p.get("tag"))
@@ -5252,6 +5255,7 @@ class HHomeCollectionCore:
                     booking["total_amount"] = round(float(appt_total or appt_payment_summary.get("total_amount") or 0), 2)
 
                 booking["patients"] = patients
+                booking.pop("referred_by", None)
                 return booking
         finally:
             conn.close()

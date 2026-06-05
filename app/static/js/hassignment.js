@@ -183,7 +183,10 @@
       return `
       <div class="card mb-2">
         <div class="card-body">
-          <h6 class="hc-patient-name-red"><span>Patient Name:</span> ${esc(p.full_name || '-')}</h6>
+          <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 hc-patient-name-red mb-2">
+            <h6 class="mb-0"><span>Patient Name:</span> ${esc(p.full_name || '-')}</h6>
+            <h6 class="mb-0 text-end"><span>Referred By:</span> ${esc(p.ref_by || '-')}</h6>
+          </div>
           ${sectionHtml || '<div class="text-muted">No tests.</div>'}
           <div class="d-flex flex-wrap align-items-center justify-content-between mt-2 hc-review-bottom-strip hc-review-bottom-strip-patient">
             <div class="ms-auto text-end"><strong>Total Amount: ${esc(fmtMoney(patientTotal))}</strong></div>
@@ -197,7 +200,6 @@
         <div class="hc-review-meta">
           <div><strong>Caller:</strong> ${esc(booking.primary_mobile || '-')} | <strong>Patients:</strong> ${patients.length}</div>
           <div><strong>Google Location:</strong> <span class="hc-review-linkish">${esc(booking.google_location || '-')}</span></div>
-          <div><strong>Referred By:</strong> ${esc(booking.referred_by || '-')}</div>
           <div><strong>Internal Referred By:</strong> ${esc(booking.intrnl_rfrncd_by || '-')}</div>
           <div><strong>Lead ID:</strong> ${esc(booking.lead_id || '-')}</div>
         </div>
