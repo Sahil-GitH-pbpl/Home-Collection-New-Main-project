@@ -84,12 +84,12 @@ def _check_late(booking, slot_start_mins, slot_end_mins):
             indicators.append({"type": "NS", "text": "NS"})
     if booking.get("strt_time") and start_mins is not None and start_mins > slot_start_mins + 5:
         indicators.append({"type": "LS", "text": "LS"})
-    if status == 2 and booking.get("cmplt_time") and complete_mins is not None and complete_mins > slot_end_mins + 5:
+    if status == 3 and booking.get("cmplt_time") and complete_mins is not None and complete_mins > slot_end_mins + 5:
         indicators.append({"type": "LC", "text": "LC"})
 
     return {
         "indicators": indicators,
-        "should_red": bool(indicators) and status in (0, 1),
+        "should_red": bool(indicators) and status in (0, 1, 2),
     }
 
 
@@ -117,6 +117,20 @@ def _parse_patient_ids_json(raw_value):
         if pid > 0 and pid not in ids:
             ids.append(pid)
     return ids
+
+
+def _merge_tag_values(*values) -> str:
+    tags = []
+    seen = set()
+    for value in values:
+        for part in str(value or "").replace("|", ",").split(","):
+            tag = _norm(part)
+            key = tag.lower()
+            if not tag or key in seen:
+                continue
+            seen.add(key)
+            tags.append(tag)
+    return ", ".join(tags)
 
 
 @phlebo_summary_bp.get("/hhome-collection/phlebo-summary")
@@ -160,9 +174,16 @@ def summary_data():
                     COALESCE(NULLIF(TRIM(am.pincode), ''), '') AS pincode,
                     COALESCE(NULLIF(TRIM(cm.full_name), ''), '') AS caller_name,
                     COALESCE(NULLIF(TRIM(cm.primary_mobile), ''), '') AS caller_mobile,
+                    COALESCE(NULLIF(TRIM(hcb.booking_tags), ''), '') AS booking_tags,
                     COUNT(DISTINCT hbp.patient_id) AS patient_count,
                     GROUP_CONCAT(DISTINCT p.full_name ORDER BY p.full_name SEPARATOR ' | ') AS patient_names,
-                    GROUP_CONCAT(DISTINCT p.contact_mobile ORDER BY p.contact_mobile SEPARATOR ' | ') AS patient_mobiles
+                    GROUP_CONCAT(DISTINCT p.contact_mobile ORDER BY p.contact_mobile SEPARATOR ' | ') AS patient_mobiles,
+                    GROUP_CONCAT(
+                        DISTINCT DATE_FORMAT(p.date_of_birth, '%%d-%%m-%%Y')
+                        ORDER BY p.date_of_birth
+                        SEPARATOR ' | '
+                    ) AS patient_dobs,
+                    GROUP_CONCAT(DISTINCT p.tag ORDER BY p.tag SEPARATOR ', ') AS patient_tags
                 FROM hhome_collection_booking hcb
                 INNER JOIN hcaller_master cm ON cm.id = hcb.caller_id
                 INNER JOIN haddress_master am ON am.id = hcb.selected_address_id
@@ -189,7 +210,8 @@ def summary_data():
                     am.city,
                     am.pincode,
                     cm.full_name,
-                    cm.primary_mobile
+                    cm.primary_mobile,
+                    hcb.booking_tags
                 ORDER BY hcb.id DESC
                 """,
                 (target_date,),
@@ -219,6 +241,7 @@ def summary_data():
                     COALESCE(NULLIF(TRIM(am.pincode), ''), '') AS pincode,
                     COALESCE(NULLIF(TRIM(cm.full_name), ''), '') AS caller_name,
                     COALESCE(NULLIF(TRIM(cm.primary_mobile), ''), '') AS caller_mobile,
+                    COALESCE(NULLIF(TRIM(hcb.booking_tags), ''), '') AS booking_tags,
                     ap.selected_patient_ids_json,
                     ap.address_snapshot_json
                 FROM hhome_collection_booking_appointment ap
@@ -255,7 +278,9 @@ def summary_data():
                 cur.execute(
                     f"""
                     SELECT id, COALESCE(NULLIF(TRIM(full_name), ''), '') AS full_name,
-                           COALESCE(NULLIF(TRIM(contact_mobile), ''), '') AS contact_mobile
+                           COALESCE(NULLIF(TRIM(contact_mobile), ''), '') AS contact_mobile,
+                           DATE_FORMAT(date_of_birth, '%%d-%%m-%%Y') AS date_of_birth,
+                           COALESCE(NULLIF(TRIM(tag), ''), '') AS tag
                     FROM hpatient_master
                     WHERE id IN ({ph})
                     """,
@@ -265,6 +290,8 @@ def summary_data():
                     patient_details[int(r["id"])] = {
                         "name": _norm(r.get("full_name")),
                         "mobile": _norm(r.get("contact_mobile")),
+                        "dob": _norm(r.get("date_of_birth")),
+                        "tag": _norm(r.get("tag")),
                     }
 
             rows = list(booking_rows)
@@ -272,14 +299,22 @@ def summary_data():
                 ids = ap.get("_selected_patient_ids") or []
                 names = []
                 mobiles = []
+                dobs = []
+                tags = []
                 for pid in ids:
                     d = patient_details.get(int(pid) or 0) or {}
                     n = _norm(d.get("name"))
                     m = _norm(d.get("mobile"))
+                    dob = _norm(d.get("dob"))
+                    tag = _norm(d.get("tag"))
                     if n and n not in names:
                         names.append(n)
                     if m and m not in mobiles:
                         mobiles.append(m)
+                    if dob and dob not in dobs:
+                        dobs.append(dob)
+                    if tag and tag not in tags:
+                        tags.append(tag)
                 rows.append(
                     {
                         "booking_id": int(ap.get("appointment_id") or 0),
@@ -304,6 +339,8 @@ def summary_data():
                         "patient_count": len(ids),
                         "patient_names": " | ".join(names),
                         "patient_mobiles": " | ".join(mobiles),
+                        "patient_dobs": " | ".join(dobs),
+                        "patient_tags": ", ".join(tags),
                     }
                 )
     except Exception as exc:
@@ -360,6 +397,8 @@ def summary_data():
                 "patient_count": int(row.get("patient_count") or 0),
                 "patient_names": _norm(row.get("patient_names")),
                 "patient_mobiles": _norm(row.get("patient_mobiles")),
+                "patient_dobs": _norm(row.get("patient_dobs")),
+                "tags": _merge_tag_values(row.get("booking_tags"), row.get("patient_tags")),
                 "strt_time": _norm(row.get("strt_time")),
                 "cmplt_time": _norm(row.get("cmplt_time")),
                 "preferred_visit_date": str(row.get("preferred_visit_date") or ""),

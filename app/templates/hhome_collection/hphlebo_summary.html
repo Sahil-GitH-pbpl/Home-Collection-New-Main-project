@@ -74,10 +74,18 @@
     .phlebo-summary-page .status-2 { background-color: #559bf7 !important; padding: 4px 0; border-radius: 3px; margin: 0 1px; }
     .phlebo-summary-page .status-3 { background-color: #b4e2b6 !important; padding: 4px 0; border-radius: 3px; margin: 0 1px; }
     .phlebo-summary-page .status-4 { background-color: #ebaeb4 !important; padding: 4px 0; border-radius: 3px; margin: 0 1px; }
+    .phlebo-summary-page .status-5 { background-color: #b89a4a !important; color: #fff; padding: 4px 0; border-radius: 3px; margin: 0 1px; }
+    .phlebo-summary-page .booking-chip.tagged-booking {
+      border-left: 5px solid #000000;
+      padding-left: 2px;
+      border-top-left-radius: 8px;
+      border-bottom-left-radius: 8px;
+    }
     .phlebo-summary-page .late-indicator { display: inline-block; margin-left: 3px; padding: 0 4px; font-size: 9px; font-weight: bold; border-radius: 3px; color: white; line-height: 1.25; }
   .phlebo-summary-page .ls-indicator { background-color: #ff9800; }
   .phlebo-summary-page .lc-indicator { background-color: #f44336; }
   .phlebo-summary-page .ns-indicator { background-color: #9c27b0; }
+  .phlebo-summary-page .patient-count-indicator { background-color: #1565c0; }
   .phlebo-summary-page .booking-colony { font-weight: 700; color: navy; font-size: 12px; }
   .phlebo-summary-page .loader-container { display: flex; justify-content: center; align-items: center; height: 200px; }
   .phlebo-summary-page .loader-dots { display: flex; gap: 12px; }
@@ -212,14 +220,14 @@
 
   function parseSlotStart(slotStr) {
     if (!slotStr) return null;
-    const cleaned = String(slotStr).replace(/[â€“â€”]/g, "-").replace(/\s+/g, " ").trim();
+    const cleaned = String(slotStr).replace(/[â€“â€”]/g, "-").replace(/\s+to\s+/ig, "-").replace(/\s+/g, " ").trim();
     const parts = cleaned.split("-");
     return parts[0] ? parseTimeToMinutes(parts[0].trim()) : null;
   }
 
   function parseSlotEnd(slotStr) {
     if (!slotStr) return null;
-    const cleaned = String(slotStr).replace(/[â€“â€”]/g, "-").replace(/\s+/g, " ").trim();
+    const cleaned = String(slotStr).replace(/[â€“â€”]/g, "-").replace(/\s+to\s+/ig, "-").replace(/\s+/g, " ").trim();
     const parts = cleaned.split("-");
     return parts[1] ? parseTimeToMinutes(parts[1].trim()) : null;
   }
@@ -241,20 +249,16 @@
     if (booking.strt_time && startTimeMins > slotStartMins + 5) {
       indicators.push({ type: "LS", text: "LS" });
     }
-    if (status === 2 && booking.cmplt_time) {
+    if (status === 3 && booking.cmplt_time) {
       if (completeTimeMins > slotEndMins + 5) indicators.push({ type: "LC", text: "LC" });
     }
-    return { indicators, shouldColumnBeRed: indicators.length > 0 && (status === 0 || status === 1) };
-  }
-
-  function getStatusText(status) {
-    const num = parseInt(status || 0, 10);
-    return ({ 0: "Pending", 1: "Assigned", 2: "Started", 3: "Completed", 4: "Cancelled" })[num] || "Unknown";
+    return { indicators, shouldColumnBeRed: indicators.length > 0 && (status === 0 || status === 1 || status === 2) };
   }
 
   function getVisualStatusClass(booking) {
     const status = parseInt((booking && booking.status) || 0, 10);
     if (status === 4) return "status-4";
+    if (status === 5) return "status-5";
     if (status === 3) return "status-3";
     if (status === 2) return "status-2";
     return "status-0";
@@ -374,6 +378,10 @@
             const lateStatus = checkLateStatus(b, slotStartMins, slotEndMins);
             let indicatorsHtml = "";
             lateStatus.indicators.forEach(ind => { indicatorsHtml += `<span class="late-indicator ${ind.type.toLowerCase()}-indicator">${ind.text}</span>`; });
+            const patientCount = parseInt(b.patient_count || 0, 10);
+            if (patientCount > 1) {
+              indicatorsHtml += `<span class="late-indicator patient-count-indicator">+${patientCount - 1}</span>`;
+            }
             const addrParts = [
               b.house_flat_no,
               b.floor,
@@ -384,8 +392,10 @@
               b.pincode_snapshot
             ].map(v => (v || "").trim()).filter(Boolean);
             const addrText = addrParts.length ? addrParts.join(", ") : "N/A";
-            const tooltip = `Collection details:\nAddress: ${addrText}\nMobile: ${b.caller_mobile || "N/A"}\nPatients: ${b.patient_names || "N/A"}\nPatient Mobiles: ${b.patient_mobiles || "N/A"}\nStatus: ${getStatusText(b.status)}\nStart Time: ${b.strt_time || "Not started"}\nComplete Time: ${b.cmplt_time || "Not completed"}`;
-            return `<div class="booking-chip ${stat}" title="${tooltip.replace(/"/g, "&quot;")}">${text} ${indicatorsHtml}</div>`;
+            const tagText = (b.tags || "").trim();
+            const tagClass = tagText ? " tagged-booking" : "";
+            const tooltip = `Collection details:\nAddress: ${addrText}\nMobile: ${b.caller_mobile || "N/A"}\nPatients: ${b.patient_names || "N/A"}\nDOB: ${b.patient_dobs || "N/A"}\nPatient Mobiles: ${b.patient_mobiles || "N/A"}\nTags: ${tagText || "N/A"}\nSlot Time: ${b.slot || "N/A"}\nStart Time: ${b.strt_time || "Not started"}\nComplete Time: ${b.cmplt_time || "Not completed"}`;
+            return `<div class="booking-chip ${stat}${tagClass}" title="${tooltip.replace(/"/g, "&quot;")}">${text} ${indicatorsHtml}</div>`;
             }).join("");
             let tdStyle = "";
             if (entry === "UNASSIGNED") tdStyle += "background-color: #ffe0b2;";
