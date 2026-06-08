@@ -1976,12 +1976,15 @@ function computeAdditionalDiscountAmount(mode, value, subtotal) {
   return 0;
 }
 
-function renderReviewTestsHtml(selectedTests, catalog, applyDiscount = true) {
+function renderReviewTestsHtml(selectedTests, catalog, chargeMode = 'P') {
   const list = Array.isArray(selectedTests) ? selectedTests : [];
   if (!list.length) {
     return { html: '<div class="text-muted">No tests selected.</div>', total: 0, subtotal: 0, discountTotal: 0, tubes: [] };
   }
 
+  const mode = normalizeChargeModeCode(chargeMode);
+  const isFreeMode = mode === 'F';
+  const isPayingMode = mode === 'P';
   const tubeSet = new Set();
   let total = 0;
   let subtotal = 0;
@@ -1990,9 +1993,11 @@ function renderReviewTestsHtml(selectedTests, catalog, applyDiscount = true) {
     const code = normalizeTestCode(t?.booked_code || t?.testcode1 || t?.test_code || '');
     const desc = String(t?.description || '').trim();
     const label = [code, desc].filter(Boolean).join(' - ') || 'Test';
-    const mrp = Number(t?.mrp || 0);
-    const discount = applyDiscount ? Number(t?.max_discount || 0) : 0;
-    const finalCharge = Math.max(0, mrp - discount);
+    const rawMrp = Number(t?.mrp || 0);
+    const rawDiscount = Number(t?.max_discount || 0);
+    const mrp = isFreeMode ? 0 : rawMrp;
+    const discount = isFreeMode ? 0 : (isPayingMode ? rawDiscount : 0);
+    const finalCharge = isFreeMode ? 0 : Math.max(0, mrp - discount);
     subtotal += Number.isFinite(mrp) ? mrp : 0;
     discountTotal += Number.isFinite(discount) ? discount : 0;
     total += Number.isFinite(finalCharge) ? finalCharge : 0;
@@ -3551,10 +3556,11 @@ function renderReview() {
           const selectedMode = normalizeChargeModeCode(billing.selected_charge_mode || billing.charge_mode_code || '');
           const isPayingPanel = selectedMode === 'P';
           const isCreditPanel = selectedMode === 'C';
-          const testsSummary = renderReviewTestsHtml(selectedTests, catalog, isPayingPanel);
+          const isFreePanel = selectedMode === 'F';
+          const testsSummary = renderReviewTestsHtml(selectedTests, catalog, selectedMode);
           const chargeMode = chargeModeLabel(selectedMode);
-          const panelMaxAllowed = selectedTests.reduce((acc, t) => acc + Number(t?.max_allowed_discount || 0), 0);
-          const panelAdditionalCap = selectedTests.reduce((acc, t) => {
+          const panelMaxAllowed = isFreePanel ? 0 : selectedTests.reduce((acc, t) => acc + Number(t?.max_allowed_discount || 0), 0);
+          const panelAdditionalCap = isFreePanel ? 0 : selectedTests.reduce((acc, t) => {
             const allowed = Number(t?.max_allowed_discount || 0);
             const base = Number(t?.max_discount || 0);
             return acc + Math.max(0, allowed - base);
@@ -3569,7 +3575,7 @@ function renderReview() {
             patientAdditionalCap += Number(panelAdditionalCap || 0);
           } else if (isCreditPanel) {
             creditAmount += Number(testsSummary.total || 0);
-          } else {
+          } else if (!isFreePanel) {
             payingAmount += Number(testsSummary.total || 0);
           }
           (testsSummary.tubes || []).forEach((tube) => {

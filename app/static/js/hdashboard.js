@@ -14,6 +14,16 @@ function statusBadge(status) {
   return `<span class="badge text-bg-${meta.cls}">${meta.text}</span>`;
 }
 
+function assignedStatusButton(row, bookingId) {
+  return `
+    <button type="button" class="badge text-bg-warning border-0 dash-status-unassign"
+      data-booking-id="${Number(bookingId || 0)}"
+      data-appointment-id="${Number(row.appointment_id || 0)}">
+      Assigned
+    </button>
+  `;
+}
+
 function statusText(status) {
   const labels = { 0: 'Pending', 1: 'Assigned', 2: 'Started', 3: 'Completed', 4: 'Cancelled', 5: 'P Completed' };
   const legacyMap = { Pending: 0, Assigned: 1, Started: 2, Completed: 3, Cancelled: 4, PCompleted: 5 };
@@ -421,7 +431,7 @@ function renderDashboardRows(rows) {
         </td>
         <td><strong>${Number(r.total_amount || 0).toFixed(2).replace(/\.00$/, '')}</strong></td>
         <td>${String(r.booked_by_name || '-').trim() || '-'}</td>
-        <td>${statusBadge(r.booking_status)}</td>
+        <td>${statusCode === 1 ? assignedStatusButton(r, bookingId) : statusBadge(r.booking_status)}</td>
         <td>${String(r.assigned_phlebo_name || '-').trim() || '-'}</td>
         <td class="dash-actions-cell">
           <button class="btn btn-sm btn-outline-primary dash-action-btn btn-view" data-booking-id="${r.booking_id || r.id}" data-appointment-id="${r.appointment_id || 0}">View</button>
@@ -933,6 +943,17 @@ function openRescheduleModal(bookingTarget) {
   });
 }
 
+function openUnassignReasonModal(bookingTarget) {
+  const bookingId = Number(bookingTarget?.booking_id || 0);
+  const appointmentId = Number(bookingTarget?.appointment_id || 0);
+  const modalEl = document.getElementById('unassignReasonModal');
+  if (!modalEl || !bookingId) return;
+  $('#unassign-booking-id').val(String(bookingId));
+  $('#unassign-appointment-id').val(String(appointmentId || 0));
+  $('#unassign-reason-text').val('');
+  new bootstrap.Modal(modalEl).show();
+}
+
 function bindRowActions() {
   $('.btn-view').off('click').on('click', function () {
     const bookingId = Number($(this).data('booking-id') || 0);
@@ -964,6 +985,12 @@ function bindRowActions() {
   });
   $('.btn-reassign').off('click').on('click', function () {
     bindAssignForSingleBooking({
+      booking_id: Number($(this).data('booking-id') || 0),
+      appointment_id: Number($(this).data('appointment-id') || 0),
+    });
+  });
+  $('.dash-status-unassign').off('click').on('click', function () {
+    openUnassignReasonModal({
       booking_id: Number($(this).data('booking-id') || 0),
       appointment_id: Number($(this).data('appointment-id') || 0),
     });
@@ -1071,6 +1098,31 @@ $(function () {
     resetDashboardPaging();
     loadDashboardWithLoader();
   });
-
+  $('#btn-confirm-unassign').off('click').on('click', function () {
+    const payload = {
+      booking_id: Number($('#unassign-booking-id').val() || 0),
+      appointment_id: Number($('#unassign-appointment-id').val() || 0),
+      reason_text: String($('#unassign-reason-text').val() || '').trim(),
+    };
+    if (!payload.reason_text) return alert('Reason is required.');
+    const $btn = $(this).prop('disabled', true);
+    $.ajax({
+      url: '/hhome-collection/unassign-phlebotomist',
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payload),
+      success: function () {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('unassignReasonModal'));
+        if (modal) modal.hide();
+        loadDashboardWithLoader();
+      },
+      error: function (xhr) {
+        alert(xhr.responseJSON?.message || 'Unassign failed');
+      },
+      complete: function () {
+        $btn.prop('disabled', false);
+      },
+    });
+  });
   loadDashboardWithLoader();
 });

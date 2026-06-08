@@ -37,8 +37,10 @@ HFALLBACK_TAGS_BY_TYPE = {
         "50 g glucose",
         "100g glucose",
         "first time be careful",
+        "New Patient",
         "high value",
         "child collection",
+        "Flowrich | Anrich | Bio elite",
         "urgent report",
         "urgent collection",
         "previous complaint delay",
@@ -1064,6 +1066,7 @@ class HHomeCollectionCore:
                 comp_cat_id = billing.get("comp_cat_id")
                 selected_charge_mode = self._selected_charge_mode(billing)
                 is_paying_mode = selected_charge_mode == "P"
+                is_free_mode = selected_charge_mode == "F"
                 for t in (section.get("selected_tests") or []):
                     try:
                         mrp = float(t.get("mrp") or 0)
@@ -1083,11 +1086,15 @@ class HHomeCollectionCore:
                             t.get("booked_code"),
                             mrp,
                         )
+                    if is_free_mode:
+                        mrp = 0.0
+                        max_discount = 0.0
+                        max_allowed_discount = 0.0
                     subtotal += mrp
                     if is_paying_mode:
                         paying_subtotal += mrp
                         base_discount_total += max_discount
-                    else:
+                    elif not is_free_mode:
                         credit_subtotal += mrp
                     if is_paying_mode:
                         cap_inc = max(0.0, max_allowed_discount - max_discount)
@@ -1232,6 +1239,8 @@ class HHomeCollectionCore:
         except Exception:
             max_discount = 0.0
         selected_charge_mode = self._selected_charge_mode(b)
+        if selected_charge_mode == "F":
+            return 0.0, 0.0, 0.0
         if selected_charge_mode == "P":
             charge, normalized_discount = self._normalized_paying_pricing(mrp, max_discount)
             return mrp, charge, normalized_discount
@@ -2461,6 +2470,77 @@ class HHomeCollectionCore:
             seen.add(key)
             merged.append(item)
         return ",".join(merged)
+
+    def _selected_patient_ids(self, selected_patients) -> list[int]:
+        out = []
+        seen = set()
+        for item in selected_patients or []:
+            try:
+                pid = int((item or {}).get("patient_id") or 0)
+            except Exception:
+                pid = 0
+            if pid > 0 and pid not in seen:
+                seen.add(pid)
+                out.append(pid)
+        return out
+
+    def _has_child_patient(self, cur, patient_ids: list[int]) -> bool:
+        ids = [int(x) for x in (patient_ids or []) if int(x or 0) > 0]
+        if not ids:
+            return False
+        placeholders = ",".join(["%s"] * len(ids))
+        cur.execute(
+            f"""
+            SELECT id, age_years, date_of_birth
+            FROM hpatient_master
+            WHERE id IN ({placeholders})
+            """,
+            tuple(ids),
+        )
+        today = date.today()
+        for row in cur.fetchall() or []:
+            age = None
+            try:
+                if row.get("age_years") is not None:
+                    age = int(row.get("age_years") or 0)
+            except Exception:
+                age = None
+            if age is None or age <= 0:
+                dob = row.get("date_of_birth")
+                if dob:
+                    try:
+                        if isinstance(dob, str):
+                            dob = datetime.strptime(dob[:10], "%Y-%m-%d").date()
+                        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                    except Exception:
+                        age = None
+            if age is not None and age < 12:
+                return True
+        return False
+
+    def _auto_transactional_tags(
+        self,
+        cur,
+        *,
+        caller_id,
+        selected_patients,
+        total_amount,
+        existing_tags,
+        include_new_patient: bool,
+    ) -> str:
+        auto_tags = []
+        if include_new_patient:
+            cur.execute(
+                "SELECT COUNT(*) AS cnt FROM hhome_collection_booking WHERE caller_id=%s",
+                (int(caller_id or 0),),
+            )
+            if int((cur.fetchone() or {}).get("cnt") or 0) == 0:
+                auto_tags.append("New Patient")
+        if float(total_amount or 0) >= 10000:
+            auto_tags.append("High Value")
+        if self._has_child_patient(cur, self._selected_patient_ids(selected_patients)):
+            auto_tags.append("Child Collection")
+        return self._merge_tag_csv(existing_tags, ",".join(auto_tags))
 
     def _linked_patient_ids_for_caller(self, cur, caller_id) -> list[int]:
         try:
@@ -4239,6 +4319,14 @@ class HHomeCollectionCore:
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
+                booking_tags = self._auto_transactional_tags(
+                    cur,
+                    caller_id=caller_id,
+                    selected_patients=selected_patients,
+                    total_amount=total_amount,
+                    existing_tags=booking_tags,
+                    include_new_patient=True,
+                )
                 tmp = self._temp_code("HHCB-TMP-")
                 cur.execute(
                     """
@@ -5144,12 +5232,12 @@ class HHomeCollectionCore:
                             tests_by_patient[pid].append(label)
                         mrp = float(row.get("mrp") or 0)
                         discount = float(row.get("max_discount") or 0)
-                        final_charge = mrp - discount
-                        if final_charge < 0:
-                            final_charge = 0
                         pmeta = patient_row_by_id.get(pid) or {}
                         panel_company = self._panel_name_from_patient_row(pmeta, row.get("comp_cat_id"))
                         selected_charge_mode = self._charge_mode_from_patient_row(pmeta, row.get("comp_cat_id"))
+                        final_charge = mrp - discount
+                        if final_charge < 0:
+                            final_charge = 0
                         test_detail_by_patient.setdefault(pid, []).append(
                             {
                                 "booked_code": self._norm_code(row.get("booked_code")),
@@ -5686,6 +5774,110 @@ class HHomeCollectionCore:
             return {"ok": False, "message": str(exc)}
         finally:
             conn.close()
+
+    def unassign_phlebotomist(self, booking_id: int, reason_text: str, actor_user_id=None, appointment_id: int = 0):
+        reason = self._norm_code(reason_text)
+        if not reason:
+            return {"ok": False, "message": "Reason is required"}
+        if booking_id <= 0 and appointment_id <= 0:
+            return {"ok": False, "message": "target id is required"}
+
+        actor = self._actor(actor_user_id)
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                if appointment_id > 0:
+                    cur.execute(
+                        """
+                        SELECT id, booking_id, assigned_phlebotomist_id, appointment_status,
+                               selected_patient_ids_json, payment_snapshot_json
+                        FROM hhome_collection_booking_appointment
+                        WHERE id=%s
+                        LIMIT 1
+                        """,
+                        (appointment_id,),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return {"ok": False, "message": "Appointment not found"}
+                    old_assigned = int(row.get("assigned_phlebotomist_id") or 0)
+                    if old_assigned <= 0 or int(row.get("appointment_status") or 0) != 1:
+                        return {"ok": False, "message": "Appointment is not assigned"}
+                    parent_booking_id = int(row.get("booking_id") or booking_id or 0)
+                    cur.execute(
+                        """
+                        UPDATE hhome_collection_booking_appointment
+                        SET assigned_phlebotomist_id=NULL, appointment_status=0, updated_by=%s
+                        WHERE id=%s
+                        """,
+                        (actor, appointment_id),
+                    )
+                    selected_patient_ids = self._patient_ids_from_json(row.get("selected_patient_ids_json"))
+                    patient_context = self._build_appointment_patient_context_from_db(
+                        cur,
+                        booking_id=parent_booking_id,
+                        patient_ids=selected_patient_ids,
+                        default_status=0,
+                        existing_context=self._appointment_patient_context(row.get("payment_snapshot_json")),
+                    )
+                    for pid in selected_patient_ids:
+                        node = patient_context.get(str(pid)) if isinstance(patient_context.get(str(pid)), dict) else {}
+                        node["appointment_patient_status"] = 0
+                        patient_context[str(pid)] = node
+                    cur.execute(
+                        "UPDATE hhome_collection_booking_appointment SET payment_snapshot_json=%s WHERE id=%s",
+                        (
+                            self._appointment_payment_snapshot_json(
+                                existing_raw=row.get("payment_snapshot_json"),
+                                patient_context=patient_context,
+                            ),
+                            appointment_id,
+                        ),
+                    )
+                    self._insert_booking_action_audit(
+                        cur,
+                        booking_id=parent_booking_id,
+                        action_type="UNASSIGN",
+                        reason_text=reason,
+                        old_values={"row_type": "APPOINTMENT", "appointment_id": appointment_id, "assigned_phlebotomist_id": old_assigned},
+                        new_values={"row_type": "APPOINTMENT", "appointment_id": appointment_id, "assigned_phlebotomist_id": None},
+                        done_by=actor,
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT id, assigned_phlebotomist_id, booking_status
+                        FROM hhome_collection_booking
+                        WHERE id=%s
+                        LIMIT 1
+                        """,
+                        (booking_id,),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return {"ok": False, "message": "Booking not found"}
+                    old_assigned = int(row.get("assigned_phlebotomist_id") or 0)
+                    if old_assigned <= 0 or int(row.get("booking_status") or 0) != 1:
+                        return {"ok": False, "message": "Booking is not assigned"}
+                    cur.execute("UPDATE hhome_collection_booking SET assigned_phlebotomist_id=NULL, booking_status=0 WHERE id=%s", (booking_id,))
+                    cur.execute("UPDATE hhome_collection_booking_patient SET booking_patient_status=0 WHERE booking_id=%s AND booking_patient_status=1", (booking_id,))
+                    self._insert_booking_action_audit(
+                        cur,
+                        booking_id=booking_id,
+                        action_type="UNASSIGN",
+                        reason_text=reason,
+                        old_values={"row_type": "BOOKING", "assigned_phlebotomist_id": old_assigned},
+                        new_values={"row_type": "BOOKING", "assigned_phlebotomist_id": None},
+                        done_by=actor,
+                    )
+            conn.commit()
+            return {"ok": True}
+        except Exception as exc:
+            conn.rollback()
+            return {"ok": False, "message": str(exc)}
+        finally:
+            conn.close()
+
     def _insert_booking_action_audit(self, cur, booking_id: int, action_type: str, reason_text: str, old_values: dict | None, new_values: dict | None, done_by: int):
         cur.execute(
             """
@@ -7569,6 +7761,15 @@ class HHomeCollectionCore:
                     total_amount = float(old_booking.get("total_amount") or 0)
                     patient_addl_applied = {}
                     patient_final_amounts = {}
+
+                booking_tags = self._auto_transactional_tags(
+                    cur,
+                    caller_id=caller_id,
+                    selected_patients=selected_patients,
+                    total_amount=total_amount,
+                    existing_tags=booking_tags,
+                    include_new_patient=False,
+                )
 
                 old_values = {}
                 new_values = {}

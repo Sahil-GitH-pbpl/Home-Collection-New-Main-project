@@ -401,6 +401,10 @@
           <span class="icon" aria-hidden="true">📵</span>
           <span class="lbl">Missed</span> <span class="badge" id="count-missed">0</span>
         </a>
+        <a href="{{ url_for('hhome_collection_dashboard.dashboard') }}" class="mini-tile tile-breached hidden" id="btn-hcb-due-unassigned" title="Home collection due within 30 minutes and still unassigned">
+          <span class="icon" aria-hidden="true">&#127968;</span>
+          <span class="lbl">HC_Bkng</span> <span class="badge" id="count-hcb-due-unassigned">0</span>
+        </a>
         <a href="{{ url_for('ticketlist.tickets_list') }}" class="mini-tile tile-tagged hidden" id="btn-odt-rst-unassigned" title="Unassigned ODT and RST Tickets">
           <span class="icon" aria-hidden="true">📋</span>
           <span class="lbl">ODT &amp; RST</span> <span class="badge" id="count-odt-rst-unassigned">0</span>
@@ -593,6 +597,7 @@
         setTile('btn-breached','count-breached', data.my_breached);
         setTile('btn-leads-fresh','count-leads-fresh', data.leads_fresh);
         setTile('btn-missed','count-missed', data.missed_calls);
+        setTile('btn-hcb-due-unassigned','count-hcb-due-unassigned', data.hcb_due_unassigned);
         setTile('btn-odt-rst-unassigned','count-odt-rst-unassigned', data.odt_rst_unassigned);
         setTile('btn-cvt-open','count-cvt-open', data.cvt_open);
 
@@ -627,7 +632,7 @@
     (function initialHide(){
       const ids = [
         'btn-breached', 'btn-leads-fresh', 'btn-missed',
-        'btn-odt-rst-unassigned', 'btn-cvt-open', 'btn-complaint', 'btn-failed-messages'
+        'btn-hcb-due-unassigned', 'btn-odt-rst-unassigned', 'btn-cvt-open', 'btn-complaint', 'btn-failed-messages'
       ];
       ids.forEach(id => {
         const el = document.getElementById(id);

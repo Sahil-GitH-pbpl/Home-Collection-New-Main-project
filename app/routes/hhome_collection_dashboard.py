@@ -103,6 +103,19 @@ def assign_phlebotomist():
     return jsonify(result), status
 
 
+@hhome_collection_dashboard_bp.post("/hhome-collection/unassign-phlebotomist")
+def unassign_phlebotomist():
+    payload = request.get_json(silent=True) or {}
+    result = service.unassign_phlebotomist(
+        booking_id=int(payload.get("booking_id", 0) or 0),
+        appointment_id=int(payload.get("appointment_id", 0) or 0),
+        reason_text=(payload.get("reason_text") or "").strip(),
+        actor_user_id=session.get("user_id"),
+    )
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
 @hhome_collection_dashboard_bp.post("/hhome-collection/cancel-booking")
 def cancel_booking():
     payload = request.get_json(silent=True) or {}

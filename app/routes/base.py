@@ -3,6 +3,7 @@ from flask import Blueprint, render_template, redirect, url_for, session, jsonif
 from app.db.connection import get_complaint_connection, get_db_connection
 import pymysql
 import json
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import mysql.connector
@@ -61,6 +62,22 @@ def _as_aware_ist(val):
         return None
 
     return None
+
+
+def _slot_start_minutes(slot_text: str):
+    token = re.split(r"\bto\b|-", (slot_text or "").strip(), maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    token = token.replace(".", "").upper().replace(" ", "")
+    match = re.match(r"^(\d{1,2})(?::(\d{2}))?(AM|PM)$", token)
+    if not match:
+        return None
+    hour = int(match.group(1))
+    minute = int(match.group(2) or 0)
+    ampm = match.group(3)
+    if ampm == "PM" and hour != 12:
+        hour += 12
+    if ampm == "AM" and hour == 12:
+        hour = 0
+    return hour * 60 + minute
 
 
 # ---------------- COUNTERS API (NO POOL) ----------------
@@ -169,6 +186,32 @@ def tickets_counters():
             """)
             cvt_open = cur.fetchone().get("cvt_open", 0) or 0
 
+            now_ist = datetime.now(IST)
+            target_date = now_ist.date()
+            cutoff_minutes = (now_ist.hour * 60) + now_ist.minute + 30
+            cur.execute("""
+                SELECT preferred_time_slot
+                FROM hhome_collection_booking
+                WHERE preferred_visit_date = %s
+                  AND booking_status = 0
+                  AND (assigned_phlebotomist_id IS NULL OR assigned_phlebotomist_id = 0)
+                  AND preferred_time_slot IS NOT NULL
+                  AND TRIM(preferred_time_slot) <> ''
+                UNION ALL
+                SELECT preferred_time_slot
+                FROM hhome_collection_booking_appointment
+                WHERE preferred_visit_date = %s
+                  AND appointment_status = 0
+                  AND (assigned_phlebotomist_id IS NULL OR assigned_phlebotomist_id = 0)
+                  AND preferred_time_slot IS NOT NULL
+                  AND TRIM(preferred_time_slot) <> ''
+            """, (target_date, target_date))
+            hcb_due_unassigned = sum(
+                1
+                for row in (cur.fetchall() or [])
+                if (_slot_start_minutes(row.get("preferred_time_slot") or "") or 99999) <= cutoff_minutes
+            )
+
     except Exception as e:
         current_app.logger.error(f"[tickets_counters] DB error: {e}")
         return jsonify({"ok": False, "error": "DB error"}), 500
@@ -220,7 +263,8 @@ def tickets_counters():
         "leads_fresh": int(leads_fresh),
         "missed_calls": int(missed_calls),
         "odt_rst_unassigned": int(odt_rst_unassigned),
-        "cvt_open": cvt_open
+        "cvt_open": cvt_open,
+        "hcb_due_unassigned": int(hcb_due_unassigned),
     })
 
 
