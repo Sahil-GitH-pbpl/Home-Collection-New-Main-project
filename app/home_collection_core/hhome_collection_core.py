@@ -2540,7 +2540,34 @@ class HHomeCollectionCore:
             auto_tags.append("High Value")
         if self._has_child_patient(cur, self._selected_patient_ids(selected_patients)):
             auto_tags.append("Child Collection")
+        patient_ids = self._selected_patient_ids(selected_patients)
+        if self._has_flowrich_anrich_bioelite_patient_panel(cur, patient_ids):
+            auto_tags.append("Flowrich | Anrich | Bio elite")
         return self._merge_tag_csv(existing_tags, ",".join(auto_tags))
+
+    def _is_flowrich_anrich_bioelite_name(self, raw_name) -> bool:
+        target_names = {
+            "flowrich pharma pvt ltd",
+            "anrich pharma",
+            "bio elite",
+        }
+        name = self._norm_code(raw_name).strip().rstrip(".").lower()
+        return name in target_names
+
+    def _has_flowrich_anrich_bioelite_patient_panel(self, cur, patient_ids: list[int]) -> bool:
+        ids = [int(x) for x in (patient_ids or []) if int(x or 0) > 0]
+        if not ids:
+            return False
+        placeholders = ",".join(["%s"] * len(ids))
+        cur.execute(
+            f"""
+            SELECT panel_company
+            FROM hpatient_master
+            WHERE id IN ({placeholders})
+            """,
+            tuple(ids),
+        )
+        return any(self._is_flowrich_anrich_bioelite_name((row or {}).get("panel_company")) for row in (cur.fetchall() or []))
 
     def _linked_patient_ids_for_caller(self, cur, caller_id) -> list[int]:
         try:

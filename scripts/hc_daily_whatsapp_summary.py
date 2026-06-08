@@ -498,7 +498,6 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Send Home Collection daily WhatsApp summaries.")
     parser.add_argument("--phone", default=TARGET_PHONE, help="WhatsApp target number.")
     parser.add_argument("--today", default="", help="Override today date as YYYY-MM-DD for testing.")
-    parser.add_argument("--dry-run", action="store_true", help="Print messages without sending WhatsApp.")
     return parser.parse_args()
 
 
@@ -515,15 +514,8 @@ def main():
     finally:
         conn.close()
 
-    if args.dry_run:
-        print(actual_msg)
-        print("\n" + "=" * 60 + "\n")
-        print(planned_msg)
-        return
-
     for msg in (actual_msg, planned_msg):
-        status, response = send_whatsapp_to_number(args.phone, msg)
-        print(f"sent status={status} response={response[:300] if response else ''}")
+        send_whatsapp_to_number(args.phone, msg)
 
 
 if __name__ == "__main__":
