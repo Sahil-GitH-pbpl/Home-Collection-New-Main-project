@@ -3,7 +3,7 @@
 <style>
   #content{padding:8px 20px 20px;}
   .audit-page{background:#f4f7fb;min-height:calc(100vh - 70px);padding:4px 18px 28px;color:#172033;}
-  .audit-shell{max-width:1180px;margin:0 auto;}
+  .audit-shell{width:100%;max-width:none;margin:0;}
   .audit-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px;}
   .audit-title{font-size:22px;font-weight:800;margin:0;color:#0b1f4d;}
   .audit-btn{display:inline-flex;align-items:center;justify-content:center;min-height:31px;border:1px solid #0b72e7;border-radius:10px;background:#0b72e7;color:#fff;text-decoration:none;font-size:12px;font-weight:800;padding:5px 12px;cursor:pointer;white-space:nowrap;}
@@ -38,7 +38,13 @@
   .diff-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px 12px;}
   .diff-box{border:1px solid #e2e8f0;border-radius:8px;background:#fcfdff;overflow:hidden;}
   .diff-title{padding:8px 10px;font-size:12px;font-weight:900;color:#344054;}
-  .json-pre{margin:0;border-top:1px solid #e2e8f0;background:#0f172a;color:#e5e7eb;padding:10px;white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:260px;overflow:auto;}
+  .audit-value-list{border-top:1px solid #e2e8f0;background:#fff;padding:10px;display:grid;gap:8px;font-size:13px;color:#111827;}
+  .audit-value-empty{color:#667085;font-weight:700;}
+  .audit-value-row{display:grid;grid-template-columns:170px minmax(0,1fr);gap:8px;align-items:start;}
+  .audit-value-label{font-weight:900;color:#344054;}
+  .audit-value-text{font-weight:700;color:#101828;word-break:break-word;}
+  .audit-section-title{font-size:12px;font-weight:900;color:#073b82;margin-top:2px;}
+  .audit-test-row{border:1px solid #e5eaf2;border-radius:7px;background:#f8fbff;padding:7px 9px;display:grid;grid-template-columns:1fr 1fr;gap:8px;}
   .audit-loader{display:none;font-size:13px;font-weight:800;color:#0b72e7;margin-left:8px;}
   .audit-error{display:none;margin:12px 14px 0;border:1px solid #fecdd3;background:#fff1f2;color:#9f1239;border-radius:8px;padding:9px 11px;font-size:13px;font-weight:800;}
   @media (max-width:900px){
@@ -49,6 +55,8 @@
     .audit-row-head{grid-template-columns:1fr;}
     .audit-user{text-align:left;}
     .diff-grid{grid-template-columns:1fr;}
+    .audit-value-row{grid-template-columns:1fr;}
+    .audit-test-row{grid-template-columns:1fr;}
   }
 </style>
 
@@ -100,6 +108,74 @@
     if(v === null || v === undefined || v === '') return '-';
     try { return JSON.stringify(v, null, 2); } catch(e) { return String(v); }
   }
+  const statusMap = {0:'Pending',1:'Assigned',2:'Started',3:'Completed',4:'Cancelled',5:'Partial Completed'};
+  const labelMap = {
+    assigned_phlebotomist:'Assigned Phlebo',
+    booking_status:'Booking Status',
+    preferred_time_slot:'Time Slot',
+    preferred_visit_date:'Visit Date',
+    additional_discount:'Additional Discount',
+    booking_tags:'Booking Tags',
+    selected_charge_mode:'Charge Mode',
+    selected_comp_cat_id:'Comp Cat ID',
+    selected_panel_company:'Panel Company',
+    patient_name:'Patient Name',
+    test_name:'Test Name'
+  };
+  function humanLabel(key){
+    return labelMap[key] || String(key || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+  }
+  function formatScalar(key, value){
+    if(key === 'booking_status') return statusMap[value] || value || '-';
+    return value === null || value === undefined || value === '' ? '-' : value;
+  }
+  function kvRow(key, value){
+    return `<div class="audit-value-row"><div class="audit-value-label">${esc(humanLabel(key))}:-</div><div class="audit-value-text">${esc(formatScalar(key, value))}</div></div>`;
+  }
+  function testRows(title, rows){
+    if(!Array.isArray(rows) || !rows.length) return '';
+    return `<div class="audit-section-title">${esc(title)}</div>` + rows.map(t => `
+      <div class="audit-test-row">
+        <div><span class="audit-value-label">Patient Name:-</span> <span class="audit-value-text">${esc(t.patient_name || '-')}</span></div>
+        <div><span class="audit-value-label">Test Name:-</span> <span class="audit-value-text">${esc(t.test_name || '-')}</span></div>
+      </div>
+    `).join('');
+  }
+  function panelRows(rows){
+    if(!Array.isArray(rows) || !rows.length) return '';
+    return `<div class="audit-section-title">Panel Added/Updated</div>` + rows.map(p => `
+      <div class="audit-test-row">
+        <div><span class="audit-value-label">Patient Name:-</span> <span class="audit-value-text">${esc(p.patient_name || '-')}</span></div>
+        <div><span class="audit-value-label">Panel Company:-</span> <span class="audit-value-text">${esc(p.selected_panel_company || p.selected_panel_companies || '-')}</span></div>
+        <div><span class="audit-value-label">Charge Mode:-</span> <span class="audit-value-text">${esc(p.selected_charge_mode || p.selected_charge_modes || '-')}</span></div>
+        <div><span class="audit-value-label">Comp Cat ID:-</span> <span class="audit-value-text">${esc(p.selected_comp_cat_id || p.selected_comp_cat_ids || '-')}</span></div>
+      </div>
+    `).join('');
+  }
+  function formatAuditValue(v){
+    if(v === null || v === undefined || v === '') return '<div class="audit-value-list"><div class="audit-value-empty">-</div></div>';
+    if(typeof v !== 'object') return `<div class="audit-value-list">${kvRow('value', v)}</div>`;
+    if(Array.isArray(v)) {
+      return `<div class="audit-value-list">${v.map(item => `<div class="audit-value-text">${esc(pretty(item))}</div>`).join('') || '<div class="audit-value-empty">-</div>'}</div>`;
+    }
+    const parts = [];
+    Object.keys(v).forEach(key => {
+      const value = v[key];
+      if(key === 'added_tests') parts.push(testRows('Added Tests', value));
+      else if(key === 'removed_tests') parts.push(testRows('Removed Tests', value));
+      else if(key === 'panel_added_updated' || key === 'panel_updates') parts.push(panelRows(value));
+      else if(key === 'additional_discount' && value && typeof value === 'object') {
+        parts.push('<div class="audit-section-title">Additional Discount</div>');
+        parts.push(kvRow('Old', value.old));
+        parts.push(kvRow('New', value.new));
+      } else if(value && typeof value === 'object') {
+        parts.push(kvRow(key, pretty(value)));
+      } else {
+        parts.push(kvRow(key, value));
+      }
+    });
+    return `<div class="audit-value-list">${parts.filter(Boolean).join('') || '<div class="audit-value-empty">-</div>'}</div>`;
+  }
   function line(k, v, wide=false){
     return `<div class="audit-line${wide ? ' wide' : ''}"><span class="k">${esc(k)}:</span><span class="v">${esc(v || '-')}</span></div>`;
   }
@@ -133,11 +209,11 @@
           <div class="diff-grid">
             <div class="diff-box">
               <div class="diff-title">Old Values</div>
-              <pre class="json-pre">${esc(pretty(r.old_values))}</pre>
+              ${formatAuditValue(r.old_values)}
             </div>
             <div class="diff-box">
               <div class="diff-title">New Values</div>
-              <pre class="json-pre">${esc(pretty(r.new_values))}</pre>
+              ${formatAuditValue(r.new_values)}
             </div>
           </div>
         </div>
