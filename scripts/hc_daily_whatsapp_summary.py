@@ -25,6 +25,12 @@ TBS_LABELS = {
     "4": "Incompleted test, phlebo verification pending to confirm and book",
 }
 
+PHLEBO_TBS_LABELS = {
+    "confirmed_booked": "Confirmed Booked",
+    "manual_hcb_slip": "Manual HCB Slip",
+    "incomplete_reg_exec": "Incomplete Reg Exec",
+}
+
 
 def norm(value) -> str:
     if value is None:
@@ -135,6 +141,14 @@ def tbs_label(raw) -> str:
     return text
 
 
+def phlebo_tbs_label(raw) -> str:
+    text = norm(raw)
+    if not text or text == "-":
+        return "None"
+    key = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return PHLEBO_TBS_LABELS.get(key, text)
+
+
 def fetch_booking_rows(cur, target_date: date):
     cur.execute(
         """
@@ -230,6 +244,7 @@ def load_patient_maps(cur, rows):
             bp.booking_id,
             bp.patient_id,
             bp.cce_level_TBS,
+            bp.APK_TBS,
             COALESCE(bp.prescription_files, '') AS prescription_files,
             COALESCE(NULLIF(TRIM(p.full_name), ''), '') AS patient_name,
             COALESCE(NULLIF(TRIM(p.contact_mobile), ''), '') AS patient_mobile
@@ -386,6 +401,7 @@ def build_actual_message(cur, target_date: date):
     complete = cancelled = running = pending = late_start = late_complete = 0
     amount = {"gross": 0.0, "credit": 0.0, "discount": 0.0, "final": 0.0}
     tbs_counts = Counter()
+    phlebo_tbs_counts = Counter()
     cancel_blocks = []
 
     for row in rows:
@@ -428,6 +444,7 @@ def build_actual_message(cur, target_date: date):
                 label = tbs_label(patient.get("cce_level_TBS"))
                 if label:
                     tbs_counts[label] += 1
+                phlebo_tbs_counts[phlebo_tbs_label(patient.get("APK_TBS"))] += 1
 
         if status == 4:
             if row.get("source_type") == "APPOINTMENT":
@@ -486,6 +503,16 @@ def build_actual_message(cur, target_date: date):
             lines.append(f"{label}: {tbs_counts[label]}")
             any_tbs = True
     if not any_tbs:
+        lines.append("-")
+
+    total_phlebo_tbs_patients = sum(phlebo_tbs_counts.values())
+    lines.extend(["", "*Phlebo TBS*", f"Total Patients: {total_phlebo_tbs_patients}"])
+    any_phlebo_tbs = False
+    for label in list(PHLEBO_TBS_LABELS.values()) + ["None"]:
+        if phlebo_tbs_counts[label] > 0:
+            lines.append(f"{label}: {phlebo_tbs_counts[label]}")
+            any_phlebo_tbs = True
+    if not any_phlebo_tbs:
         lines.append("-")
 
     if cancel_blocks:

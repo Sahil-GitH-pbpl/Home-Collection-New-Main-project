@@ -1,0 +1,185 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+  #content{padding:8px 20px 20px;}
+  .audit-page{background:#f4f7fb;min-height:calc(100vh - 70px);padding:4px 18px 28px;color:#172033;}
+  .audit-shell{max-width:1180px;margin:0 auto;}
+  .audit-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px;}
+  .audit-title{font-size:22px;font-weight:800;margin:0;color:#0b1f4d;}
+  .audit-btn{display:inline-flex;align-items:center;justify-content:center;min-height:31px;border:1px solid #0b72e7;border-radius:10px;background:#0b72e7;color:#fff;text-decoration:none;font-size:12px;font-weight:800;padding:5px 12px;cursor:pointer;white-space:nowrap;}
+  .audit-btn.all-booking{background:#0b1f4d;border-color:#0b1f4d;color:#fff;}
+  .audit-btn:hover{filter:brightness(.96);}
+  .audit-card{background:#fff;border:1px solid #d9e2ef;border-radius:8px;box-shadow:0 6px 18px rgba(15,23,42,.06);}
+  .audit-search{display:grid;grid-template-columns:minmax(360px,420px) minmax(0,1fr);gap:18px;align-items:start;padding:14px;}
+  .audit-search-controls{display:grid;grid-template-columns:minmax(220px,320px) auto;gap:10px;align-items:end;}
+  .audit-search label{display:block;font-size:12px;font-weight:700;color:#344054;margin-bottom:5px;}
+  .audit-input{width:100%;height:36px;border:1px solid #cbd5e1;border-radius:7px;padding:7px 10px;font-size:14px;color:#111827;background:#fff;outline:none;}
+  .audit-input:focus{border-color:#0b72e7;box-shadow:0 0 0 3px rgba(11,114,231,.12);}
+  .audit-summary{align-self:stretch;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 28px;padding:2px 0 0 18px;border-left:1px solid #e5eaf2;}
+  .audit-summary.hidden{display:none;}
+  .audit-line{font-size:13px;color:#111827;line-height:1.35;min-width:0;}
+  .audit-line .k{font-weight:900;color:#475467;margin-right:5px;}
+  .audit-line .v{font-weight:800;color:#0f172a;word-break:break-word;}
+  .audit-line.wide{grid-column:1 / -1;}
+  .audit-body{padding:14px;}
+  .audit-empty{border:1px dashed #c8d4e4;border-radius:8px;background:#fff;padding:26px;text-align:center;color:#667085;font-weight:700;}
+  .timeline{position:relative;margin:0;padding:0 0 0 20px;list-style:none;}
+  .timeline:before{content:"";position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:#d8e1ef;}
+  .timeline-item{position:relative;margin:0 0 12px;}
+  .timeline-item:before{content:"";position:absolute;left:-19px;top:14px;width:12px;height:12px;border-radius:50%;background:#0b72e7;border:2px solid #fff;box-shadow:0 0 0 2px #9ec5ff;}
+  .audit-row{border:1px solid #dce5f2;border-radius:8px;background:#fff;overflow:hidden;}
+  .audit-row-head{display:grid;grid-template-columns:max-content max-content 160px minmax(220px,1fr) 170px;gap:8px;align-items:center;padding:10px 12px;background:#eff2fc;border-bottom:1px solid #bddbff;}
+  .action-badge{display:inline-flex;align-items:center;width:max-content;max-width:100%;padding:4px 9px;border-radius:999px;background:#e7f0ff;color:#073b82;font-size:12px;font-weight:900;border:1px solid #bad5ff;}
+  .source-badge{display:inline-flex;align-items:center;width:max-content;max-width:100%;padding:4px 9px;border-radius:999px;background:#ecfdf3;color:#067647;font-size:12px;font-weight:900;border:1px solid #abefc6;}
+  .audit-time{font-size:12px;font-weight:800;color:#475467;}
+  .audit-user{text-align:right;font-size:12px;color:#475467;font-weight:700;}
+  .audit-reason{font-size:13px;color:#1f2937;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .audit-reason .k{font-weight:800;color:#9f1239;margin-right:5px;}
+  .diff-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px 12px;}
+  .diff-box{border:1px solid #e2e8f0;border-radius:8px;background:#fcfdff;overflow:hidden;}
+  .diff-title{padding:8px 10px;font-size:12px;font-weight:900;color:#344054;}
+  .json-pre{margin:0;border-top:1px solid #e2e8f0;background:#0f172a;color:#e5e7eb;padding:10px;white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:260px;overflow:auto;}
+  .audit-loader{display:none;font-size:13px;font-weight:800;color:#0b72e7;margin-left:8px;}
+  .audit-error{display:none;margin:12px 14px 0;border:1px solid #fecdd3;background:#fff1f2;color:#9f1239;border-radius:8px;padding:9px 11px;font-size:13px;font-weight:800;}
+  @media (max-width:900px){
+    .audit-top{flex-direction:column;}
+    .audit-search{grid-template-columns:1fr;}
+    .audit-search-controls{grid-template-columns:1fr;}
+    .audit-summary{grid-template-columns:1fr;border-left:0;border-top:1px solid #e5eaf2;padding-top:10px;}
+    .audit-row-head{grid-template-columns:1fr;}
+    .audit-user{text-align:left;}
+    .diff-grid{grid-template-columns:1fr;}
+  }
+</style>
+
+<div class="audit-page">
+  <div class="audit-shell">
+    <div class="audit-top">
+      <div>
+        <h4 class="audit-title">Booking Audit Trail</h4>
+      </div>
+      <a class="audit-btn all-booking" href="/hhome-collection/dashboard"><span style="margin-right:4px;">&#128196;</span>All Booking</a>
+    </div>
+
+    <div class="audit-card" style="margin-bottom:12px;">
+      <form class="audit-search" id="audit-search-form">
+        <div class="audit-search-controls">
+          <div>
+            <label for="booking-id-input">Booking ID</label>
+            <input class="audit-input" id="booking-id-input" inputmode="numeric" autocomplete="off" placeholder="Example: 216">
+          </div>
+          <button class="audit-btn" type="submit">Search</button>
+        </div>
+        <div class="audit-summary hidden" id="audit-summary"></div>
+      </form>
+      <span class="audit-loader" id="audit-loader">Loading...</span>
+      <div class="audit-error" id="audit-error"></div>
+    </div>
+
+    <div class="audit-card">
+      <div class="audit-body" id="audit-results">
+        <div class="audit-empty">Enter booking id and search to view audit trail.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const form = document.getElementById('audit-search-form');
+  const input = document.getElementById('booking-id-input');
+  const loader = document.getElementById('audit-loader');
+  const errorBox = document.getElementById('audit-error');
+  const summary = document.getElementById('audit-summary');
+  const results = document.getElementById('audit-results');
+
+  function esc(v){
+    return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+  function pretty(v){
+    if(v === null || v === undefined || v === '') return '-';
+    try { return JSON.stringify(v, null, 2); } catch(e) { return String(v); }
+  }
+  function line(k, v, wide=false){
+    return `<div class="audit-line${wide ? ' wide' : ''}"><span class="k">${esc(k)}:</span><span class="v">${esc(v || '-')}</span></div>`;
+  }
+  function renderSummary(b){
+    summary.innerHTML = [
+      line('Booking', `${b.id || '-'} ${b.booking_code ? '(' + b.booking_code + ')' : ''}`),
+      line('Status', b.status_label || b.booking_status || '-'),
+      line('Visit Date', b.preferred_visit_date || '-'),
+      line('Slot', b.preferred_time_slot || '-'),
+      line('Booked By', b.booked_by || '-'),
+      line('Assigned To', b.assigned_to || '-'),
+      line('Patients', b.patient_names || '-', true)
+    ].join('');
+    summary.classList.remove('hidden');
+  }
+  function renderAudits(rows){
+    if(!rows || !rows.length){
+      results.innerHTML = '<div class="audit-empty">No audit rows saved for this booking.</div>';
+      return;
+    }
+    const html = rows.map(r => `
+      <li class="timeline-item">
+        <div class="audit-row">
+          <div class="audit-row-head">
+            <span class="action-badge">${esc(r.action_type)}</span>
+            <span class="source-badge">${esc(r.source_label || 'New Appointment')}</span>
+            <span class="audit-time">${esc(r.done_at || '-')}</span>
+            <span class="audit-reason" title="${esc(r.reason_text || '-')}"><span class="k">Reason:</span>${esc(r.reason_text || '-')}</span>
+            <span class="audit-user">By: ${esc(r.done_by_name || '-')}</span>
+          </div>
+          <div class="diff-grid">
+            <div class="diff-box">
+              <div class="diff-title">Old Values</div>
+              <pre class="json-pre">${esc(pretty(r.old_values))}</pre>
+            </div>
+            <div class="diff-box">
+              <div class="diff-title">New Values</div>
+              <pre class="json-pre">${esc(pretty(r.new_values))}</pre>
+            </div>
+          </div>
+        </div>
+      </li>
+    `).join('');
+    results.innerHTML = `<ul class="timeline">${html}</ul>`;
+  }
+  async function loadAudit(bookingId){
+    loader.style.display = 'inline';
+    errorBox.style.display = 'none';
+    try{
+      const res = await fetch(`/hhome-collection/audit-trail-data?booking_id=${encodeURIComponent(bookingId)}`, {headers:{'Accept':'application/json'}});
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok || !data.ok) throw new Error(data.message || 'Unable to load audit trail');
+      renderSummary(data.booking || {});
+      renderAudits(data.audits || []);
+    }catch(err){
+      summary.classList.add('hidden');
+      results.innerHTML = '<div class="audit-empty">No audit loaded.</div>';
+      errorBox.textContent = err.message || 'Error';
+      errorBox.style.display = 'block';
+    }finally{
+      loader.style.display = 'none';
+    }
+  }
+  form.addEventListener('submit', function(ev){
+    ev.preventDefault();
+    const bookingId = String(input.value || '').trim();
+    if(!bookingId || !/^\d+$/.test(bookingId)){
+      errorBox.textContent = 'Valid booking id enter karo.';
+      errorBox.style.display = 'block';
+      input.focus();
+      return;
+    }
+    loadAudit(bookingId);
+  });
+  const qs = new URLSearchParams(window.location.search);
+  const initial = qs.get('booking_id');
+  if(initial){
+    input.value = initial;
+    loadAudit(initial);
+  }
+})();
+</script>
+{% endblock %}

@@ -24,6 +24,11 @@ def leaderboard():
     return render_template("hhome_collection/hleaderboard.html")
 
 
+@hhome_collection_dashboard_bp.get("/hhome-collection/audit-trail")
+def audit_trail():
+    return render_template("hhome_collection/haudit_trail.html")
+
+
 @hhome_collection_dashboard_bp.get("/hhome-collection/dashboard-data")
 def dashboard_data():
     page_raw = (request.args.get("page") or "1").strip()
@@ -51,6 +56,14 @@ def leaderboard_data():
     date_from = (request.args.get("date_from") or "").strip()
     date_to = (request.args.get("date_to") or "").strip()
     return jsonify({"ok": True, **service.leaderboard_counts(date_from=date_from, date_to=date_to)})
+
+
+@hhome_collection_dashboard_bp.get("/hhome-collection/audit-trail-data")
+def audit_trail_data():
+    booking_id = int(request.args.get("booking_id", 0) or 0)
+    result = service.get_booking_audit_trail(booking_id)
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
 
 
 @hhome_collection_dashboard_bp.get("/hhome-collection/assign-booking-data")

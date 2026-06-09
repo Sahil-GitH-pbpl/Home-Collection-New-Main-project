@@ -146,6 +146,22 @@ def remove_selected_patient():
     return jsonify({"ok": True, **bundle})
 
 
+@hhome_collection_bp.post("/hhome-collection/patient/<int:patient_id>/inactive")
+def mark_patient_inactive(patient_id: int):
+    caller_id = session.get("hcaller_id")
+    if not caller_id:
+        return jsonify({"ok": False, "message": "Caller is required first"}), 400
+    result = service.mark_linked_patient_inactive(
+        caller_id=int(caller_id),
+        patient_id=int(patient_id),
+        actor_user_id=session.get("user_id"),
+    )
+    if result.get("ok"):
+        result.update(service.get_step1_bundle(caller_id, session))
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
 @hhome_collection_bp.get("/hhome-collection/selected-patients")
 def selected_patients():
     caller_id = session.get("hcaller_id")
@@ -183,6 +199,7 @@ def create_patient():
     caller_id = session.get("hcaller_id")
     if caller_id and not service.get_caller(caller_id):
         session.pop("hcaller_id", None)
+        session.pop("hnew_caller_created", None)
         caller_id = None
 
     if request.files or request.form:
@@ -198,6 +215,7 @@ def create_patient():
         existing = service.get_caller_by_mobile(contact_mobile)
         if existing:
             caller_id = existing["id"]
+            session.pop("hnew_caller_created", None)
         else:
             caller_payload = {
                 "full_name": (payload.get("full_name") or "").strip(),
@@ -209,6 +227,7 @@ def create_patient():
             if not created["ok"]:
                 return jsonify(created), 400
             caller_id = created["caller"]["id"]
+            session["hnew_caller_created"] = True
         session["hcaller_id"] = caller_id
 
     result = service.create_patient_and_link(
@@ -618,6 +637,7 @@ def confirm_booking():
 
     payload = request.get_json(silent=True) or {}
     payload["_session_ref"] = session
+    payload["_new_caller_created"] = bool(session.get("hnew_caller_created"))
     result = service.confirm_booking(
         caller_id=caller_id,
         selected_patients=selected_patients,

@@ -419,7 +419,10 @@ function renderRightPanelState(patients, referenceAddresses, callerHistory) {
   const linkedHtml = patientList.length
     ? patientList.map(p => `
         <div class="chip ${p.selected ? 'selected' : ''}" data-patient-id="${p.id}">
-          <div><strong>${escHtml(p.full_name || '')}</strong> (${escHtml(p.age || '-')}) ${renderTagBadges(p.tag)}</div>
+          <div class="linked-patient-main">
+            <span><strong>${escHtml(p.full_name || '')}</strong> (${escHtml(p.age || '-')}) ${renderTagBadges(p.tag)}</span>
+            ${p.can_inactivate ? `<button type="button" class="linked-patient-inactive-btn" data-patient-id="${p.id}">Inactive</button>` : ''}
+          </div>
           <small>${escHtml(p.default_address || '')}</small>
         </div>
       `).join('')
@@ -777,6 +780,26 @@ function bindStepEvents() {
       },
       error: function (xhr) {
         alert(xhr.responseJSON?.message || 'Unable to select patient');
+      }
+    });
+  });
+
+  $('#linked-patients-panel').off('click', '.linked-patient-inactive-btn').on('click', '.linked-patient-inactive-btn', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const patientId = Number($(this).data('patient-id') || 0);
+    if (!patientId) return;
+    if (!window.confirm('Are you sure you want to mark this patient as inactive?')) return;
+    $.ajax({
+      url: `/hhome-collection/patient/${encodeURIComponent(patientId)}/inactive`,
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({}),
+      success: function (res) {
+        applyStep1Bundle(res || {});
+      },
+      error: function (xhr) {
+        alert(xhr.responseJSON?.message || 'Unable to mark patient inactive');
       }
     });
   });

@@ -2530,12 +2530,7 @@ class HHomeCollectionCore:
     ) -> str:
         auto_tags = []
         if include_new_patient:
-            cur.execute(
-                "SELECT COUNT(*) AS cnt FROM hhome_collection_booking WHERE caller_id=%s",
-                (int(caller_id or 0),),
-            )
-            if int((cur.fetchone() or {}).get("cnt") or 0) == 0:
-                auto_tags.append("New Patient")
+            auto_tags.append("New Patient")
         if float(total_amount or 0) >= 10000:
             auto_tags.append("High Value")
         if self._has_child_patient(cur, self._selected_patient_ids(selected_patients)):
@@ -2894,6 +2889,7 @@ class HHomeCollectionCore:
 
     def reset_session_for_new_caller(self, session):
         session.pop("hcaller_id", None)
+        session.pop("hnew_caller_created", None)
         session["hselected_patients"] = []
         session["hselected_address_id"] = None
         session["hselected_address_snapshot"] = None
@@ -2901,6 +2897,7 @@ class HHomeCollectionCore:
 
     def clear_booking_session(self, session):
         session.pop("hcaller_id", None)
+        session.pop("hnew_caller_created", None)
         session.pop("hselected_patients", None)
         session.pop("hselected_address_id", None)
         session.pop("hselected_address_snapshot", None)
@@ -3238,7 +3235,13 @@ class HHomeCollectionCore:
                 cur.execute(
                     """
                     SELECT p.id, p.patient_code, CONCAT_WS(' ', p.title, p.full_name) AS full_name, p.tag, p.age_years, p.date_of_birth,
-                           am.id AS default_address_id
+                           am.id AS default_address_id,
+                           EXISTS(
+                               SELECT 1
+                               FROM hhome_collection_booking_patient bp
+                               WHERE bp.patient_id = p.id
+                               LIMIT 1
+                           ) AS has_booking
                     FROM hcaller_patient_link cpl
                     INNER JOIN hpatient_master p ON p.id = cpl.patient_id
                     LEFT JOIN hpatient_address_link pal ON pal.id = (
@@ -3249,7 +3252,9 @@ class HHomeCollectionCore:
                         LIMIT 1
                     )
                     LEFT JOIN haddress_master am ON am.id = pal.address_id
-                    WHERE cpl.caller_id = %s AND cpl.is_active = 1
+                    WHERE cpl.caller_id = %s
+                      AND cpl.is_active = 1
+                      AND COALESCE(p.patient_status, 0) = 0
                     ORDER BY p.full_name
                     """,
                     (caller_id,),
@@ -3258,7 +3263,62 @@ class HHomeCollectionCore:
                 for row in rows:
                     row["age"] = hage_label(row.get("age_years"), row.get("date_of_birth"))
                     row["selected"] = int(row["id"]) in selected
+                    row["can_inactivate"] = not bool(int(row.get("has_booking") or 0))
                 return rows
+        finally:
+            conn.close()
+
+    def mark_linked_patient_inactive(self, caller_id: int, patient_id: int, actor_user_id=None):
+        caller_id = int(caller_id or 0)
+        patient_id = int(patient_id or 0)
+        if caller_id <= 0 or patient_id <= 0:
+            return {"ok": False, "message": "Caller and patient are required"}
+
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT p.id
+                    FROM hcaller_patient_link cpl
+                    INNER JOIN hpatient_master p ON p.id = cpl.patient_id
+                    WHERE cpl.caller_id=%s
+                      AND cpl.patient_id=%s
+                      AND cpl.is_active=1
+                      AND COALESCE(p.patient_status, 0)=0
+                    LIMIT 1
+                    """,
+                    (caller_id, patient_id),
+                )
+                if not cur.fetchone():
+                    return {"ok": False, "message": "Active linked patient not found"}
+
+                cur.execute(
+                    """
+                    SELECT 1
+                    FROM hhome_collection_booking_patient
+                    WHERE patient_id=%s
+                    LIMIT 1
+                    """,
+                    (patient_id,),
+                )
+                if cur.fetchone():
+                    return {"ok": False, "message": "This patient is already included in a booking and cannot be marked inactive here"}
+
+                cur.execute(
+                    """
+                    UPDATE hpatient_master
+                    SET patient_status=1,
+                        updated_by=%s
+                    WHERE id=%s
+                    """,
+                    (self._actor(actor_user_id), patient_id),
+                )
+                conn.commit()
+                return {"ok": True}
+        except Exception as exc:
+            conn.rollback()
+            return {"ok": False, "message": str(exc)}
         finally:
             conn.close()
 
@@ -3313,7 +3373,7 @@ class HHomeCollectionCore:
         gender = (payload.get("gender") or "").strip()
         if not full_name_input or not gender:
             return {"ok": False, "message": "Patient full name and gender are required"}
-        full_name = full_name_input
+        full_name = full_name_input.upper()
         tag = self.sanitize_patient_tags(payload.get("tag"))
         dob = payload.get("date_of_birth") or None
         age_years = payload.get("age_years") or None
@@ -3346,7 +3406,7 @@ class HHomeCollectionCore:
                     (patient_code, title, full_name, labmate_pid, panel_company, card_number, tag,
                      gender, date_of_birth, age_years, contact_mobile, alternate_mobile,
                      patient_status, created_by, updated_by)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Active',%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s,%s)
                     """,
                     (
                         temp_code,
@@ -4352,7 +4412,7 @@ class HHomeCollectionCore:
                     selected_patients=selected_patients,
                     total_amount=total_amount,
                     existing_tags=booking_tags,
-                    include_new_patient=True,
+                    include_new_patient=bool(payload.get("_new_caller_created")),
                 )
                 tmp = self._temp_code("HHCB-TMP-")
                 cur.execute(
@@ -4940,6 +5000,7 @@ class HHomeCollectionCore:
                     SELECT id, CONCAT_WS(' ', title, full_name) AS full_name, contact_mobile
                     FROM hpatient_master
                     WHERE id IN ({placeholders})
+                      AND COALESCE(patient_status, 0) = 0
                     """,
                     patient_ids,
                 )
@@ -4955,6 +5016,155 @@ class HHomeCollectionCore:
                 more = f" +{len(missing) - 5} more" if len(missing) > 5 else ""
                 return {"ok": False, "message": f"Contact No is required for selected patient: {names}{more}"}
             return {"ok": True}
+        finally:
+            conn.close()
+
+    def get_booking_audit_trail(self, booking_id: int):
+        bid = int(booking_id or 0)
+        if bid <= 0:
+            return {"ok": False, "message": "Valid booking id is required"}
+
+        def _json_obj(raw):
+            if not raw:
+                return None
+            try:
+                data = json.loads(raw) if isinstance(raw, str) else raw
+            except Exception:
+                return {"raw": str(raw)}
+            return data if isinstance(data, (dict, list)) else {"value": data}
+
+        def _audit_source_label(old_values, new_values):
+            for data in (new_values, old_values):
+                if isinstance(data, dict) and self._norm_code(data.get("row_type")).upper() == "APPOINTMENT":
+                    return "Linked Appointment"
+            return "New Appointment"
+
+        def _collect_assigned_user_ids(value, found):
+            if isinstance(value, dict):
+                if "assigned_phlebotomist_id" in value:
+                    try:
+                        uid = int(value.get("assigned_phlebotomist_id") or 0)
+                    except Exception:
+                        uid = 0
+                    if uid > 0:
+                        found.add(uid)
+                for item in value.values():
+                    _collect_assigned_user_ids(item, found)
+            elif isinstance(value, list):
+                for item in value:
+                    _collect_assigned_user_ids(item, found)
+
+        def _clean_audit_value(value, assigned_user_names):
+            if isinstance(value, list):
+                return [_clean_audit_value(item, assigned_user_names) for item in value]
+            if not isinstance(value, dict):
+                return value
+            cleaned = {}
+            for key, item in value.items():
+                if key in {"row_type", "patient_id"}:
+                    continue
+                if key == "assigned_phlebotomist_id":
+                    try:
+                        uid = int(item or 0)
+                    except Exception:
+                        uid = 0
+                    cleaned["assigned_phlebotomist"] = assigned_user_names.get(uid) or (f"User #{uid}" if uid else "-")
+                    continue
+                cleaned[key] = _clean_audit_value(item, assigned_user_names)
+            return cleaned
+
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        b.id,
+                        b.booking_code,
+                        b.booking_status,
+                        b.preferred_visit_date,
+                        b.preferred_time_slot,
+                        COALESCE(NULLIF(TRIM(u_book.name), ''), '-') AS booked_by,
+                        COALESCE(NULLIF(TRIM(u_ph.name), ''), '-') AS assigned_to,
+                        GROUP_CONCAT(
+                            DISTINCT NULLIF(TRIM(CONCAT_WS(' ', p.title, p.full_name)), '')
+                            ORDER BY p.full_name
+                            SEPARATOR ', '
+                        ) AS patient_names
+                    FROM hhome_collection_booking b
+                    LEFT JOIN users u_book ON u_book.id = b.created_by
+                    LEFT JOIN users u_ph ON u_ph.id = b.assigned_phlebotomist_id
+                    LEFT JOIN hhome_collection_booking_patient bp ON bp.booking_id = b.id
+                    LEFT JOIN hpatient_master p ON p.id = bp.patient_id
+                    WHERE b.id = %s
+                    GROUP BY b.id
+                    """,
+                    (bid,),
+                )
+                booking = cur.fetchone()
+                if not booking:
+                    return {"ok": False, "message": "Booking not found"}
+
+                cur.execute(
+                    """
+                    SELECT
+                        a.id,
+                        a.booking_id,
+                        a.action_type,
+                        a.reason_text,
+                        a.old_values_json,
+                        a.new_values_json,
+                        a.done_by,
+                        a.done_at,
+                        COALESCE(NULLIF(TRIM(u.name), ''), CONCAT('User #', a.done_by), '-') AS done_by_name
+                    FROM hbooking_action_audit a
+                    LEFT JOIN users u ON u.id = a.done_by
+                    WHERE a.booking_id = %s
+                    ORDER BY a.done_at DESC, a.id DESC
+                    """,
+                    (bid,),
+                )
+                raw_audits = cur.fetchall() or []
+                assigned_user_ids = set()
+                parsed_audits = []
+                for row in raw_audits:
+                    old_values = _json_obj(row.get("old_values_json"))
+                    new_values = _json_obj(row.get("new_values_json"))
+                    _collect_assigned_user_ids(old_values, assigned_user_ids)
+                    _collect_assigned_user_ids(new_values, assigned_user_ids)
+                    parsed_audits.append((row, old_values, new_values))
+
+                assigned_user_names = {}
+                if assigned_user_ids:
+                    placeholders = ",".join(["%s"] * len(assigned_user_ids))
+                    cur.execute(
+                        f"SELECT id, COALESCE(NULLIF(TRIM(name), ''), CONCAT('User #', id)) AS name FROM users WHERE id IN ({placeholders})",
+                        tuple(sorted(assigned_user_ids)),
+                    )
+                    assigned_user_names = {int(r.get("id") or 0): self._norm_code(r.get("name")) for r in (cur.fetchall() or [])}
+
+                audits = []
+                for row, old_values, new_values in parsed_audits:
+                    done_at = row.get("done_at")
+                    audits.append(
+                        {
+                            "id": int(row.get("id") or 0),
+                            "booking_id": int(row.get("booking_id") or 0),
+                            "action_type": self._norm_code(row.get("action_type")) or "-",
+                            "source_label": _audit_source_label(old_values, new_values),
+                            "reason_text": self._norm_code(row.get("reason_text")) or "",
+                            "done_by": int(row.get("done_by") or 0),
+                            "done_by_name": self._norm_code(row.get("done_by_name")) or "-",
+                            "done_at": done_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(done_at, "strftime") else self._norm_code(done_at),
+                            "old_values": _clean_audit_value(old_values, assigned_user_names),
+                            "new_values": _clean_audit_value(new_values, assigned_user_names),
+                        }
+                    )
+
+                visit_date = booking.get("preferred_visit_date")
+                booking["preferred_visit_date"] = visit_date.isoformat() if hasattr(visit_date, "isoformat") else self._norm_code(visit_date)
+                booking["status_label"] = self._booking_status_label(int(booking.get("booking_status") or 0))
+                return {"ok": True, "booking": booking, "audits": audits}
         finally:
             conn.close()
 
@@ -5140,10 +5350,9 @@ class HHomeCollectionCore:
                                 return explicit_desc or code
 
                             all_keys = set(tests_map.keys()) | set(pending_map.keys())
-                            # For appointment detail rendering:
-                            # - pending/in-progress appointment: show pending child tests only
-                            # - completed/cancelled appointment: show selected tests only
-                            show_pending_only = bool(appointment_id > 0 and appointment_status in (0, 1, 2))
+                            # Appointment detail should show appointment-selected tests for all statuses.
+                            # Pending map is only a fallback/extra source and duplicate codes are skipped below.
+                            show_pending_only = False
                             show_selected_only = bool(appointment_id > 0 and appointment_status in (3, 4))
 
                             for key in all_keys:
@@ -7261,7 +7470,9 @@ class HHomeCollectionCore:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT id, booking_id, preferred_visit_date, appointment_status, assigned_phlebotomist_id, payment_snapshot_json
+                    SELECT id, booking_id, selected_address_id, preferred_visit_date, preferred_time_slot, appointment_status,
+                           assigned_phlebotomist_id, selected_patient_ids_json,
+                           appointment_tests_snapshot_json, payment_snapshot_json
                     FROM hhome_collection_booking_appointment
                     WHERE id=%s AND booking_id=%s
                     LIMIT 1
@@ -7296,6 +7507,89 @@ class HHomeCollectionCore:
                         "message": "Patient add is not allowed in appointment flow. Please use only existing booking patients.",
                     }
                 selected_patient_ids = sorted({int(x) for x in requested_patient_ids if int(x or 0) > 0})
+                old_selected_patient_ids = set(self._patient_ids_from_json(ap.get("selected_patient_ids_json")))
+                all_audit_patient_ids = sorted(old_selected_patient_ids | set(selected_patient_ids))
+                patient_name_by_id = {}
+                if all_audit_patient_ids:
+                    placeholders = ",".join(["%s"] * len(all_audit_patient_ids))
+                    cur.execute(
+                        f"""
+                        SELECT id, TRIM(CONCAT_WS(' ', title, full_name)) AS patient_name
+                        FROM hpatient_master
+                        WHERE id IN ({placeholders})
+                        """,
+                        tuple(all_audit_patient_ids),
+                    )
+                    patient_name_by_id = {
+                        int(r.get("id") or 0): self._norm_code(r.get("patient_name")) or f"Patient {int(r.get('id') or 0)}"
+                        for r in (cur.fetchall() or [])
+                    }
+
+                def _tests_by_patient_from_meta_map(meta_map):
+                    out = {}
+                    for raw_pid, patient_meta in (meta_map or {}).items():
+                        try:
+                            pid = int(raw_pid or 0)
+                        except Exception:
+                            pid = 0
+                        if pid <= 0:
+                            continue
+                        tests = {}
+                        for section in self._patient_panel_sections(patient_meta or {}):
+                            for test in (section.get("selected_tests") or []):
+                                code = self._norm_code((test or {}).get("booked_code"))
+                                if code:
+                                    tests[code] = self._norm_code((test or {}).get("description")) or code
+                        out[pid] = tests
+                    return out
+
+                def _appointment_tests_map(raw_snapshot):
+                    snap = self._appointment_payment_snapshot_obj(raw_snapshot)
+                    if not snap:
+                        try:
+                            snap = json.loads(raw_snapshot or "{}")
+                        except Exception:
+                            snap = {}
+                    return _tests_by_patient_from_meta_map((snap or {}).get("tests_billing_map") or {})
+
+                def _panel_entries_from_meta(patient_meta):
+                    entries = []
+                    for section in self._patient_panel_sections(patient_meta or {}):
+                        panel = section.get("panel") or {}
+                        billing = section.get("billing") or {}
+                        name = self._norm_code(panel.get("pname"))
+                        comp_id = self._norm_code(billing.get("comp_cat_id"))
+                        mode = self._selected_charge_mode(billing)
+                        if name or comp_id or mode:
+                            entries.append((comp_id.lower(), mode.lower(), name.lower(), {
+                                "selected_comp_cat_id": comp_id,
+                                "selected_charge_mode": mode,
+                                "selected_panel_company": name,
+                            }))
+                    return entries
+
+                def _panel_map_from_meta_map(meta_map):
+                    out = {}
+                    for raw_pid, patient_meta in (meta_map or {}).items():
+                        try:
+                            pid = int(raw_pid or 0)
+                        except Exception:
+                            pid = 0
+                        if pid > 0:
+                            out[pid] = _panel_entries_from_meta(patient_meta or {})
+                    return out
+
+                old_snapshot = self._appointment_payment_snapshot_obj(ap.get("appointment_tests_snapshot_json"))
+                if not old_snapshot:
+                    try:
+                        old_snapshot = json.loads(ap.get("appointment_tests_snapshot_json") or "{}")
+                    except Exception:
+                        old_snapshot = {}
+                old_tests_by_patient = _appointment_tests_map(ap.get("appointment_tests_snapshot_json"))
+                new_tests_by_patient = _tests_by_patient_from_meta_map(tests_meta_map)
+                old_panel_map = _panel_map_from_meta_map((old_snapshot or {}).get("tests_billing_map") or {})
+                new_panel_map = _panel_map_from_meta_map(tests_meta_map)
+
                 patient_context = self._build_appointment_patient_context_from_db(
                     cur,
                     booking_id=booking_id,
@@ -7417,6 +7711,87 @@ class HHomeCollectionCore:
                         appointment_id,
                     ),
                 )
+
+                old_audit_values = {"row_type": "APPOINTMENT", "appointment_id": int(appointment_id)}
+                new_audit_values = {"row_type": "APPOINTMENT", "appointment_id": int(appointment_id)}
+
+                old_address_id = int(ap.get("selected_address_id") or 0)
+                if old_address_id != int(selected_address_id or 0):
+                    old_audit_values["selected_address_id"] = old_address_id
+                    new_audit_values["selected_address_id"] = int(selected_address_id or 0)
+
+                old_slot = self._norm_code(ap.get("preferred_time_slot"))
+                new_slot = self._norm_code(preferred_time_slot)
+                if old_visit_date != str(preferred_visit_date or ""):
+                    old_audit_values["preferred_visit_date"] = old_visit_date
+                    new_audit_values["preferred_visit_date"] = str(preferred_visit_date or "")
+                if old_slot != new_slot:
+                    old_audit_values["preferred_time_slot"] = old_slot
+                    new_audit_values["preferred_time_slot"] = new_slot
+
+                added_patient_ids = sorted(set(selected_patient_ids) - old_selected_patient_ids)
+                removed_patient_ids = sorted(old_selected_patient_ids - set(selected_patient_ids))
+                if added_patient_ids:
+                    new_audit_values["added_patients"] = [
+                        {"patient_id": pid, "patient_name": patient_name_by_id.get(pid) or f"Patient {pid}"}
+                        for pid in added_patient_ids
+                    ]
+                if removed_patient_ids:
+                    new_audit_values["removed_patients"] = [
+                        {"patient_id": pid, "patient_name": patient_name_by_id.get(pid) or f"Patient {pid}"}
+                        for pid in removed_patient_ids
+                    ]
+
+                old_additional_discount = round(float((self._appointment_payment_summary(ap.get("payment_snapshot_json")) or {}).get("additional_discount") or 0), 2)
+                new_additional_discount = round(float(payment_summary.get("additional_discount") or 0), 2)
+                if old_additional_discount != new_additional_discount:
+                    new_audit_values["additional_discount"] = {
+                        "old": old_additional_discount,
+                        "new": new_additional_discount,
+                    }
+
+                added_tests = []
+                removed_tests = []
+                removed_patient_set = set(removed_patient_ids)
+                for pid in sorted(set(old_tests_by_patient) | set(new_tests_by_patient)):
+                    patient_name = patient_name_by_id.get(pid) or f"Patient {pid}"
+                    old_tests = old_tests_by_patient.get(pid, {})
+                    new_tests = new_tests_by_patient.get(pid, {})
+                    for code in sorted(set(new_tests) - set(old_tests)):
+                        added_tests.append({"patient_id": pid, "patient_name": patient_name, "booked_code": code, "test_name": new_tests.get(code) or code})
+                    if pid not in removed_patient_set:
+                        for code in sorted(set(old_tests) - set(new_tests)):
+                            removed_tests.append({"patient_id": pid, "patient_name": patient_name, "booked_code": code, "test_name": old_tests.get(code) or code})
+                if added_tests:
+                    new_audit_values["added_tests"] = added_tests
+                if removed_tests:
+                    new_audit_values["removed_tests"] = removed_tests
+
+                panel_added_updated = []
+                for pid in sorted(set(old_panel_map) | set(new_panel_map)):
+                    old_keys = {entry[0:3] for entry in old_panel_map.get(pid, [])}
+                    for entry in new_panel_map.get(pid, []):
+                        if entry[0:3] not in old_keys:
+                            panel_added_updated.append(
+                                {
+                                    "patient_id": pid,
+                                    "patient_name": patient_name_by_id.get(pid) or f"Patient {pid}",
+                                    **entry[3],
+                                }
+                            )
+                if panel_added_updated:
+                    new_audit_values["panel_added_updated"] = panel_added_updated
+
+                if len(old_audit_values) > 2 or len(new_audit_values) > 2:
+                    self._insert_booking_action_audit(
+                        cur,
+                        booking_id=booking_id,
+                        action_type="MODIFY",
+                        reason_text=reason_text,
+                        old_values=old_audit_values,
+                        new_values=new_audit_values,
+                        done_by=actor,
+                    )
 
                 self._recalculate_followup_required(cur, booking_id)
                 conn.commit()
@@ -8148,7 +8523,10 @@ class HHomeCollectionCore:
                 old_additional_discount = round(float(old_booking.get("Ad_dis") or old_booking.get("Ad_Dis") or 0), 2)
                 new_additional_discount = round(float(additional_applied or 0), 2)
                 if old_additional_discount != new_additional_discount:
-                    audit_new_values["additional_discount"] = new_additional_discount
+                    audit_new_values["additional_discount"] = {
+                        "old": old_additional_discount,
+                        "new": new_additional_discount,
+                    }
 
                 if to_add:
                     audit_new_values["added_patients"] = [
@@ -8169,7 +8547,35 @@ class HHomeCollectionCore:
 
                 added_tests = []
                 removed_tests = []
-                panel_updates = []
+                panel_added_updated = []
+
+                def _panel_entries(panel_meta):
+                    comp_ids = [self._norm_code(x) for x in self._norm_code((panel_meta or {}).get("selected_comp_cat_ids")).split(",")]
+                    modes = [self._norm_code(x) for x in self._norm_code((panel_meta or {}).get("selected_charge_modes")).split(",")]
+                    names = [self._norm_code(x) for x in self._norm_code((panel_meta or {}).get("selected_panel_companies")).split(",")]
+                    max_len = max(len(comp_ids), len(modes), len(names))
+                    entries = []
+                    for idx in range(max_len):
+                        comp_id = comp_ids[idx] if idx < len(comp_ids) else ""
+                        mode = modes[idx] if idx < len(modes) else ""
+                        name = names[idx] if idx < len(names) else ""
+                        if comp_id or mode or name:
+                            entries.append(
+                                {
+                                    "selected_comp_cat_id": comp_id,
+                                    "selected_charge_mode": mode,
+                                    "selected_panel_company": name,
+                                }
+                            )
+                    return entries
+
+                def _panel_entry_key(entry):
+                    return (
+                        self._norm_code(entry.get("selected_comp_cat_id")).lower(),
+                        self._norm_code(entry.get("selected_charge_mode")).lower(),
+                        self._norm_code(entry.get("selected_panel_company")).lower(),
+                    )
+
                 for pid in sorted(old_set | new_set):
                     old_tests_for_pid = old_test_map.get(pid, {})
                     new_tests_for_pid = new_test_map.get(pid, {})
@@ -8191,25 +8597,23 @@ class HHomeCollectionCore:
 
                     old_panel = old_patient_meta.get(pid) or {}
                     new_panel = new_panel_map.get(pid) or {}
-                    if (
-                        self._norm_code(old_panel.get("selected_comp_cat_ids")) != self._norm_code(new_panel.get("selected_comp_cat_ids"))
-                        or self._norm_code(old_panel.get("selected_charge_modes")) != self._norm_code(new_panel.get("selected_charge_modes"))
-                        or self._norm_code(old_panel.get("selected_panel_companies")) != self._norm_code(new_panel.get("selected_panel_companies"))
-                    ):
-                        panel_updates.append({
-                            "patient_id": pid,
-                            "patient_name": patient_name,
-                            "selected_comp_cat_ids": self._norm_code(new_panel.get("selected_comp_cat_ids")),
-                            "selected_charge_modes": self._norm_code(new_panel.get("selected_charge_modes")),
-                            "selected_panel_companies": self._norm_code(new_panel.get("selected_panel_companies")),
-                        })
+                    old_panel_keys = {_panel_entry_key(x) for x in _panel_entries(old_panel)}
+                    for entry in _panel_entries(new_panel):
+                        if _panel_entry_key(entry) not in old_panel_keys:
+                            panel_added_updated.append(
+                                {
+                                    "patient_id": pid,
+                                    "patient_name": patient_name,
+                                    **entry,
+                                }
+                            )
 
                 if added_tests:
                     audit_new_values["added_tests"] = added_tests
                 if removed_tests:
                     audit_new_values["removed_tests"] = removed_tests
-                if panel_updates:
-                    audit_new_values["panel_updates"] = panel_updates
+                if panel_added_updated:
+                    audit_new_values["panel_added_updated"] = panel_added_updated
 
                 if audit_new_values:
                     self._insert_booking_action_audit(

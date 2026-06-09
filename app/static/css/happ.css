@@ -249,6 +249,31 @@ label,
   gap: 4px;
 }
 
+#linked-patients-panel .linked-patient-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+#linked-patients-panel .linked-patient-inactive-btn {
+  border: 1px solid #dc3545;
+  border-radius: 10px;
+  background: #fff;
+  color: #dc3545;
+  font-size: 11.5px;
+  font-weight: 400;
+  padding: 2px 7px;
+  line-height: 1.25;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#linked-patients-panel .linked-patient-inactive-btn:hover {
+  background: #dc3545;
+  color: #fff;
+}
+
 #linked-patients-panel .patient-tag-badge {
   margin-left: 0;
   padding: 1px 6px;
