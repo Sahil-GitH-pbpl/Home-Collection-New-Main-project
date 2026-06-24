@@ -1150,9 +1150,8 @@ h1 {
 }
 
 .patientTagsBlock {
-  display: grid;
-  grid-template-columns: minmax(130px, 190px) 1fr;
-  gap: 10px;
+  display: flex;
+  gap: 8px;
   align-items: center;
   margin: 9px 10px 0;
   padding: 11px;
@@ -1248,7 +1247,12 @@ h1 {
   gap: 7px;
   margin: 0;
   color: #08295d;
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.patientTagsBlock h3::after {
+  content: ":";
 }
 
 .patientTagsBlock p {
@@ -1259,10 +1263,10 @@ h1 {
 }
 
 .prominentTagList {
-  display: flex;
-  gap: 7px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: inline-flex;
+  min-width: 0;
+  font-size: 12px;
+  color: #142039;
 }
 
 .prominentTagList .tag {
@@ -1322,43 +1326,98 @@ h1 {
 
 .miniRecords {
   display: grid;
-  gap: 6px;
+  gap: 3px;
 }
 
 .miniRecord {
   display: grid;
-  grid-template-columns: minmax(64px, auto) minmax(0, 1fr) auto;
-  gap: 7px;
-  align-items: center;
-  padding: 7px 8px;
-  border: 1px solid #e2e7ef;
+  gap: 3px;
+  padding: 6px 8px;
+  border: 1px solid #d5deeb;
   border-radius: 6px;
-  background: #fbfcfe;
-  font-size: 11px;
+  background: #f0f5fb;
+  font-size: 11.5px;
+  color: #142039;
+  text-decoration: none;
+}
+
+.miniRecord:hover {
+  border-color: #b8cdf0;
+  background: #eaf2fc;
+}
+
+.miniRecordLine {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 5px;
+  align-items: center;
+  min-height: 16px;
+}
+
+.miniRecordLine:has(.miniValue):not(:has(time)):not(:has(.statusPill)) {
+  grid-template-columns: 58px minmax(0, 1fr);
 }
 
 .miniRecord strong,
-.miniRecord span,
+.miniRecord .miniValue,
 .miniRecord time {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .miniRecord strong {
   color: #0b2e66;
-  font-weight: 900;
 }
 
-.miniRecord span {
+.miniRecord .miniValue {
   color: #142039;
-  font-weight: 800;
 }
 
 .miniRecord time {
   color: #66758b;
+}
+
+.miniLabel {
+  color: #66758b;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.miniLabel::after {
+  content: ":";
+}
+
+.statusPill {
+  justify-self: end;
+  max-width: 92px;
+  padding: 2px 7px;
+  border: 1px solid #bfe4cd;
+  border-radius: 999px;
+  background: #eafaf0;
+  color: #04703b;
+  font-size: 10.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emptyTag {
+  color: #66758b;
+  font-size: 11px;
+}
+
+.patientTagText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
   font-weight: 800;
+  color: #d97706;
 }
 
 .auditList {
@@ -1404,6 +1463,7 @@ h1 {
   display: block;
   margin-bottom: 6px;
   color: #06152e;
+  font-weight: 600;
 }
 
 .keyValues {
@@ -1430,48 +1490,45 @@ h1 {
   overflow-wrap: anywhere;
 }
 
-.keyValues .linkedPatientRow {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 6px;
-  padding: 7px 8px;
-  border: 1px solid #e1e8f2;
-  border-radius: 6px;
-  background: #fff;
+.linkedPatientTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 11.5px;
 }
 
-.keyValues .linkedPatientRow:last-child {
-  margin-bottom: 0;
-}
-
-.linkedPatientRow dt {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  color: #263b5e;
+.linkedPatientTable th,
+.linkedPatientTable td {
+  padding: 6px 8px;
+  border: 1px solid #dfe7f1;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
 }
 
-.linkedPatientRow dt span {
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: #eef5ff;
-  color: #0059dd;
+.linkedPatientTable th {
+  background: #f3f7fc;
+  color: #66758b;
   font-size: 10px;
-  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .02em;
 }
 
-.linkedPatientRow dd {
-  white-space: nowrap;
+.linkedPatientTable td {
+  background: #fff;
+  color: #142039;
+}
+
+.linkedPatientTable th:first-child,
+.linkedPatientTable td:first-child {
+  width: 56%;
+}
+
+.linkedPatientTable th:last-child,
+.linkedPatientTable td:last-child {
+  width: 44%;
 }
 
 .emptyLink,
@@ -2583,8 +2640,23 @@ h1 {
 }
 
 .contextTabs button {
-  min-height: 28px;
+  min-height: 26px;
+  padding: 0 6px;
+  border-color: #c9d6e8;
+  background: #f3f7fc;
+  color: #1f3656;
   font-size: 10px;
+}
+
+.contextTabs button:hover {
+  border-color: #8db7ee;
+  background: #eaf3ff;
+}
+
+.contextTabs button.active {
+  border-color: #0059dd;
+  background: #e2efff;
+  color: #0059dd;
 }
 
 .contextScroll {

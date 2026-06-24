@@ -464,7 +464,7 @@
                   {% endif %}
                   <a href="{{ url_for('tickets.tickets_create_odt_page') }}"><span class="icon">➕</span> Raise ODT Ticket</a>
                   {% set desig = ((session.get('designation') or session.get('role') or '')|lower|trim) %}
-                  {% if 'customer care' in desig or 'admin' in desig %}
+                  {% if 'customer care' in desig or 'technical' in desig or 'tech' in desig or 'admin' in desig %}
                   <a href="{{ url_for('tickets.tickets_cv_form') }}"><span class="icon">➕</span> Raise CV Ticket</a>
                   {% endif %}
                   {% if 'technical' in desig or 'tech' in desig or 'admin' in desig %}

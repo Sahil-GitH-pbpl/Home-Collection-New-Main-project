@@ -129,6 +129,12 @@ function mobileKey(value) {
   return digits.length > 10 ? digits.slice(-10) : digits;
 }
 
+function patientDisplayName(patient) {
+  const title = String(patient?.title || "").trim();
+  const name = String(patient?.full_name || "").trim();
+  return [title, name].filter(Boolean).join(" ") || "-";
+}
+
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
   const body = await response.text();
@@ -485,13 +491,40 @@ function formatShortDate(value) {
   return String(value).slice(0, 11);
 }
 
-function miniRecordHtml(id, name, date) {
+function hcStatusLabel(value) {
+  const status = Number(value);
+  if (status === 0) return "Pending";
+  if (status === 1) return "Assigned";
+  if (status === 2) return "Started";
+  if (status === 3) return "Completed";
+  if (status === 4) return "Cancelled";
+  if (status === 5) return "Partial Complete";
+  return value === null || value === undefined || value === "" ? "-" : String(value);
+}
+
+function miniRecordHtml(record) {
+  const tagName = record.href ? "a" : "article";
+  const hrefAttr = record.href ? ` href="${escapeHtml(record.href)}"` : "";
+  const targetAttr = record.href ? ' target="_blank" rel="noopener"' : "";
   return `
-    <article class="miniRecord">
-      <strong>${escapeHtml(id || "-")}</strong>
-      <span>${escapeHtml(name || "-")}</span>
-      <time>${escapeHtml(formatShortDate(date))}</time>
-    </article>
+    <${tagName} class="miniRecord"${hrefAttr}${targetAttr}>
+      <div class="miniRecordLine">
+        <span class="miniLabel">${escapeHtml(record.idLabel || "No")}</span>
+        <strong>${escapeHtml(record.id || "-")}</strong>
+        <time>${escapeHtml(formatShortDate(record.date))}</time>
+      </div>
+      <div class="miniRecordLine">
+        <span class="miniLabel">${escapeHtml(record.nameLabel || "Name")}</span>
+        <span class="miniValue">${escapeHtml(record.name || "-")}</span>
+        ${record.status ? `<span class="statusPill">${escapeHtml(record.status)}</span>` : ""}
+      </div>
+      ${(record.lines || []).map((line) => `
+        <div class="miniRecordLine">
+          <span class="miniLabel">${escapeHtml(line.label || "-")}</span>
+          <span class="miniValue">${escapeHtml(line.value || "-")}</span>
+        </div>
+      `).join("")}
+    </${tagName}>
   `;
 }
 
@@ -504,8 +537,39 @@ function renderMiniList(element, rows, mapRow, emptyText) {
   }
   element.innerHTML = visible.map((row) => {
     const mapped = mapRow(row);
-    return miniRecordHtml(mapped.id, mapped.name, mapped.date);
+    return miniRecordHtml(mapped);
   }).join("");
+}
+
+function splitTagText(value) {
+  return String(value || "")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function uniqueTags(tags) {
+  const seen = new Set();
+  return tags.filter((tag) => {
+    const key = tag.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function renderPatientTags(linkedPatients, row) {
+  const activeMobile = mobileKey(row?.mobile || state.activeMobile);
+  const matched = (linkedPatients || []).filter((patient) => (
+    mobileKey(patient.contact_mobile) === activeMobile || mobileKey(patient.alternate_mobile) === activeMobile
+  ));
+  const source = matched.length ? matched : (linkedPatients || []);
+  const tags = uniqueTags(source.flatMap((patient) => splitTagText(patient.tag)));
+  if (els.tagNote) els.tagNote.textContent = "";
+  if (!els.tagStrip) return;
+  els.tagStrip.innerHTML = tags.length
+    ? `<span class="patientTagText">${escapeHtml(tags.join(", "))}</span>`
+    : '<span class="emptyTag">-</span>';
 }
 
 function actionLabel(value) {
@@ -578,48 +642,92 @@ function setContextLoading() {
   if (els.auditSummary) els.auditSummary.textContent = "Open Audit to load conversation history.";
 }
 
+function activateContextTab(tab) {
+  els.contextTabs.forEach((button) => button.classList.toggle("active", button.dataset.contextTab === tab));
+  els.contextPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.contextPanel === tab));
+}
+
 function renderUnifiedLookup(data, row) {
   const sections = new Set(data?.sections || ["contact", "hc", "leads", "tickets"]);
   const caller = data?.caller;
   const linkedPatients = data?.linked_patients || [];
-  const fallbackName = caller?.full_name || displayContactName(row);
-  const fallbackNumber = caller?.primary_mobile || caller?.alternate_mobile || row.mobile;
   if (sections.has("contact")) {
     els.contactName.textContent = linkedPatients.length
       ? `${linkedPatients.length} linked patient${linkedPatients.length > 1 ? "s" : ""}`
-      : fallbackName || "No linked contact";
+      : "No linked patients found";
     els.contactContext.innerHTML = linkedPatients.length
-      ? linkedPatients.slice(0, 6).map((patient, index) => `
-        <div class="linkedPatientRow">
-          <dt>
-            <span>${index + 1}</span>
-            ${escapeHtml(patient.full_name || "-")}
-          </dt>
-          <dd>${escapeHtml(patient.contact_mobile || patient.alternate_mobile || "-")}</dd>
-        </div>
-      `).join("")
+      ? `
+        <table class="linkedPatientTable">
+          <thead>
+            <tr><th>Name</th><th>Mobile</th></tr>
+          </thead>
+          <tbody>
+          ${linkedPatients.slice(0, 6).map((patient, index) => `
+            <tr>
+              <td>${escapeHtml(patientDisplayName(patient))}</td>
+              <td>${escapeHtml(patient.contact_mobile || patient.alternate_mobile || "-")}</td>
+            </tr>
+          `).join("")}
+          </tbody>
+        </table>
+      `
       : `
-        <div><dt>Name</dt><dd>${escapeHtml(fallbackName || "-")}</dd></div>
-        <div><dt>Number</dt><dd>${escapeHtml(fallbackNumber || "-")}</dd></div>
+        <p class="emptyLink">No linked patients found.</p>
       `;
+    renderPatientTags(linkedPatients, row);
   }
   if (sections.has("hc")) {
     renderMiniList(
       els.homeCollectionList,
       data?.home_collection_bookings,
       (booking) => ({
+        idLabel: "Bkg No",
         id: booking.booking_code || booking.id,
-        name: booking.patients?.[0]?.full_name || caller?.full_name || "-",
+        nameLabel: "Patient",
+        name: (booking.patients || []).map((patient) => patient.full_name).filter(Boolean).join(", ") || caller?.full_name || "-",
         date: booking.preferred_visit_date || booking.created_at,
+        status: hcStatusLabel(booking.booking_status),
+        lines: [{ label: "Phlebo", value: booking.assigned_phlebotomist || "-" }],
       }),
       "No home collection found."
     );
   }
   if (sections.has("leads")) {
-    renderMiniList(els.leadList, data?.leads, (lead) => ({ id: lead.lead_id || lead.id, name: lead.name, date: lead.created_at }), "No lead found.");
+    renderMiniList(
+      els.leadList,
+      data?.leads,
+      (lead) => ({
+        idLabel: "Lead No",
+        id: lead.lead_id || lead.id,
+        nameLabel: "Name",
+        name: lead.name,
+        date: lead.created_at,
+        status: lead.status || "",
+        lines: [
+          { label: "Book By", value: lead.created_by_name || lead.created_by || "-" },
+          { label: "Tag", value: lead.tags || "-" },
+        ],
+        href: lead.lead_id ? `/lead/${encodeURIComponent(lead.lead_id)}` : "",
+      }),
+      "No lead found."
+    );
   }
   if (sections.has("tickets")) {
-    renderMiniList(els.ticketList, data?.tickets, (ticket) => ({ id: ticket.id, name: ticket.patient_name || ticket.client_name, date: ticket.created_at || ticket.commitment_at }), "No ticket found.");
+    renderMiniList(
+      els.ticketList,
+      data?.tickets,
+      (ticket) => ({
+        idLabel: "Ticket No",
+        id: ticket.id,
+        nameLabel: "Name",
+        name: ticket.patient_name || ticket.client_name,
+        date: ticket.created_at || ticket.commitment_at,
+        status: ticket.status || "",
+        lines: [{ label: "Category", value: ticket.ticket_category || "-" }],
+        href: ticket.id ? `/tickets/${encodeURIComponent(ticket.id)}?mode=view` : "",
+      }),
+      "No ticket found."
+    );
   }
 }
 
@@ -811,13 +919,10 @@ function updateSelected(row) {
           ? `Assigned to ${owner}`
           : "Take ownership to reply..."
   );
-  els.tagStrip.innerHTML = mergeTags(row).map((tag) => `<span class="${tagClass(tag)}">${escapeHtml(tag)}</span>`).join("");
-  els.tagNote.textContent = closed ? `Closed as ${type}` : `Current type: ${type}`;
-  els.contactName.textContent = displayContactName(row);
-  els.contactContext.innerHTML = `
-    <div><dt>Name</dt><dd>${escapeHtml(displayContactName(row))}</dd></div>
-    <div><dt>Number</dt><dd>${escapeHtml(row.mobile)}</dd></div>
-  `;
+  els.tagStrip.innerHTML = '<span class="emptyTag">-</span>';
+  els.tagNote.textContent = "";
+  els.contactName.textContent = "Loading linked patients...";
+  els.contactContext.innerHTML = '<p class="emptyLink">Loading linked patients...</p>';
   setContextLoading();
   els.auditSummary.textContent = `Owner: ${owner || "not assigned yet"}. Type: ${type}. Status: ${row.workflow_status || "open"}. Delivery: ${row.delivery_status || "not available"}. Row #${row.id}.`;
   if (els.topStateChip) els.topStateChip.textContent = `owner=${owned ? 1 : 0} links=1`;
@@ -841,6 +946,7 @@ async function loadMessages(mobile) {
   state.oldestMessageId = null;
   state.hasOlderMessages = false;
   state.loadingOlderMessages = false;
+  activateContextTab("contact");
   const selected = state.allRows.find((row) => row.mobile === mobile);
   updateSelected(selected);
   renderConversations();

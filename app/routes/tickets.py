@@ -3,10 +3,12 @@ from flask import render_template
 import json
 import re
 import math
+import threading
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 import pymysql
+import requests
 from flask import Blueprint, jsonify, session, request, current_app, redirect, url_for
 from app.db.connection import get_db_connection, get_labmate_connection
 from app.alerts import send_whatsapp_to_number, send_whatsapp_document_to_number
@@ -52,6 +54,147 @@ def _panel_doctor_display(panel_name: Optional[str], client_name: Optional[str])
 def _safe_report_filename(patient_name: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9]+", "_", (patient_name or "").strip()).strip("_")
     return f"{cleaned or 'Patient'}_Report.pdf"
+
+
+def _extract_report_url(row: dict) -> str:
+    return (
+        row.get("report_url")
+        or row.get("report_link")
+        or row.get("link")
+        or row.get("url")
+        or row.get("pdffile")
+        or row.get("report")
+        or ""
+    ).strip()
+
+
+def _fetch_labmate_report_url(patient_labmate_id: str, mobile_number: str = "") -> str:
+    patient_labmate_id = (patient_labmate_id or "").strip()
+    mobile_number = (mobile_number or "").strip()
+    if not patient_labmate_id and not mobile_number:
+        return ""
+
+    labmate_url = "http://10.1.1.252:8000/reportapi/LabmatePatRegistration.svc/Getpatientdatabymobileno"
+    response = requests.post(
+        labmate_url,
+        json={"mobileno": mobile_number, "patientid": patient_labmate_id},
+        timeout=10,
+    )
+    if response.status_code != 200:
+        return ""
+    payload = response.json() or {}
+    rows = payload.get("data") or []
+    first = rows[0] if rows else {}
+    return _extract_report_url(first) if isinstance(first, dict) else ""
+
+
+def _cvt_message(patient_name: str, test_name: str) -> str:
+    return (
+        f"IMPORTANT: URGENT LAB RESULT\n"
+        f"Dear {patient_name or 'Patient'}\n"
+        f"Your {test_name or 'test'} report is attached and requires urgent clinical review.\n"
+        f"Kindly consult your treating doctor immediately.\n"
+        f"This message does not replace medical advice."
+    )
+
+
+def _patient_whatsapp_target(country_code: str, mobile_number: str) -> str:
+    if not mobile_number:
+        return ""
+    cc_digits = re.sub(r"\D", "", country_code or "91")
+    ms_digits = re.sub(r"\D", "", mobile_number or "")
+    if ms_digits.startswith("0"):
+        ms_digits = ms_digits[1:]
+    return f"{cc_digits}{ms_digits}" if ms_digits else ""
+
+
+def _unique_targets(*values: str) -> list[str]:
+    seen = set()
+    targets = []
+    for raw in values:
+        target = (raw or "").strip()
+        if not target:
+            continue
+        key = target.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        targets.append(target)
+    return targets
+
+
+def _send_cvt_whatsapp_later(app, ticket_id: int, initial_report_url: str = ""):
+    with app.app_context():
+        conn = get_db_connection()
+        try:
+            with conn.cursor(DictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT id, country_code, mobile_number, patient_name, patient_labmate_id, doc_pan_json
+                    FROM tickets
+                    WHERE id=%s AND ticket_origin='CVT'
+                    """,
+                    (ticket_id,),
+                )
+                ticket = cur.fetchone()
+                if not ticket:
+                    app.logger.warning("[tickets_cv_delay] ticket not found id=%s", ticket_id)
+                    return
+                cur.execute(
+                    """
+                    SELECT test_name
+                    FROM cv_ticket_tests
+                    WHERE ticket_id=%s
+                    ORDER BY id ASC
+                    LIMIT 1
+                    """,
+                    (ticket_id,),
+                )
+                test_row = cur.fetchone() or {}
+        finally:
+            conn.close()
+
+        doc_pan = {}
+        try:
+            doc_pan = json.loads(ticket.get("doc_pan_json") or "{}")
+        except Exception:
+            doc_pan = {}
+
+        patient_name = ticket.get("patient_name") or "Patient"
+        test_name = test_row.get("test_name") or "test"
+        message = _cvt_message(patient_name, test_name)
+        report_url = ""
+        try:
+            report_url = _fetch_labmate_report_url(ticket.get("patient_labmate_id"), ticket.get("mobile_number"))
+        except Exception:
+            app.logger.exception("[tickets_cv_delay] report fetch failed ticket_id=%s", ticket_id)
+        report_url = report_url or (initial_report_url or "").strip()
+
+        doctor_mobile = ((doc_pan.get("doctor") or {}).get("mobile") or "").strip() if isinstance(doc_pan, dict) else ""
+        panel_mobile = ((doc_pan.get("panel") or {}).get("mobile") or "").strip() if isinstance(doc_pan, dict) else ""
+        patient_target = _patient_whatsapp_target(ticket.get("country_code"), ticket.get("mobile_number"))
+        for target in _unique_targets(patient_target, doctor_mobile, panel_mobile):
+            try:
+                if report_url:
+                    status_code, _ = send_whatsapp_document_to_number(
+                        target,
+                        message,
+                        report_url,
+                        filename=_safe_report_filename(patient_name),
+                    )
+                    if status_code not in (200, 201):
+                        send_whatsapp_to_number(target, f"{message}\n\nReport: {report_url}")
+                else:
+                    send_whatsapp_to_number(target, message)
+            except Exception:
+                app.logger.exception("[tickets_cv_delay] WA send failed ticket_id=%s target=%s", ticket_id, target)
+
+
+def _schedule_cvt_whatsapp(ticket_id: int, initial_report_url: str = ""):
+    app = current_app._get_current_object()
+    timer = threading.Timer(600, _send_cvt_whatsapp_later, args=(app, int(ticket_id), initial_report_url or ""))
+    timer.daemon = True
+    timer.start()
 
 
 def _find_recent_cvt(cur, patient_labmate_id: str, mobile_number: str):
@@ -113,7 +256,7 @@ def _require_cce_raise_access_json():
 def _require_cvt_access_page():
     if not session.get("user_id"):
         return redirect(url_for("auth.home"))
-    if not (_has_any_designation("customer care") or _designation_cf() == "admin"):
+    if not (_has_any_designation("customer care", "technical", "tech") or _designation_cf() == "admin"):
         return redirect(url_for("ticketlist.tickets_list"))
     return None
 
@@ -122,7 +265,7 @@ def _require_cvt_access_json():
     login_err = _require_login_json()
     if login_err:
         return login_err
-    if not (_has_any_designation("customer care") or _designation_cf() == "admin"):
+    if not (_has_any_designation("customer care", "technical", "tech") or _designation_cf() == "admin"):
         return jsonify({"ok": False, "error": "Not authorized to create CV tickets"}), 403
     return None
 
@@ -692,7 +835,7 @@ def tickets_cv_create():
     Create a Critical Value (CVT) ticket.
     - Auto sets commitment_at = now + 30 minutes
     - Forces ticket_origin = CVT and ticket_category = Critical Value
-    - Sends WhatsApp on creation
+    - Schedules WhatsApp 10 minutes after creation
     - Persists test rows into cv_ticket_tests
     """
     auth_err = _require_cvt_access_json()
@@ -845,56 +988,8 @@ def tickets_cv_create():
         except Exception:
             pass
 
-    # WhatsApp on create: patient / doctor / panel (supports @g.us group IDs too)
-    test_name_for_msg = first_test_name or "test"
-    msg = (
-        f"⚠️ IMPORTANT: URGENT LAB RESULT\n"
-        f"Dear {patient_name or 'Patient'}\n"
-        f"Your {test_name_for_msg} report is attached and requires urgent clinical review.\n"
-        f"Kindly consult your treating doctor immediately.\n"
-        f"This message does not replace medical advice."
-    )
-
-    patient_target = ""
-    if mobile_number:
-        cc_digits = re.sub(r"\D", "", country_code or "91")
-        ms_digits = re.sub(r"\D", "", mobile_number or "")
-        if ms_digits.startswith("0"):
-            ms_digits = ms_digits[1:]
-        patient_target = f"{cc_digits}{ms_digits}" if ms_digits else ""
-
-    recipients = [patient_target, doctor_mobile, panel_mobile]
-    seen = set()
-    unique_recipients = []
-    for raw in recipients:
-        target = (raw or "").strip()
-        if not target:
-            continue
-        key = target.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        unique_recipients.append(target)
-
-    for target in unique_recipients:
-        try:
-            if report_url:
-                status_code, _ = send_whatsapp_document_to_number(
-                    target,
-                    msg,
-                    report_url,
-                    filename=_safe_report_filename(patient_name),
-                )
-                if status_code not in (200, 201):
-                    # Fallback so critical info still reaches even if attachment API fails.
-                    send_whatsapp_to_number(target, f"{msg}\n\nReport: {report_url}")
-            else:
-                send_whatsapp_to_number(target, msg)
-        except Exception:
-            current_app.logger.exception("[tickets_cv_create] WA send failed for target=%s", target)
-
+    _schedule_cvt_whatsapp(ticket_id, report_url)
     return jsonify({"ok": True, "ticket_id": ticket_id}), 200
-
 
 @tickets_bp.route("/tickets/cv/open")
 def tickets_cv_open():

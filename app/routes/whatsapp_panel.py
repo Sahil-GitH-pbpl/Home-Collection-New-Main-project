@@ -488,7 +488,8 @@ def dedupe_by_id(rows):
 
 
 def mobile_clean_sql(column_name):
-    column = qid(column_name)
+    parts = str(column_name).split(".")
+    column = ".".join(qid(part) for part in parts)
     return (
         f"REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({column}, ' ', ''), '-', ''), '+', ''), '.', ''), '(', '')"
     )
@@ -575,7 +576,7 @@ def fetch_linked_patients(cur, caller_id):
         return []
     cur.execute(
         """
-        SELECT p.id, p.patient_code, p.full_name, p.contact_mobile, p.alternate_mobile,
+        SELECT p.id, p.patient_code, p.title, p.full_name, p.contact_mobile, p.alternate_mobile, p.tag,
                l.created_at AS linked_at
         FROM hcaller_patient_link l
         INNER JOIN hpatient_master p ON p.id = l.patient_id
@@ -627,11 +628,14 @@ def fetch_home_collection_bookings(cur, caller_id):
         return []
     cur.execute(
         """
-        SELECT id, booking_code, caller_id, preferred_visit_date, preferred_time_slot,
-               booking_status, created_at, lead_id, remarks, paying_amount, total_amount
-        FROM hhome_collection_booking
-        WHERE caller_id = %s
-        ORDER BY created_at DESC, id DESC
+        SELECT b.id, b.booking_code, b.caller_id, b.preferred_visit_date, b.preferred_time_slot,
+               b.booking_status, b.created_at, b.lead_id, b.remarks, b.paying_amount, b.total_amount,
+               COALESCE(NULLIF(TRIM(u.name), ''), '-') AS assigned_phlebotomist
+        FROM hhome_collection_booking b
+        LEFT JOIN users u ON u.id = b.assigned_phlebotomist_id
+        WHERE b.caller_id = %s
+          AND b.created_at >= NOW() - INTERVAL 10 DAY
+        ORDER BY b.created_at DESC, b.id DESC
         LIMIT 100
         """,
         (caller_id,),
@@ -667,11 +671,16 @@ def fetch_leads_by_mobile(cur, variants):
     placeholders = ", ".join(["%s"] * len(params))
     cur.execute(
         f"""
-        SELECT id, lead_id, name, phone, alt_phone, status, tags, remarks, visit_window, created_at
-        FROM leads
-        WHERE {mobile_clean_sql("phone")} IN ({placeholders})
-           OR {mobile_clean_sql("alt_phone")} IN ({placeholders})
-        ORDER BY created_at DESC, id DESC
+        SELECT l.id, l.lead_id, l.name, l.phone, l.alt_phone, l.status, l.tags,
+               l.remarks, l.visit_window, l.created_by, COALESCE(u.name, l.created_by) AS created_by_name, l.created_at
+        FROM leads l
+        LEFT JOIN users u ON l.created_by REGEXP '^[0-9]+$' AND u.id = CAST(l.created_by AS UNSIGNED)
+        WHERE (
+            {mobile_clean_sql("l.phone")} IN ({placeholders})
+            OR {mobile_clean_sql("l.alt_phone")} IN ({placeholders})
+        )
+          AND l.created_at >= NOW() - INTERVAL 10 DAY
+        ORDER BY l.created_at DESC, l.id DESC
         LIMIT 100
         """,
         params + params,
@@ -690,6 +699,7 @@ def fetch_tickets_by_mobile(cur, variants):
                mobile_number, status, created_at, commitment_at
         FROM tickets
         WHERE {mobile_clean_sql("mobile_number")} IN ({placeholders})
+          AND created_at >= NOW() - INTERVAL 10 DAY
         ORDER BY created_at DESC, id DESC
         LIMIT 100
         """,
