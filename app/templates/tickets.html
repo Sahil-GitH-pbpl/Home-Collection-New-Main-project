@@ -1326,14 +1326,15 @@ if (labmateId) {
        if (response.ok) {
     const data = await response.json();
     
-    if (data && data.data && data.data.length > 0) {
-        const patient = data.data[0];
-        
-        if (patient.doctor && patient.doctor !== 'SELF' && patient.doctor.trim() !== '') {
-            body.client_name = patient.doctor.trim();
+        if (data && data.data && data.data.length > 0) {
+            const patient = data.data[0];
+            body.panel_name = (patient.panel || '').trim();
             
-            const clientNameField = document.getElementById('c-name');
-            const hiddenClientField = document.getElementById('hidden_client_name');
+            if (patient.doctor && patient.doctor !== 'SELF' && patient.doctor.trim() !== '') {
+              body.client_name = patient.doctor.trim();
+            
+              const clientNameField = document.getElementById('c-name');
+              const hiddenClientField = document.getElementById('hidden_client_name');
             
             if (clientNameField) clientNameField.value = patient.doctor.trim();
             if (hiddenClientField) hiddenClientField.value = patient.doctor.trim();

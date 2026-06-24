@@ -29,7 +29,7 @@ PERSIST_WINDOW_MINUTES = int(os.getenv("CCE_PERSIST_WINDOW_MINUTES", "720"))
 EXOTEL_API_KEY_FALLBACK = os.getenv("EXOTEL_API_KEY", "bhasinpathlabs")
 EXOTEL_API_TOKEN_FALLBACK = os.getenv("EXOTEL_API_TOKEN", "284fd844c57bf078f7ba2b0491ffeabcb1590cf1")
 EXOTEL_SID_FALLBACK = os.getenv("EXOTEL_SID", "bhasinpathlabs")  # older setup used key as account name
-EXOTEL_CALLER_ID_FALLBACK = os.getenv("EXOTEL_CALLER_ID", "01141194585")  # Exotel-approved company number
+EXOTEL_CALLER_ID_FALLBACK = os.getenv("EXOTEL_CALLER_ID", "02248933070")  # Exotel-approved company number
 EXOTEL_SUBDOMAIN_FALLBACK = os.getenv("EXOTEL_SUBDOMAIN", "api.exotel.com")
 # Default CCE landline used when UI does not pass a selected extension
 CCE_NUMBER_FALLBACK = os.getenv("CCE_NUMBER_FALLBACK", "01149989851")

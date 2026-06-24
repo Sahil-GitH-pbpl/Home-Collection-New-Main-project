@@ -19,7 +19,7 @@ def require_login_globally():
         return
     path = (request.path or "/").strip()
     PUBLIC_ENDPOINTS = {"auth.home","auth.login","auth.logout"}
-    PUBLIC_PATH_PREFIXES = ("/static/","/suggest_names","/CGHS")
+    PUBLIC_PATH_PREFIXES = ("/static/","/suggest_names","/CGHS","/webhook/","/uploads/")
     PUBLIC_PATH_EXACT = {"/favicon.ico","/health"}
     if request.endpoint in PUBLIC_ENDPOINTS:
         return

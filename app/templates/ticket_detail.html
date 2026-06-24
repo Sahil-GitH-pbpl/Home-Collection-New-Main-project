@@ -3,26 +3,27 @@
 
 {% block content %}
 <style>
-  .page-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:14px}
+  .page-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.95fr);gap:16px;align-items:start}
   @media(max-width:1024px){.page-grid{grid-template-columns:1fr}}
 
-  .card{background:#fff;border-radius:14px;box-shadow:0 14px 28px rgba(0,0,0,.18);padding:10px 14px}
-  .card h3{margin:0 0 10px 0;font-size:18px}
+  .card{background:#fff;border-radius:14px;box-shadow:0 10px 24px rgba(15,23,42,.10);padding:10px 12px;border:1px solid #e2e8f0}
+  .card h3{margin:0 0 8px 0;font-size:16px;color:#0f172a}
   .card > :last-child{margin-bottom:0 !important}
   .card form{margin:0}
   .mb0{margin-bottom:0}
 
-  .kv{display:grid;grid-template-columns:150px 1fr;gap:6px 10px;font-size:14px;align-items:center}
+  .kv{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px 14px;font-size:14px;align-items:start}
   .kv > div{min-height:22px}
-  .muted{color:#667085}
+  .muted{color:#64748b}
   .chip{display:inline-block;padding:2px 8px;border-radius:999px;background:#f2f4f7;font-size:12px}
-  .badge{padding:2px 6px;border-radius:6px;font-size:12px}
-  .badge-ok{background:#e8f7ee}
-  .badge-near{background:#fff7e6}
-  .badge-overdue{background:#ffefef}
+  .badge{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
+  .badge-ok{background:#dcfce7;color:#166534}
+  .badge-near{background:#fef3c7;color:#92400e}
+  .badge-overdue{background:#fee2e2;color:#b91c1c}
 
   .mini-table{width:100%;border-collapse:collapse}
-  .mini-table th,.mini-table td{padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:left}
+  .mini-table th,.mini-table td{padding:9px 10px;border-bottom:1px solid #edf2f7;font-size:13px;text-align:left}
+  .mini-table th{color:#334155;font-weight:700;background:#f8fafc}
 
   .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .input, select, textarea{width:100%;padding:10px;border:1px solid #d8b4fe;border-radius:10px;background:#fff}
@@ -55,12 +56,12 @@
   .search-item:hover,.search-item.active{background:#f3f4f6}
 
   /* ==== LEFT COLUMN: compact size only on left ==== */
-  .left-col .card{padding:8px 10px}
   .left-col .card h3{font-size:16px}
-  .left-col .kv{grid-template-columns:130px 1fr;font-size:13px;gap:4px 8px}
+  .left-col .kv{grid-template-columns:130px minmax(0,1fr);font-size:13px;gap:6px 10px}
   .left-col .mini-table th,.left-col .mini-table td{padding:6px 8px;font-size:12px}
   .left-col{align-content:start; grid-auto-rows:max-content}
   .left-col > .card{align-self:start; height:auto}
+  .right-col{align-content:start; grid-auto-rows:max-content}
 
   /* ===== Modal (single) ===== */
   .modal-backdrop{
@@ -75,8 +76,45 @@
   .modal-head h3{margin:0;font-size:18px}
   .modal-x{border:0; background:transparent; font-size:24px; line-height:1; cursor:pointer}
   .modal-body{padding:6px 2px}
-  /* === VIEW mode: right column hide === */
-.hide-right .right-col{ display:none !important; }
+  .page-title{margin:10px 2px 10px 2px}
+  .page-title h2{margin:0;font-size:20px;color:#0f172a}
+  .detail-hero{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #e2e8f0}
+  .detail-identity{display:flex;gap:12px;align-items:flex-start;min-width:0}
+  .detail-avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#dbeafe;color:#1d4ed8;font-weight:700;font-size:16px;flex:0 0 auto}
+  .detail-name{font-size:24px;line-height:1.1;font-weight:700;color:#0f172a;word-break:break-word}
+  .detail-subline{margin-top:4px;font-size:13px;color:#64748b;display:flex;flex-direction:column;gap:2px}
+  .labmate-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:#fff7ed;color:#92400e;font-size:12px;font-weight:700;border:1px solid #fed7aa;width:max-content}
+  .status-stack{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto}
+  .status-assignee{font-size:14px;line-height:1.3;color:#475569;text-align:right;font-weight:700}
+  .status-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;background:#ecfdf3;color:#15803d;font-size:12px;font-weight:700;border:1px solid #bbf7d0}
+  .status-pill.closed{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
+  .status-pill.open{background:#ecfdf3;color:#15803d;border-color:#bbf7d0}
+  .category-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;background:#fff7ed;color:#b45309;font-size:12px;font-weight:700;border:1px solid #fed7aa}
+  .right-stack{display:grid;gap:16px}
+  .summary-text{font-size:14px;line-height:1.6;color:#0f172a}
+  .summary-list{display:grid;gap:10px}
+  .summary-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #edf2f7;font-size:13px}
+  .summary-row:last-child{border-bottom:0;padding-bottom:0}
+  .summary-label{color:#64748b;font-weight:600}
+  .summary-value{color:#0f172a;font-weight:700;text-align:right;word-break:break-word}
+  .info-highlight{color:#9a3412;font-weight:700;}
+  .history-panel{max-height:420px;overflow:auto;padding-right:6px}
+  .history-list{display:grid;gap:12px}
+  .history-item{position:relative;padding-left:18px}
+  .history-item::before{content:'';position:absolute;left:3px;top:7px;width:7px;height:7px;border-radius:50%;background:#3b82f6}
+  .history-item::after{content:'';position:absolute;left:6px;top:18px;bottom:-14px;width:1px;background:#dbeafe}
+  .history-item:last-child::after{display:none}
+  .history-line{font-size:14px;font-weight:700;color:#0f172a;line-height:1.35}
+  .history-meta{font-size:12px;color:#64748b;display:flex;gap:8px;flex-wrap:wrap;margin-top:3px}
+  .history-note{font-size:12px;color:#475569;margin-top:2px}
+  .muted-card{background:#fde7d7;border-color:#efc19b}
+  .action-card.is-disabled{opacity:.7}
+  .view-mode .action-card{display:none !important}
+  @media(max-width:1024px){
+    .detail-hero{flex-direction:column;align-items:flex-start}
+    .status-stack{align-items:flex-start}
+    .history-panel{max-height:none}
+  }
 
 </style>
 
@@ -88,7 +126,7 @@
      data-me-name="{{ session.get('username') or '' }}"
      data-origin="{{ ticket.ticket_origin or '' }}"
 ></div>
-<div class="page-head"><h2>🎫 Ticket #{{ ticket.id }}</h2></div>
+<div class="page-title"><h2>Ticket #{{ ticket.id }}</h2></div>
 
 {# ---------- helper macro: render a key/value row only when value is present ---------- #}
 {% macro kv_row(label, value, allow_false=false) %}
@@ -103,29 +141,45 @@
   <div class="left-col" style="display:grid;gap:12px">
     <!-- Box 1: Ticket Details -->
     <div class="card">
+      <div class="detail-hero">
+        <div class="detail-identity">
+          <div class="detail-avatar">
+            {{ ((ticket.patient_name or ticket.client_name or 'TK')[:2]).upper() }}
+          </div>
+          <div style="min-width:0">
+            <div class="detail-name">{{ ticket.patient_name or 'Unknown Patient' }}</div>
+            <div class="detail-subline">
+              {% if ticket.patient_labmate_id %}<span class="labmate-chip"><span>Labmate ID:</span><span>{{ ticket.patient_labmate_id }}</span></span>{% endif %}
+              {% if ticket.mobile_number %}<span>Mobile No: {{ ticket.country_code ~ ' ' ~ ticket.mobile_number }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="status-stack">
+          <div class="status-assignee"><strong>Current Assignee:</strong> {{ current_assignee.name or '-' }}</div>
+          <span class="status-pill {{ 'closed' if is_closed else 'open' }}"><span>Status:</span><span>{{ ticket.status or 'Open' }}</span></span>
+          {% if ticket.ticket_category %}<span class="category-chip"><span>Category:</span><span>{{ ticket.ticket_category }}</span></span>{% endif %}
+        </div>
+      </div>
       <h3>Ticket Details</h3>
       <div class="kv">
-        {{ kv_row('Form Source', ticket.source) }}
-        {{ kv_row('Mobile', (ticket.country_code ~ ' ' ~ ticket.mobile_number) if ticket.mobile_number else '') }}
-        {{ kv_row('Patient', ticket.patient_name) }}
-        {{ kv_row('Labmate ID', ticket.patient_labmate_id) }}
-        {{ kv_row('Client Name', ticket.client_name) }}
-        {{ kv_row('Priority', ticket.priority) }}
+        {{ kv_row('Form Source:', ticket.source) }}
+        {{ kv_row('Client/Doctor:', ticket.client_name) }}
+        {{ kv_row('Priority:', ticket.priority) }}
         {# WhatsApp Opt-in is meaningful even if false → force show #}
-        <div class="muted">WhatsApp Opt-in</div><div>{{ 'Yes' if ticket.whatsapp_opt_in==1 else 'No' }}</div>
-        <div class="muted">Ticket Category</div><div>{{ ticket.ticket_category }}</div>
+        <div class="muted">WhatsApp Opt-in:</div><div>{{ 'Yes' if ticket.whatsapp_opt_in==1 else 'No' }}</div>
+        <div class="muted">Ticket Category:</div><div>{{ ticket.ticket_category }}</div>
         {{ kv_row('Sample Type', ticket.sample_type) }}
         {{ kv_row('Rejection Reason', ticket.rejection_reason) }}
         {% if doc_pan %}
-          {{ kv_row('Doctor', doc_pan.get('doctor', {}).get('name')) }}
-          {{ kv_row('Doctor Mobile', doc_pan.get('doctor', {}).get('mobile')) }}
-          {{ kv_row('Panel', doc_pan.get('panel', {}).get('name')) }}
-          {{ kv_row('Panel Mobile', doc_pan.get('panel', {}).get('mobile')) }}
+          {{ kv_row('Doctor:', doc_pan.get('doctor', {}).get('name')) }}
+          {{ kv_row('Doctor Mobile:', doc_pan.get('doctor', {}).get('mobile')) }}
+          {{ kv_row('Panel:', doc_pan.get('panel', {}).get('name')) }}
+          {{ kv_row('Panel Mobile:', doc_pan.get('panel', {}).get('mobile')) }}
         {% endif %}
         {# Commitment row shows when there is either a display string or a state #}
         {% set has_commit = commitment.display %}
 {% if has_commit %}
-  <div class="muted">Commitment At</div>
+  <div class="muted">Commitment At:</div>
   <div>
     {{ commitment.display }}
     {# sirf OPEN tickets ke liye badge dikhao #}
@@ -137,10 +191,11 @@
   </div>
 {% endif %}
 
-        {{ kv_row('Status', ticket.status) }}
-        {{ kv_row('Created By', ticket.created_by) }}
-        {{ kv_row('Created At', ticket.created_at) }}
-        {{ kv_row('Additional Info', ticket.additional_info) }}
+        {{ kv_row('Created By:', ticket.created_by) }}
+        {{ kv_row('Created At:', ticket.created_at) }}
+        {% if ticket.additional_info %}
+          <div class="muted">Additional Info:</div><div><span class="info-highlight">{{ ticket.additional_info }}</span></div>
+        {% endif %}
         {% if ticket.ticket_origin == 'CVT' and cv_tests %}
           <div class="muted" style="margin-top:8px;">CV Tests</div>
           <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;font-size:13px;margin-top:4px;">
@@ -189,10 +244,80 @@
       </table>
       {% endif %}
     </div>
+
+    <!-- Box 3: Tag -->
+    <div class="card action-card">
+      <h3>Tag</h3>
+      <form method="post" action="{{ url_for('ticket_detail.ticket_tag_update', ticket_id=ticket.id) }}" id="addTagForm" class="mb0">
+        <div class="cols-3 mb12">
+          <div>
+            <label class="muted mb8">Add New Tag</label>
+            <div class="search-wrap">
+              <input type="text" id="new_staff_search" class="search-input" placeholder="Type staff name..." autocomplete="off">
+              <div id="new_staff_results" class="search-results" style="display:none"></div>
+              <input type="hidden" id="new_staff_id" name="new_staff_id" value="">
+            </div>
+          </div>
+
+          <div>
+            <label class="muted mb8">Reason (optional)</label>
+            <input class="input" name="new_reason" placeholder="e.g. Sample Collection"/>
+          </div>
+          <div>
+            <label class="muted mb8">Due In</label>
+            <select class="input" id="new_due" name="new_due">
+              <option value="">-- Select --</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex">
+          <button class="btn orange" type="submit" name="action" value="add_only">Add Tag</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Box 4: Assignment -->
+    <div class="card action-card">
+      <h3>Assignment</h3>
+      <form id="assignShiftForm" class="mb0" method="post" action="{{ url_for('ticket_detail.ticket_assign_shift', ticket_id=ticket.id) }}">
+        <div class="mb12">
+          <label class="muted mb8">Current Assignee</label>
+          <div>{{ current_assignee.name or '-' }}</div>
+        </div>
+
+        <div class="mb12">
+          <label class="muted mb8">Shift To</label>
+          <select id="shift_to_user_id" name="to_user_id" required>
+            <option value="">-- Select Customer Care --</option>
+          </select>
+        </div>
+
+        <div class="mb12">
+          <label class="muted mb8">Reason</label>
+          <select name="reason" required>
+            <option value="">-- Select Reason --</option>
+            <option>End of Shift</option>
+            <option>Knowledge Gap â€“ Seeking Guidance</option>
+            <option>Patient Request</option>
+            <option>Load Balancing</option>
+          </select>
+        </div>
+
+        <div class="mb12">
+          <label class="muted mb8">Remark (optional)</label>
+          <textarea name="remark" placeholder="Add a small note..."></textarea>
+        </div>
+
+        <div class="flex">
+          <button class="btn" type="submit">Shift Assignment</button>
+        </div>
+      </form>
+    </div>
     {% endif %}
 
     <!-- Box 3: Assignment Updates (history) -->
-    <div class="card">
+    <div class="card assignment-history-card" style="display:none">
       <h3>Assignment Updates (History)</h3>
       {% if assign_updates|length == 0 %}
         <div class="muted">No assignment updates yet.</div>
@@ -216,11 +341,44 @@
   </div>
 
   <!-- RIGHT COLUMN (order updated) -->
-  <div class="right-col" style="display:grid;gap:16px">
+  <div class="right-col">
+    <div class="right-stack">
+      <div class="card muted-card">
+        <h3>Short Summary</h3>
+        <div class="summary-text">
+          This ticket was created for patient {{ ticket.patient_name or 'Unknown Patient' }} for {{ ticket.ticket_category or 'Unknown Category' }}. Current status is {{ ticket.status or 'Unknown' }}.{% if ticket.additional_info %} Additional info: {{ ticket.additional_info }}.{% endif %}<br><strong>Created by:</strong> {{ ticket.created_by or '-' }}.
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Assignment History</h3>
+        {% if assign_updates|length == 0 %}
+          <div class="muted">No assignment updates yet.</div>
+        {% else %}
+          <div class="history-panel">
+            <div class="history-list">
+              {% for a in assign_updates %}
+              <div class="history-item">
+                <div class="history-line">{{ a.from_name or '-' }} → {{ a.to_name or '-' }}</div>
+                <div class="history-meta">
+                  <span>{{ a.reason or '-' }}</span>
+                  <span>{{ a.created_at or '-' }}</span>
+                  <span>By {{ a.updated_by or '-' }}</span>
+                </div>
+                {% if a.remark and a.remark != '-' %}
+                  <div class="history-note">{{ a.remark }}</div>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
 
     {% if ticket.ticket_origin not in ['CVT','RST'] %}
+    {% if false %}
     <!-- 1) Tag: Add New (SEARCHABLE staff) -->
-    <div class="card">
+    <div class="card action-card">
       <h3>Tag</h3>
       <form method="post" action="{{ url_for('ticket_detail.ticket_tag_update', ticket_id=ticket.id) }}" id="addTagForm" class="mb0">
         <div class="cols-3 mb12">
@@ -252,7 +410,7 @@
     </div>
 
     <!-- 2) Assign / Shift -->
-    <div class="card">
+    <div class="card action-card">
       <h3>Assignment</h3>
       <form id="assignShiftForm" class="mb0" method="post" action="{{ url_for('ticket_detail.ticket_assign_shift', ticket_id=ticket.id) }}">
         <div class="mb12">
@@ -289,8 +447,9 @@
       </form>
     </div>
 
+    {% endif %}
     <!-- 3) Tag Update (Existing Tag) - DROPDOWN -->
-    <div class="card">
+    <div class="card action-card">
       <h3>Tag Update</h3>
       <form method="post" action="{{ url_for('ticket_detail.ticket_tag_update', ticket_id=ticket.id) }}" id="tagUpdateForm" class="mb0">
         <div class="mb12">
@@ -322,7 +481,7 @@
     {% endif %}
 
     <!-- 4) Update (Quick Remark) / Close -->
-    <div class="card">
+    <div class="card action-card">
       <h3>Update / Close Tickets</h3>
       <form id="quickRemarkForm" class="mb0" method="post" action="{{ url_for('ticket_detail.ticket_quick_remark', ticket_id=ticket.id) }}">
         <input type="hidden" name="closure_mood" id="closure_mood" value="">
@@ -386,6 +545,7 @@
       </form>
     </div>
 
+    </div>
   </div>
 </div>
 
@@ -802,11 +962,11 @@
 
     const mode = getMode();
 
-    // NEW: pure view mode -> right column hide + disable all right forms
+    // pure view mode -> keep summary visible, hide action cards and disable forms
     if (mode === 'view'){
-      document.documentElement.classList.add('hide-right'); // <html> pe class
+      document.documentElement.classList.add('view-mode');
       ['addTagForm','assignShiftForm','tagUpdateForm','quickRemarkForm'].forEach(disableFormById);
-      return; // view me aur kuch toggle nahi chahiye
+      return;
     }
 
     // Existing behavior

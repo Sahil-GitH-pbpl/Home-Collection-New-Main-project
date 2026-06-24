@@ -135,9 +135,13 @@ def cancel_booking():
     booking_id = int(payload.get("booking_id", 0))
     appointment_id = int(payload.get("appointment_id", 0))
     reason_text = (payload.get("reason_text") or "").strip()
+    additional_info = (payload.get("additional_info") or "").strip()
+    if reason_text == "Patient requested cancellation" and not additional_info:
+        return jsonify({"ok": False, "message": "Additional information is required"}), 400
     result = service.cancel_booking(
         booking_id,
         reason_text=reason_text,
+        remark=additional_info,
         actor_user_id=session.get("user_id"),
         appointment_id=appointment_id,
         reschedule_requested=bool(int(payload.get("reschedule_requested", 0) or 0)),

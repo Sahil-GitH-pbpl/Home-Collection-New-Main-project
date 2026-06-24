@@ -25,6 +25,13 @@ WHATSAPP_DB = {
     "database": os.getenv("WA_NAME", "creoianw_bhasin"),
 }
 
+WHATSAPP_PANEL_DB = {
+    "host": os.getenv("WA_PANEL_HOST", "localhost"),
+    "user": os.getenv("WA_PANEL_USER", "root"),
+    "password": os.getenv("WA_PANEL_PASSWORD", ""),
+    "database": os.getenv("WA_PANEL_NAME", "whatsapp"),
+}
+
 FAIL_MSG_DB = {
     "host": os.getenv("FAIL_HOST", "10.1.1.51"),
     "user": os.getenv("FAIL_USER", "sahil"),
@@ -74,6 +81,11 @@ def get_labmate_connection():
 def get_whatsapp_connection():
     """Connection helper for WhatsApp engagement DB."""
     return pymysql.connect(**WHATSAPP_DB, cursorclass=pymysql.cursors.DictCursor)
+
+
+def get_whatsapp_panel_connection():
+    """Connection helper for the Home Collection WhatsApp panel database."""
+    return pymysql.connect(**WHATSAPP_PANEL_DB, cursorclass=pymysql.cursors.DictCursor)
 
 
 # ---------------- Fail Message DB ----------------

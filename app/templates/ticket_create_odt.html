@@ -1164,6 +1164,7 @@
                 
                 if (data && data.data && data.data.length > 0) {
                   const patient = data.data[0];
+                  body.panel_name = (patient.panel || '').trim();
                   
                   if (patient.doctor && patient.doctor !== 'SELF' && patient.doctor.trim() !== '') {
                     body.client_name = patient.doctor.trim();

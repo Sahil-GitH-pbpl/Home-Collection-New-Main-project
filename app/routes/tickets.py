@@ -41,6 +41,14 @@ def _now():
     return datetime.now(IST)
 
 
+def _panel_doctor_display(panel_name: Optional[str], client_name: Optional[str]) -> str:
+    panel = (panel_name or "").strip()
+    doctor = (client_name or "").strip()
+    if panel and doctor:
+        return f"{panel} / {doctor}"
+    return panel or doctor or "-"
+
+
 def _safe_report_filename(patient_name: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9]+", "_", (patient_name or "").strip()).strip("_")
     return f"{cleaned or 'Patient'}_Report.pdf"
@@ -238,6 +246,7 @@ def tickets_create_unified():
         mobile_number = _g(data, "mobile_number").strip()
         patient_name = _g(data, "patient_name").strip() or None
         patient_labmate_id = _g(data, "patient_labmate_id").strip() or None
+        panel_name = (_g(data, "panel_name") or _g(data, "panel")).strip() or None
         
         # ✅ FIXED: client_name handling - don't convert empty string to None
         client_name_raw = _g(data, "client_name")
@@ -362,7 +371,7 @@ def tickets_create_unified():
         cols = [
             "source", "country_code", "mobile_number",
             "patient_name", "patient_labmate_id",
-            "client_name", "priority", "whatsapp_opt_in",
+            "client_name", "panel_name", "priority", "whatsapp_opt_in",
             "ticket_category", "commitment_at",
             "tags_json", "additional_info", "status", "created_by",
             "ticket_origin", "designation"
@@ -371,7 +380,7 @@ def tickets_create_unified():
         vals = [
             source, country_code, mobile_number,
             patient_name, patient_labmate_id,
-            client_name, (priority if priority else None),
+            client_name, panel_name, (priority if priority else None),
             whatsapp_opt_in, ticket_category, commitment_at,
             tags_json, additional_info, "Open", created_by,
             ticket_origin, session.get("designation")
@@ -706,6 +715,7 @@ def tickets_cv_create():
         or (data.get("pdffile") or "")
         or (data.get("report") or "")
     ).strip()
+    panel_name = (data.get("panel_name") or data.get("panel") or "").strip() or None
     doc_pan_json = json.dumps({
         "doctor": {
             "name": (data.get("doctor") or "").strip(),
@@ -772,10 +782,10 @@ def tickets_cv_create():
                 """
                 INSERT INTO tickets
                 (source, country_code, mobile_number, patient_name, patient_labmate_id,
-                 client_name, priority, whatsapp_opt_in, ticket_category, commitment_at,
+                 client_name, panel_name, priority, whatsapp_opt_in, ticket_category, commitment_at,
                  assign_to_user_id, assignment_reason, tags_json, additional_info, doc_pan_json,
                  status, created_by, designation, created_at, ticket_origin)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
                 """,
                 (
                     "patient",
@@ -784,6 +794,7 @@ def tickets_cv_create():
                     patient_name,
                     patient_labmate_id,
                     None,               # client_name
+                    panel_name,
                     "High",             # priority
                     1,                  # whatsapp_opt_in
                     "Critical Value",   # ticket_category
@@ -958,6 +969,7 @@ def tickets_rs_create():
     patient_labmate_id = (data.get("patient_labmate_id") or "").strip()
     sample_type = (data.get("sample_type") or "").strip()
     rejection_reason = (data.get("rejection_reason") or "").strip() or None
+    panel_name = (data.get("panel_name") or data.get("panel") or "").strip() or None
     doc_pan_json = json.dumps({
         "doctor": {
             "name": (data.get("doctor") or "").strip(),
@@ -983,11 +995,11 @@ def tickets_rs_create():
                 """
                 INSERT INTO tickets
                 (source, country_code, mobile_number, patient_name, patient_labmate_id,
-                 client_name, priority, whatsapp_opt_in, ticket_category, commitment_at,
+                 client_name, panel_name, priority, whatsapp_opt_in, ticket_category, commitment_at,
                  assign_to_user_id, assignment_reason, tags_json, additional_info,
                  doc_pan_json, status, created_by, designation, created_at, ticket_origin,
                  sample_type, rejection_reason)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s,%s,%s)
                 """,
                 (
                     "patient",
@@ -996,6 +1008,7 @@ def tickets_rs_create():
                     patient_name,
                     patient_labmate_id,
                     None,
+                    panel_name,
                     "High",
                     1,
                     "Rejected Sample",

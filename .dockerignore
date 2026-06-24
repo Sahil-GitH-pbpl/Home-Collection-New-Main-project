@@ -7,3 +7,9 @@ __pycache__/
 *.sqlite
 .venv/
 venv/
+app/static/uploads/
+app/data/
+exports/
+*.log
+ticket_smry_cron.log
+hc_daily_whatsapp_summary_cron.log

@@ -3,12 +3,15 @@ from datetime import timedelta
 from flask import Flask, request, session, current_app
 from dotenv import load_dotenv
 
+from app.extensions import socketio
+
 def create_app():
     load_dotenv()
     app = Flask(__name__, template_folder="templates", static_folder="static")
 
     app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
     app.permanent_session_lifetime = timedelta(hours=8)
+    socketio.init_app(app)
 
     BASEDIR = os.path.abspath(os.path.dirname(__file__))
     app.config["UPLOAD_FOLDER"] = os.path.join(BASEDIR, "static", "uploads")
@@ -43,6 +46,7 @@ def create_app():
     from app.routes.hcb_day_report import hcb_day_report_bp
     from app.routes.hbatch_handover_ui import hbatch_handover_ui_bp
     from app.routes.cghs_api import cghs_api_bp
+    from app.routes.whatsapp_panel import whatsapp_panel_bp
     
 
     app.register_blueprint(auth_bp)
@@ -72,6 +76,7 @@ def create_app():
     app.register_blueprint(hcb_day_report_bp)
     app.register_blueprint(hbatch_handover_ui_bp)
     app.register_blueprint(cghs_api_bp)
+    app.register_blueprint(whatsapp_panel_bp)
 
     # Warm once on server start: panel/company + GST catalog for fast HC test booking.
     try:

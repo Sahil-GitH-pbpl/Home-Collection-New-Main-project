@@ -60,6 +60,7 @@ class HHomeCollectionCore:
     def __init__(self):
         self._panel_lock = Lock()
         self._panelrate_discount_cache = {}
+        self._table_columns_cache = {}
         self._panel_loaded = False
         self._panel_catalog = {
             "panels": [],
@@ -91,7 +92,7 @@ class HHomeCollectionCore:
         return (os.getenv("PEPIPOST_BOOKING_TEMPLATE") or "arpra_booking").strip() or "arpra_booking"
 
     def _pepipost_assignment_template(self) -> str:
-        return (os.getenv("PEPIPOST_ASSIGNMENT_TEMPLATE") or "arpra_assignmentss").strip() or "arpra_assignmentss"
+        return (os.getenv("PEPIPOST_ASSIGNMENT_TEMPLATE") or "newassignment").strip() or "newassignment"
 
     def _normalize_indian_whatsapp_number(self, raw_number) -> str:
         digits = "".join(ch for ch in str(raw_number or "") if ch.isdigit())
@@ -112,19 +113,17 @@ class HHomeCollectionCore:
             recipients.append(mobile)
         return recipients
 
-    def _assignment_experience_values(self, experience_value) -> tuple[str, str, str]:
+    def _assignment_experience_value(self, experience_value) -> str:
         try:
             exp = Decimal(str(experience_value or 0))
         except Exception:
             exp = Decimal("0")
-        total_exp = exp + Decimal("2")
-        sample_count = exp * Decimal("3000")
 
         def _fmt(value: Decimal) -> str:
             value = value.quantize(Decimal("0.01")).normalize()
             return format(value, "f")
 
-        return _fmt(total_exp), _fmt(sample_count), _fmt(exp)
+        return _fmt(exp)
 
     def _format_patient_names_for_whatsapp(self, rows) -> str:
         names = []
@@ -193,14 +192,12 @@ class HHomeCollectionCore:
         phlebo_name = self._norm_code(whatsapp_payload.get("phlebo_name")) or "-"
         phlebo_mobile = self._norm_code(whatsapp_payload.get("phlebo_mobile")) or "-"
         total_exp = self._norm_code(whatsapp_payload.get("total_experience")) or "-"
-        sample_count = self._norm_code(whatsapp_payload.get("sample_count")) or "-"
-        bhasin_exp = self._norm_code(whatsapp_payload.get("bhasin_experience")) or "-"
         lines = [
             f"Hello {patient_names},",
             f"To ensure a safe and hygienic sample collection as part of your health journey, we've assigned {phlebo_name} to visit you.",
             f"His mobile number is {phlebo_mobile}.",
             "",
-            f"He is a qualified and trained phlebotomist, with {total_exp}years of experience, has collected {sample_count}+ samples, and has been part of Dr Bhasin's Lab for {bhasin_exp} years.",
+            f"He is a qualified and trained phlebotomist, with {total_exp} years of experience.",
             "",
             "He is trained to carry out the collection gently and with minimal discomfort, while maintaining strict hygiene and respecting your privacy.",
             "",
@@ -532,8 +529,6 @@ class HHomeCollectionCore:
                 whatsapp_payload.get("phlebo_name") or "",
                 whatsapp_payload.get("phlebo_mobile") or "",
                 whatsapp_payload.get("total_experience") or "",
-                whatsapp_payload.get("sample_count") or "",
-                whatsapp_payload.get("bhasin_experience") or "",
             ],
         )
 
@@ -906,6 +901,60 @@ class HHomeCollectionCore:
                 count += 1
         return count
 
+    def get_patient_staged_prescription_items(self, patient_id: int, session=None) -> list[dict]:
+        if not session:
+            return []
+        stage_map = self._load_stage_map(session)
+        items = []
+        for item in stage_map.get(str(int(patient_id)), []) or []:
+            rel = self._norm_code((item or {}).get("rel_name"))
+            if not rel:
+                continue
+            label = self._norm_code((item or {}).get("orig_name"))
+            if not label:
+                label = rel.split("/")[-1]
+            items.append({"rel_name": rel, "label": label})
+        return items
+
+    def remove_staged_patient_prescription(self, session, caller_id: int, patient_id: int, rel_name: str):
+        if not session:
+            return {"ok": False, "message": "Session is required"}
+        if not self.patient_belongs_to_caller(caller_id, patient_id):
+            return {"ok": False, "message": "Patient not linked with selected caller"}
+
+        rel_target = self._norm_code(rel_name)
+        if not rel_target:
+            return {"ok": False, "message": "Prescription file is required"}
+
+        stage_map = self._load_stage_map(session)
+        patient_key = str(int(patient_id))
+        current_items = stage_map.get(patient_key, []) or []
+        kept = []
+        removed = None
+        for item in current_items:
+            rel = self._norm_code((item or {}).get("rel_name"))
+            if rel == rel_target and removed is None:
+                removed = item
+                continue
+            kept.append(item)
+
+        if removed is None:
+            return {"ok": False, "message": "Prescription file not found in current booking"}
+
+        tmp_path = self._norm_code((removed or {}).get("tmp_path"))
+        if tmp_path:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        if kept:
+            stage_map[patient_key] = kept
+        else:
+            stage_map.pop(patient_key, None)
+        self._save_stage_map(session, stage_map)
+        return {"ok": True, "count": len(kept)}
+
     def get_patient_prescription_display_files_with_stage(self, patient_id: int, session=None):
         db_files = self.get_patient_prescription_files(patient_id)
         labels = [self._norm_code(f).split("/")[-1] for f in db_files if self._norm_code(f)]
@@ -1009,6 +1058,35 @@ class HHomeCollectionCore:
             return mode[0]
         return mode
 
+    def _truthy_flag(self, value) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return int(value) == 1
+        return self._norm_code(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+    def _section_show_mrp(self, section: dict | None) -> bool:
+        sec = section or {}
+        panel = sec.get("panel") or {}
+        billing = sec.get("billing") or {}
+        if self._truthy_flag(panel.get("showmrp") if isinstance(panel, dict) else None):
+            return True
+        if self._truthy_flag(billing.get("showmrp") if isinstance(billing, dict) else None):
+            return True
+
+        comp = self._norm_code((billing or {}).get("comp_cat_id"))
+        pname = self._norm_code((panel or {}).get("pname")).lower()
+        if not comp or not pname:
+            return False
+        try:
+            self.preload_panel_catalog()
+            for row in self._panel_catalog.get("panels", []):
+                if self._norm_code(row.get("CompCatID")) == comp and self._norm_code(row.get("pname")).lower() == pname:
+                    return self._truthy_flag(row.get("showmrp"))
+        except Exception:
+            return False
+        return False
+
     def _test_status_code(self, v) -> int:
         raw = self._norm_code(v).upper()
         if raw in ("1", "COMPLETED"):
@@ -1067,6 +1145,7 @@ class HHomeCollectionCore:
                 selected_charge_mode = self._selected_charge_mode(billing)
                 is_paying_mode = selected_charge_mode == "P"
                 is_free_mode = selected_charge_mode == "F"
+                show_mrp = self._section_show_mrp(section)
                 for t in (section.get("selected_tests") or []):
                     try:
                         mrp = float(t.get("mrp") or 0)
@@ -1090,6 +1169,8 @@ class HHomeCollectionCore:
                         mrp = 0.0
                         max_discount = 0.0
                         max_allowed_discount = 0.0
+                    elif show_mrp:
+                        max_discount = 0.0
                     subtotal += mrp
                     if is_paying_mode:
                         paying_subtotal += mrp
@@ -1211,8 +1292,9 @@ class HHomeCollectionCore:
                 continue
             for section in self._patient_panel_sections(patient_meta):
                 billing = section.get("billing") or {}
+                show_mrp = self._section_show_mrp(section)
                 for t in (section.get("selected_tests") or []):
-                    _mrp, charge, _max_discount = self._normalized_test_pricing_for_mode(t, billing)
+                    _mrp, charge, _max_discount = self._normalized_test_pricing_for_mode(t, billing, show_mrp=show_mrp)
                     patient_charge_totals[pid_int] = round(float(patient_charge_totals.get(pid_int) or 0) + charge, 2)
 
         result: dict[int, float] = {}
@@ -1227,7 +1309,7 @@ class HHomeCollectionCore:
             result[int(pid)] = round(final_amount, 2)
         return result
 
-    def _normalized_test_pricing_for_mode(self, test_row: dict | None, billing: dict | None) -> tuple[float, float, float]:
+    def _normalized_test_pricing_for_mode(self, test_row: dict | None, billing: dict | None, show_mrp: bool = False) -> tuple[float, float, float]:
         t = test_row or {}
         b = billing or {}
         try:
@@ -1242,6 +1324,8 @@ class HHomeCollectionCore:
         if selected_charge_mode == "F":
             return 0.0, 0.0, 0.0
         if selected_charge_mode == "P":
+            if show_mrp:
+                return mrp, mrp, 0.0
             charge, normalized_discount = self._normalized_paying_pricing(mrp, max_discount)
             return mrp, charge, normalized_discount
         return mrp, mrp, 0.0
@@ -1791,6 +1875,7 @@ class HHomeCollectionCore:
                     FROM panelrates
                     WHERE CompCatID=%s
                       AND BookedFlag=1
+                      AND COALESCE(Active, 0)=1
                       AND GCode=%s
                       AND SCode=%s
                       AND TestCode=%s
@@ -1809,6 +1894,7 @@ class HHomeCollectionCore:
                         FROM panelrates
                         WHERE CompCatID=%s
                           AND BookedFlag=1
+                          AND COALESCE(Active, 0)=1
                           AND GCode=%s
                           AND SCode=%s
                           AND TestCode=%s
@@ -2021,6 +2107,40 @@ class HHomeCollectionCore:
                 seen[booked_code] = panel_name
         return {"ok": True}
 
+    def _find_recent_web_booking_duplicate_id(
+        self,
+        cur,
+        *,
+        caller_id: int,
+        preferred_visit_date: str,
+        preferred_time_slot: str,
+        created_by: int,
+        window_minutes: int = 10,
+    ) -> int:
+        cur.execute(
+            """
+            SELECT id
+            FROM hhome_collection_booking
+            WHERE caller_id = %s
+              AND created_by = %s
+              AND preferred_visit_date = %s
+              AND preferred_time_slot = %s
+              AND COALESCE(booking_status, 0) <> 4
+              AND created_at >= (NOW() - INTERVAL %s MINUTE)
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (
+                int(caller_id or 0),
+                int(created_by or 0),
+                preferred_visit_date,
+                preferred_time_slot,
+                int(window_minutes or 10),
+            ),
+        )
+        row = cur.fetchone() or {}
+        return int((row or {}).get("id") or 0)
+
     def _normalize_wa_target(self, phone: str) -> str:
         digits = re.sub(r"\D", "", str(phone or ""))
         if not digits:
@@ -2033,10 +2153,10 @@ class HHomeCollectionCore:
             return digits
         return digits
 
-    def preload_panel_catalog(self):
+    def preload_panel_catalog(self, force: bool = False):
         """Load panel/company + billing + GST tree once per server start."""
         with self._panel_lock:
-            if self._panel_loaded:
+            if self._panel_loaded and not force:
                 return
 
             conn = get_bhasin7001_connection()
@@ -2050,12 +2170,14 @@ class HHomeCollectionCore:
                             a.category AS CompCatID,
                             cc.CatDetails,
                             a.BillingChargeMode,
+                            COALESCE(a.showmrp, 0) AS showmrp,
                             a.Atype
                         FROM address a
                         LEFT JOIN compcategory cc ON cc.CompCatID = a.category
                         WHERE a.pname IS NOT NULL
                           AND TRIM(a.pname) <> ''
-                          AND UPPER(TRIM(a.Atype)) IN ('C','D')
+                          AND UPPER(TRIM(a.Atype)) = 'C'
+                          AND COALESCE(a.Active, 0) = 1
                         ORDER BY a.pname
                         """
                     )
@@ -2072,7 +2194,7 @@ class HHomeCollectionCore:
 
                     cur.execute(
                         """
-                        SELECT Gcode, Scode, TestCode, Testcode1, Test, Description, Profile, SpecimenID
+                        SELECT Gcode, Scode, TestCode, Testcode1, Test, Description, Shortname, Profile, SpecimenID
                         FROM test
                         """
                     )
@@ -2101,6 +2223,7 @@ class HHomeCollectionCore:
                         tc = self._norm_code(r.get("TestCode"))
                         tc1 = self._norm_code(r.get("Testcode1"))
                         desc = self._norm_code(r.get("Description"))
+                        shortname = self._norm_code(r.get("Shortname"))
                         is_profile = int(r.get("Profile") or 0) == 1
                         try:
                             specimen_id = int(r.get("SpecimenID")) if r.get("SpecimenID") is not None else None
@@ -2113,6 +2236,7 @@ class HHomeCollectionCore:
                             "testcode1": tc1,
                             "gender_rule": self._norm_code(r.get("Test")),
                             "description": desc,
+                            "shortname": shortname,
                             "is_profile": is_profile,
                             "specimen_id": specimen_id,
                             "specimen_name": specimen_name_by_id.get(specimen_id, ""),
@@ -2136,6 +2260,7 @@ class HHomeCollectionCore:
                             MRP, PercentageOnStandard, MaximumpercentageAllowed
                         FROM panelrates
                         WHERE BookedFlag = 1
+                          AND COALESCE(Active, 0) = 1
                         """
                     )
                     rate_rows = cur.fetchall()
@@ -2160,6 +2285,7 @@ class HHomeCollectionCore:
                         "CompCatID": r.get("CompCatID"),
                         "CatDetails": self._norm_code(r.get("CatDetails")),
                         "BillingChargeMode": mode,
+                        "showmrp": 1 if int(r.get("showmrp") or 0) else 0,
                         "_has_c": atype == "C",
                         "_has_d": atype == "D",
                         "_pname_lc": pname.lower(),
@@ -2178,6 +2304,8 @@ class HHomeCollectionCore:
                         existing = panel_map[key].get("BillingChargeMode") or ""
                         merged = self._normalize_charge_mode(existing + mode)
                         panel_map[key]["BillingChargeMode"] = merged
+                    if int(r.get("showmrp") or 0):
+                        panel_map[key]["showmrp"] = 1
 
             groups_by_comp = {}
             subgroups_by_comp_g = {}
@@ -2249,6 +2377,8 @@ class HHomeCollectionCore:
                     "gender_rule": self._norm_code((meta or {}).get("gender_rule")),
                     "description": description,
                     "description_lc": description.lower(),
+                    "shortname": self._norm_code((meta or {}).get("shortname")),
+                    "shortname_lc": self._norm_code((meta or {}).get("shortname")).lower(),
                     "group_description": group_desc,
                     "subgroup_description": subgroup_desc,
                     "charge": calc_final_charge,
@@ -2269,6 +2399,7 @@ class HHomeCollectionCore:
                         "booked_code": booked_code,
                         "gender_rule": self._norm_code((meta or {}).get("gender_rule")),
                         "description": description,
+                        "shortname": self._norm_code((meta or {}).get("shortname")),
                         "charge": calc_final_charge,
                         "mrp": mrp_value,
                         "max_discount": calc_discount,
@@ -2298,6 +2429,7 @@ class HHomeCollectionCore:
                         "booked_code": child.get("testcode1") or child.get("test_code") or child_testcode1,
                         "gender_rule": self._norm_code(child.get("gender_rule")),
                         "description": child.get("description") or "",
+                        "shortname": child.get("shortname") or "",
                         "is_profile": bool(child.get("is_profile")),
                     }
                 )
@@ -2345,6 +2477,10 @@ class HHomeCollectionCore:
                 "test_by_g_s_testcode": test_by_gst,
             }
             self._panel_loaded = True
+
+    def refresh_panel_catalog(self):
+        self._panelrate_discount_cache = {}
+        self.preload_panel_catalog(force=True)
 
     def _actor(self, actor_user_id=None) -> int:
         try:
@@ -2514,7 +2650,7 @@ class HHomeCollectionCore:
                         age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
                     except Exception:
                         age = None
-            if age is not None and age < 12:
+            if age is not None and age <= 12:
                 return True
         return False
 
@@ -3653,6 +3789,7 @@ class HHomeCollectionCore:
                         "patient_document_count": len(patient_documents),
                         "prescription_file_count": len(self.get_patient_prescription_files_with_stage(pid, session=session)),
                         "staged_prescription_file_count": self.get_patient_staged_prescription_count(pid, session=session),
+                        "staged_prescription_files": self.get_patient_staged_prescription_items(pid, session=session),
                         "age": hage_label(r.get("age_years"), r.get("date_of_birth")),
                     }
                 )
@@ -4235,6 +4372,36 @@ class HHomeCollectionCore:
         )[:safe_limit]
         return [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
 
+    def update_panel_show_mrp(self, comp_cat_id: str, panel_name: str, enabled: bool):
+        comp = self._norm_code(comp_cat_id)
+        pname = self._norm_code(panel_name)
+        if not comp or not pname:
+            return {"ok": False, "message": "Panel company and CompCatID are required"}
+        value = 1 if enabled else 0
+        conn = get_bhasin7001_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE address
+                    SET showmrp=%s
+                    WHERE category=%s
+                      AND TRIM(pname)=%s
+                      AND UPPER(TRIM(Atype)) = 'C'
+                      AND COALESCE(Active, 0) = 1
+                    """,
+                    (value, comp, pname),
+                )
+                affected = int(cur.rowcount or 0)
+            conn.commit()
+            self.refresh_panel_catalog()
+            return {"ok": True, "showmrp": value, "updated_rows": affected}
+        except Exception as exc:
+            conn.rollback()
+            return {"ok": False, "message": str(exc)}
+        finally:
+            conn.close()
+
     def panel_tests_by_company(self, comp_cat_id: str):
         self.preload_panel_catalog()
         ccid = self._norm_code(comp_cat_id)
@@ -4302,7 +4469,8 @@ class HHomeCollectionCore:
         rows = self._panel_catalog["tests_search_by_comp"].get(ccid, [])
         for row in rows:
             desc_lc = self._norm_code(row.get("description_lc")).lower()
-            if not desc_lc or q not in desc_lc:
+            shortname_lc = self._norm_code(row.get("shortname_lc")).lower()
+            if q not in desc_lc and q not in shortname_lc:
                 continue
             matches.append(dict(row))
 
@@ -4414,6 +4582,21 @@ class HHomeCollectionCore:
                     existing_tags=booking_tags,
                     include_new_patient=bool(payload.get("_new_caller_created")),
                 )
+                duplicate_booking_id = self._find_recent_web_booking_duplicate_id(
+                    cur,
+                    caller_id=int(caller_id or 0),
+                    preferred_visit_date=str(preferred_visit_date or ""),
+                    preferred_time_slot=self._norm_code(preferred_time_slot),
+                    created_by=actor,
+                    window_minutes=10,
+                )
+                if duplicate_booking_id > 0:
+                    conn.rollback()
+                    return {
+                        "ok": False,
+                        "message": f"Booking already created within last 10 minutes: id = {duplicate_booking_id}",
+                        "duplicate_booking_id": duplicate_booking_id,
+                    }
                 tmp = self._temp_code("HHCB-TMP-")
                 cur.execute(
                     """
@@ -4492,13 +4675,14 @@ class HHomeCollectionCore:
                         billing = section.get("billing") or {}
                         selected_charge_mode = self._selected_charge_mode(billing)
                         selected_tests = section.get("selected_tests") or []
+                        show_mrp = self._section_show_mrp(section)
 
                         for t in selected_tests:
                             booked_code = self._norm_code(t.get("booked_code"))
                             if not booked_code:
                                 continue
                             test_name = self._norm_code(t.get("description") or booked_code)
-                            norm_mrp, norm_charge, norm_max_discount = self._normalized_test_pricing_for_mode(t, billing)
+                            norm_mrp, norm_charge, norm_max_discount = self._normalized_test_pricing_for_mode(t, billing, show_mrp=show_mrp)
                             cur.execute(
                                 """
                                 INSERT INTO hhome_collection_booking_patient_test
@@ -4708,6 +4892,7 @@ class HHomeCollectionCore:
                     CAST(hcb.id AS CHAR) LIKE %s
                     OR cm.primary_mobile LIKE %s
                     OR TRIM(COALESCE(u.name, '')) LIKE %s
+                    OR TRIM(COALESCE(up.name, '')) LIKE %s
                     OR EXISTS (
                       SELECT 1
                       FROM hhome_collection_booking_patient hbp2
@@ -4717,7 +4902,7 @@ class HHomeCollectionCore:
                     )
                 )"""
             )
-            values.extend([f"%{params['search']}%"] * 4)
+            values.extend([f"%{params['search']}%"] * 5)
 
         where_clause = "WHERE " + " AND ".join(filters) if filters else ""
         where_clause_appt = where_clause
@@ -4764,6 +4949,10 @@ class HHomeCollectionCore:
                           DISTINCT TRIM(CONCAT_WS(' ', p.title, p.full_name))
                           ORDER BY p.full_name SEPARATOR ', '
                         ) AS patient_names,
+                        GROUP_CONCAT(
+                          DISTINCT NULLIF(TRIM(COALESCE(p.contact_mobile, '')), '')
+                          ORDER BY p.full_name SEPARATOR ', '
+                        ) AS patient_primary_mobiles,
                         NULL AS selected_patient_ids_json,
                         NULL AS appointment_tests_snapshot_json,
                         NULL AS payment_snapshot_json
@@ -4815,6 +5004,10 @@ class HHomeCollectionCore:
                               DISTINCT TRIM(CONCAT_WS(' ', p.title, p.full_name))
                               ORDER BY p.full_name SEPARATOR ', '
                             ) AS patient_names,
+                            GROUP_CONCAT(
+                              DISTINCT NULLIF(TRIM(COALESCE(p.contact_mobile, '')), '')
+                              ORDER BY p.full_name SEPARATOR ', '
+                            ) AS patient_primary_mobiles,
                             ap.selected_patient_ids_json,
                             ap.appointment_tests_snapshot_json,
                             ap.payment_snapshot_json
@@ -4902,17 +5095,25 @@ class HHomeCollectionCore:
                     for r in (raw_rows or [])
                     if int((r or {}).get("booking_id") or 0) > 0
                 })
+                visible_appointment_ids = sorted({
+                    int((r or {}).get("appointment_id") or 0)
+                    for r in (raw_rows or [])
+                    if self._norm_code((r or {}).get("row_type")).upper() == "APPOINTMENT"
+                    and int((r or {}).get("appointment_id") or 0) > 0
+                })
                 batched_booking_ids = set()
-                if visible_booking_ids:
+                batched_appointment_ids = set()
+                if visible_booking_ids or visible_appointment_ids:
                     cur.execute(
                         """
-                        SELECT booking_ids
+                        SELECT booking_ids, patients_json, tubes_json
                         FROM hhome_collection_batch
                         WHERE booking_ids IS NOT NULL
-                          AND TRIM(booking_ids) <> ''
+                           AND TRIM(booking_ids) <> ''
                         """
                     )
                     visible_set = set(visible_booking_ids)
+                    visible_appt_set = set(visible_appointment_ids)
                     for br in (cur.fetchall() or []):
                         raw_booking_ids = br.get("booking_ids")
                         try:
@@ -4928,6 +5129,25 @@ class HHomeCollectionCore:
                                 bid = 0
                             if bid in visible_set:
                                 batched_booking_ids.add(bid)
+                        for json_key in ("patients_json", "tubes_json"):
+                            raw_items = br.get(json_key)
+                            try:
+                                items = json.loads(raw_items) if isinstance(raw_items, str) else (raw_items or [])
+                            except Exception:
+                                items = []
+                            if not isinstance(items, list):
+                                continue
+                            for item in items:
+                                if not isinstance(item, dict):
+                                    continue
+                                if self._norm_code(item.get("source_type")).upper() != "APPOINTMENT":
+                                    continue
+                                try:
+                                    appt_id = int(item.get("appointment_id") or 0)
+                                except Exception:
+                                    appt_id = 0
+                                if appt_id in visible_appt_set:
+                                    batched_appointment_ids.add(appt_id)
 
                 appointment_name_overrides = {}
                 appointment_rows = [dict(r) for r in raw_rows if self._norm_code(r.get("row_type")).upper() == "APPOINTMENT"]
@@ -4967,11 +5187,12 @@ class HHomeCollectionCore:
                         if appt_id in appointment_name_overrides:
                             x["patient_names"] = appointment_name_overrides[appt_id]
                             x["patient_count"] = len([n for n in x["patient_names"].split(",") if n.strip()])
+                        x["is_batched"] = appt_id in batched_appointment_ids
                     else:
                         x["appointment_id"] = None
                         x["appointment_no"] = None
                         x["allow_book_appointment"] = True
-                    x["is_batched"] = int(x.get("booking_id") or 0) in batched_booking_ids
+                        x["is_batched"] = int(x.get("booking_id") or 0) in batched_booking_ids
                     rows.append(x)
 
                 return {
@@ -5255,17 +5476,32 @@ class HHomeCollectionCore:
                 booking["cancel_reason"] = cancel_reason
                 booking["reschedule_to"] = reschedule_to
 
+                include_cancelled_patients = bool(
+                    int(booking.get("booking_status") or 0) == 4
+                    or (appointment_id > 0 and int(appointment_status or 0) == 4)
+                )
+                patient_status_filter = "" if include_cancelled_patients else "AND COALESCE(hcbp.booking_patient_status, 0) <> 4"
+                patient_cols = self._table_columns(cur, "hhome_collection_booking_patient")
+                patient_photo_select = (
+                    "COALESCE(hcbp.patient_photo_files, '') AS patient_photo_files"
+                    if "patient_photo_files" in patient_cols
+                    else "'' AS patient_photo_files"
+                )
                 cur.execute(
-                    """
+                    f"""
                     SELECT p.id AS patient_id, p.patient_code, CONCAT_WS(' ', p.title, p.full_name) AS full_name,
+                           p.contact_mobile,
                            hcbp.cce_level_TBS, hcbp.selected_comp_cat_ids, hcbp.selected_charge_modes, hcbp.selected_panel_companies,
                            hcbp.payment_mode, hcbp.due_amount, hcbp.extra_amount,
                            hcbp.ref_by,
-                           p.tag, COALESCE(hcbp.selected_panel_companies, '') AS panel_company, p.patient_documents, COALESCE(hcbp.prescription_files, '') AS prescription_files
+                           p.tag, COALESCE(hcbp.selected_panel_companies, '') AS panel_company,
+                           p.patient_documents,
+                           COALESCE(hcbp.prescription_files, '') AS prescription_files,
+                           {patient_photo_select}
                     FROM hhome_collection_booking_patient hcbp
                     INNER JOIN hpatient_master p ON p.id = hcbp.patient_id
                     WHERE hcbp.booking_id=%s
-                      AND COALESCE(hcbp.booking_patient_status, 0) <> 4
+                      {patient_status_filter}
                     ORDER BY p.full_name
                     """,
                     (booking_id,),
@@ -5440,10 +5676,7 @@ class HHomeCollectionCore:
                             used_snapshot = False
                 if not used_snapshot:
                     patient_row_by_id = {int((pr or {}).get("patient_id") or 0): (pr or {}) for pr in (patients or [])}
-                    include_cancelled_tests = bool(
-                        int(booking.get("booking_status") or 0) == 4
-                        or (appointment_id > 0 and int(appointment_status or 0) == 4)
-                    )
+                    include_cancelled_tests = include_cancelled_patients
                     visible_test_statuses = "0, 1, 2, 3" if include_cancelled_tests else "0, 1, 3"
                     cur.execute(
                         f"""
@@ -5519,11 +5752,16 @@ class HHomeCollectionCore:
                     p["tests"] = test_detail_by_patient.get(pid, []) if pid else []
                     p["patient_documents"] = self._split_patient_documents(p.get("patient_documents"))
                     p["prescription_files"] = self._split_prescription_files(p.get("prescription_files"))
+                    p["patient_photo_files"] = self._split_prescription_files(p.get("patient_photo_files"))
                     booking_code = self._norm_code(booking.get("booking_code"))
                     if booking_code:
                         prefix = f"{booking_code}/".lower()
                         p["prescription_files"] = [
                             name for name in (p.get("prescription_files") or [])
+                            if str(name or "").lower().startswith(prefix)
+                        ]
+                        p["patient_photo_files"] = [
+                            name for name in (p.get("patient_photo_files") or [])
                             if str(name or "").lower().startswith(prefix)
                         ]
                     p["panel_company"] = self._norm_code(p.get("panel_company"))
@@ -5539,11 +5777,17 @@ class HHomeCollectionCore:
                     p["booking_extra_amount"] = float(pctx.get("booking_extra_amount") or 0) if appointment_id > 0 else float(p.get("extra_amount") or 0)
                     p["booking_payment_mode"] = self._norm_code(pctx.get("booking_payment_mode")) if appointment_id > 0 else self._norm_code(p.get("payment_mode"))
                     if pid > 0:
-                        p["patient_document_urls"] = [
+                        patient_document_urls = [
                             f"/static/uploads/patient_documents/{name}"
                             for name in (p.get("patient_documents") or [])
                             if self._norm_code(name)
                         ]
+                        booking_patient_document_urls = [
+                            f"/static/uploads/booking_patient_documents/{name}"
+                            for name in (p.get("patient_photo_files") or [])
+                            if self._norm_code(name)
+                        ]
+                        p["patient_document_urls"] = patient_document_urls + booking_patient_document_urls
                         p["prescription_urls"] = [
                             f"/static/uploads/prescriptions/{name}"
                             for name in (p.get("prescription_files") or [])
@@ -5787,7 +6031,7 @@ class HHomeCollectionCore:
                 )
                 node["patients"].append(row)
             for bid, node in grouped.items():
-                total_exp, sample_count, bhasin_exp = self._assignment_experience_values(node.get("experience"))
+                total_exp = self._assignment_experience_value(node.get("experience"))
                 local_targets = self._extra_local_whatsapp_targets(cur, node.get("patients"), node.get("internal_ref"))
                 recipients = self._patient_whatsapp_recipients(node.get("patients"))
                 if not recipients and local_targets:
@@ -5802,8 +6046,6 @@ class HHomeCollectionCore:
                             "phlebo_name": node.get("phlebo_name"),
                             "phlebo_mobile": node.get("phlebo_mobile"),
                             "total_experience": total_exp,
-                            "sample_count": sample_count,
-                            "bhasin_experience": bhasin_exp,
                             "_local_whatsapp_targets": local_targets,
                             "_local_only": not bool(recipient),
                         }
@@ -5857,7 +6099,7 @@ class HHomeCollectionCore:
                         (int(row.get("booking_id") or 0), *tuple(selected_ids)),
                     )
                     patient_rows = cur.fetchall() or []
-                total_exp, sample_count, bhasin_exp = self._assignment_experience_values(row.get("phlebo_experience"))
+                total_exp = self._assignment_experience_value(row.get("phlebo_experience"))
                 local_targets = self._extra_local_whatsapp_targets(cur, patient_rows, row.get("intrnl_rfrncd_by"))
                 recipients = self._patient_whatsapp_recipients(patient_rows)
                 if not recipients and local_targets:
@@ -5872,8 +6114,6 @@ class HHomeCollectionCore:
                             "phlebo_name": self._norm_code(row.get("phlebo_name")),
                             "phlebo_mobile": self._format_mobile_for_template(row.get("phlebo_mobile")),
                             "total_experience": total_exp,
-                            "sample_count": sample_count,
-                            "bhasin_experience": bhasin_exp,
                             "_local_whatsapp_targets": local_targets,
                             "_local_only": not bool(recipient),
                         }
@@ -6131,10 +6371,264 @@ class HHomeCollectionCore:
             ),
         )
 
+    def _table_columns(self, cur, table_name: str) -> set[str]:
+        cached = self._table_columns_cache.get(table_name)
+        if cached is not None:
+            return cached
+        cur.execute(f"SHOW COLUMNS FROM {table_name}")
+        cols = {str(row.get("Field") or row.get("field") or "") for row in (cur.fetchall() or [])}
+        self._table_columns_cache[table_name] = cols
+        return cols
+
+    def _booking_patient_photo_root(self) -> Path:
+        return Path(__file__).resolve().parents[2] / "app" / "static" / "uploads" / "booking_patient_documents"
+
+    def _copy_cancel_reschedule_docs(
+        self,
+        old_booking_code: str,
+        new_booking_code: str,
+        patient_id: int,
+        prescription_files: str | None,
+        patient_photo_files: str | None,
+    ) -> tuple[str | None, str | None]:
+        old_code = self._norm_code(old_booking_code)
+        new_code = self._norm_code(new_booking_code)
+        if not old_code or not new_code or int(patient_id or 0) <= 0:
+            return prescription_files, patient_photo_files
+
+        def split_csv(raw):
+            return [self._norm_code(x) for x in str(raw or "").split(",") if self._norm_code(x)]
+
+        def copy_prescriptions() -> list[str]:
+            copied = []
+            dst_dir = self._prescription_root() / new_code
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            for idx, rel in enumerate(split_csv(prescription_files), start=1):
+                src = self._prescription_root() / rel
+                ext = src.suffix or Path(rel).suffix or ".pdf"
+                dst_name = f"{new_code}_PT{int(patient_id)}_{idx}{ext}"
+                dst = dst_dir / dst_name
+                if src.exists():
+                    shutil.copy2(src, dst)
+                    copied.append(f"{new_code}/{dst_name}")
+            return copied
+
+        def copy_photos() -> list[str]:
+            copied = []
+            dst_dir = self._booking_patient_photo_root() / new_code / f"PT{int(patient_id)}"
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            for idx, rel in enumerate(split_csv(patient_photo_files), start=1):
+                src = self._booking_patient_photo_root() / rel
+                ext = src.suffix or Path(rel).suffix or ".jpg"
+                dst_name = f"{new_code}_PT{int(patient_id)}_PHOTO_{idx}{ext}"
+                dst = dst_dir / dst_name
+                if src.exists():
+                    shutil.copy2(src, dst)
+                    copied.append(f"{new_code}/PT{int(patient_id)}/{dst_name}")
+            return copied
+
+        new_prescriptions = copy_prescriptions()
+        new_photos = copy_photos()
+        return (
+            ",".join(new_prescriptions) if new_prescriptions else None,
+            ",".join(new_photos) if new_photos else None,
+        )
+
+    def _create_cancel_reschedule_booking(
+        self,
+        cur,
+        source_booking: dict,
+        proposed_visit_date: str,
+        proposed_time_slot: str,
+        actor: int,
+    ) -> dict:
+        booking_id = int(source_booking.get("id") or 0)
+        booking_cols = self._table_columns(cur, "hhome_collection_booking")
+        patient_cols = self._table_columns(cur, "hhome_collection_booking_patient")
+
+        cols = [
+            "booking_code", "caller_id", "selected_address_id", "address_snapshot_json",
+            "preferred_visit_date", "preferred_time_slot", "booking_status",
+            "assigned_phlebotomist_id", "F_Apt_Am", "credit_amount", "paying_amount",
+            "F_dis", "Ad_dis", "total_amount", "created_by",
+        ]
+        vals = ["%s"] * len(cols)
+        tmp_code = f"HC-PENDING-{booking_id}"
+        params = [
+            tmp_code,
+            source_booking.get("caller_id"),
+            source_booking.get("selected_address_id"),
+            source_booking.get("address_snapshot_json") or "{}",
+            proposed_visit_date,
+            proposed_time_slot,
+            0,
+            None,
+            source_booking.get("F_Apt_Am") or 0,
+            source_booking.get("credit_amount") or 0,
+            source_booking.get("paying_amount") or 0,
+            source_booking.get("F_dis") or 0,
+            source_booking.get("Ad_dis") or 0,
+            source_booking.get("total_amount") or 0,
+            actor,
+        ]
+        if "bkg_ref_flag" in booking_cols:
+            cols.append("bkg_ref_flag")
+            vals.append("%s")
+            params.append(booking_id)
+        cur.execute(f"INSERT INTO hhome_collection_booking ({', '.join(cols)}) VALUES ({', '.join(vals)})", tuple(params))
+        new_booking_id = int(cur.lastrowid or 0)
+        new_booking_code = self._booking_code_from_id(new_booking_id, proposed_visit_date)
+        cur.execute("UPDATE hhome_collection_booking SET booking_code=%s WHERE id=%s", (new_booking_code, new_booking_id))
+
+        cur.execute(
+            """
+            SELECT bp.*, p.id AS patient_id
+            FROM hhome_collection_booking_patient bp
+            LEFT JOIN hpatient_master p ON p.id=bp.patient_id
+            WHERE bp.booking_id=%s
+            """,
+            (booking_id,),
+        )
+        patients = cur.fetchall() or []
+        for bp in patients:
+            pid = int(bp.get("patient_id") or 0)
+            if pid <= 0:
+                continue
+            bp_cols = ["booking_id", "patient_id", "booking_patient_status", "created_by"]
+            bp_vals = ["%s", "%s", "%s", "%s"]
+            bp_params = [new_booking_id, pid, 0, actor]
+            for col in (
+                "cce_level_TBS", "ref_by", "selected_comp_cat_ids", "selected_cat_details",
+                "selected_charge_modes", "selected_panel_companies", "patient_final_amount",
+                "additional_discount_amount",
+            ):
+                if col in patient_cols:
+                    bp_cols.append(col)
+                    bp_vals.append("%s")
+                    bp_params.append(bp.get(col))
+            new_prescriptions, new_photos = self._copy_cancel_reschedule_docs(
+                old_booking_code=self._norm_code(source_booking.get("booking_code")),
+                new_booking_code=new_booking_code,
+                patient_id=pid,
+                prescription_files=bp.get("prescription_files"),
+                patient_photo_files=bp.get("patient_photo_files"),
+            )
+            if "prescription_files" in patient_cols:
+                bp_cols.append("prescription_files")
+                bp_vals.append("%s")
+                bp_params.append(new_prescriptions)
+            if "patient_photo_files" in patient_cols:
+                bp_cols.append("patient_photo_files")
+                bp_vals.append("%s")
+                bp_params.append(new_photos)
+            cur.execute(
+                f"INSERT INTO hhome_collection_booking_patient ({', '.join(bp_cols)}) VALUES ({', '.join(bp_vals)})",
+                tuple(bp_params),
+            )
+            new_bp_id = int(cur.lastrowid or 0)
+            cur.execute(
+                f"""
+                SELECT comp_cat_id, booked_code, test_name, charge, mrp, max_discount
+                FROM hhome_collection_booking_patient_test
+                WHERE booking_id=%s AND patient_id=%s AND {self._test_status_sql('test_status')}=0
+                """,
+                (booking_id, pid),
+            )
+            for t in (cur.fetchall() or []):
+                cur.execute(
+                    """
+                    INSERT INTO hhome_collection_booking_patient_test
+                    (booking_id, booking_patient_id, patient_id, comp_cat_id, booked_code, test_name, charge, mrp, max_discount, test_status, created_by)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s)
+                    """,
+                    (
+                        new_booking_id,
+                        new_bp_id,
+                        pid,
+                        t.get("comp_cat_id"),
+                        t.get("booked_code"),
+                        t.get("test_name"),
+                        t.get("charge") or 0,
+                        t.get("mrp") or 0,
+                        t.get("max_discount") or 0,
+                        actor,
+                    ),
+                )
+
+        return {"booking_id": new_booking_id, "booking_code": new_booking_code}
+
+    def _create_cancel_odt_ticket(
+        self,
+        cur,
+        booking_id: int,
+        reason: str,
+        remark: str,
+        actor_user_id,
+        caller_mobile: str,
+        patient_names: str,
+    ) -> int | None:
+        cur.execute("SELECT name, designation FROM users WHERE id=%s LIMIT 1", (self._actor(actor_user_id),))
+        user_row = cur.fetchone() or {}
+        created_by = self._norm_code(user_row.get("name")) or str(actor_user_id or "system")
+        designation = self._norm_code(user_row.get("designation")) or None
+        cur.execute(
+            """
+            SELECT p.patient_code, p.labmate_pid
+            FROM hhome_collection_booking_patient bp
+            LEFT JOIN hpatient_master p ON p.id=bp.patient_id
+            WHERE bp.booking_id=%s
+            ORDER BY bp.id ASC
+            LIMIT 1
+            """,
+            (booking_id,),
+        )
+        patient_ref = cur.fetchone() or {}
+        labmate_id = self._norm_code(patient_ref.get("labmate_pid")) or self._norm_code(patient_ref.get("patient_code")) or None
+        additional_info = "\n".join(
+            [
+                f"Booking ID: {int(booking_id)}",
+                f"Cancel Reason: {reason}",
+                f"Remark: {remark}",
+                f"Caller Mobile: {caller_mobile}",
+                f"Patients: {patient_names}",
+            ]
+        )
+        cur.execute(
+            """
+            INSERT INTO tickets
+            (source, country_code, mobile_number, patient_name, patient_labmate_id,
+             client_name, priority, whatsapp_opt_in, ticket_category, commitment_at,
+             assign_to_user_id, assignment_reason, tags_json, additional_info,
+             status, created_by, designation, created_at, ticket_origin)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,DATE_ADD(NOW(), INTERVAL 2 HOUR),%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
+            """,
+            (
+                "patient",
+                "+91",
+                caller_mobile or None,
+                patient_names or None,
+                labmate_id,
+                None,
+                "High",
+                0,
+                "HC Phlebo Status",
+                None,
+                None,
+                "[]",
+                additional_info,
+                "Open",
+                created_by,
+                designation,
+                "ODT",
+            ),
+        )
+        return int(cur.lastrowid or 0) or None
+
     def cancel_booking(
         self,
         booking_id: int,
         reason_text: str = "",
+        remark: str = "",
         actor_user_id=None,
         appointment_id: int = 0,
         reschedule_requested: bool = False,
@@ -6205,7 +6699,9 @@ class HHomeCollectionCore:
                 else:
                     cur.execute(
                         """
-                        SELECT id, booking_code, caller_id, booking_status, preferred_visit_date, preferred_time_slot
+                        SELECT id, booking_code, caller_id, selected_address_id, address_snapshot_json,
+                               booking_status, preferred_visit_date, preferred_time_slot,
+                               F_Apt_Am, credit_amount, paying_amount, F_dis, Ad_dis, total_amount
                         FROM hhome_collection_booking
                         WHERE id=%s
                         LIMIT 1
@@ -6235,6 +6731,17 @@ class HHomeCollectionCore:
                         """,
                         (booking_id,),
                     )
+                    proposed_date_norm = self._norm_code(proposed_visit_date)
+                    proposed_slot_norm = self._norm_code(proposed_time_slot)
+                    created_reschedule_booking = None
+                    if bool(reschedule_requested) and proposed_date_norm and proposed_slot_norm:
+                        created_reschedule_booking = self._create_cancel_reschedule_booking(
+                            cur,
+                            source_booking=row,
+                            proposed_visit_date=proposed_date_norm,
+                            proposed_time_slot=proposed_slot_norm,
+                            actor=actor,
+                        )
                     cur.execute(
                         f"""
                         UPDATE hhome_collection_booking_patient_test
@@ -6264,57 +6771,23 @@ class HHomeCollectionCore:
                     lead_meta = cur.fetchone() or {}
                     mobile = self._norm_code(lead_meta.get("primary_mobile"))
                     patient_names = self._norm_code(lead_meta.get("patient_names"))
-                    patient_count = int(lead_meta.get("patient_count") or 0)
-                    proposed_date_norm = self._norm_code(proposed_visit_date)
-                    proposed_slot_norm = self._norm_code(proposed_time_slot)
-                    reschedule_note = "Reschedule not requested."
-                    if bool(reschedule_requested):
-                        if bool(new_slot_known) and proposed_date_norm and proposed_slot_norm:
-                            reschedule_note = f"Reschedule requested for {proposed_date_norm} {proposed_slot_norm}."
-                        elif bool(new_slot_known):
-                            reschedule_note = "Reschedule requested; date/slot not fully provided."
-                        else:
-                            reschedule_note = "Reschedule requested; date/slot to be finalized."
-                    lead_summary = (
-                        f"This was a Home Collection booking cancelled due to {reason}. "
-                        f"{reschedule_note}"
-                    )
-
-                    if bool(reschedule_requested) and mobile:
-                        created_by = str(actor_user_id or "system")
-                        cur.execute(
-                            """
-                            INSERT INTO leads
-                            (phone, wa_only, name, alt_phone, alt_wa_only, visit_window, prescription,
-                             remarks, tags, num_patients, created_by, status)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Open')
-                            """,
-                            (
-                                mobile,
-                                0,
-                                patient_names or "Home Collection Cancellation",
-                                "",
-                                0,
-                                "Flexible",
-                                "",
-                                lead_summary,
-                                "home_collection_cancel",
-                                max(1, patient_count),
-                                created_by,
-                            ),
+                    created_odt_ticket_id = None
+                    if bool(reschedule_requested) and not (proposed_date_norm and proposed_slot_norm):
+                        created_odt_ticket_id = self._create_cancel_odt_ticket(
+                            cur,
+                            booking_id=booking_id,
+                            reason=reason,
+                            remark=self._norm_code(remark),
+                            actor_user_id=actor_user_id,
+                            caller_mobile=mobile,
+                            patient_names=patient_names,
                         )
-                        new_lead_pk = int(cur.lastrowid or 0)
-                        if new_lead_pk > 0:
-                            cur.execute(
-                                "UPDATE leads SET lead_id=%s WHERE id=%s",
-                                (f"LD-{new_lead_pk:03d}", new_lead_pk),
-                            )
 
                     self._insert_booking_action_audit(
                         cur,
                         booking_id=booking_id,
                         action_type="CANCEL",
-                        reason_text=reason,
+                        reason_text=(f"{reason} | {self._norm_code(remark)}" if self._norm_code(remark) else reason),
                         old_values={
                             "preferred_visit_date": str(row.get("preferred_visit_date") or ""),
                             "preferred_time_slot": self._norm_code(row.get("preferred_time_slot")),
@@ -6324,6 +6797,9 @@ class HHomeCollectionCore:
                             "new_slot_known": bool(new_slot_known),
                             "proposed_visit_date": self._norm_code(proposed_visit_date) or None,
                             "proposed_time_slot": self._norm_code(proposed_time_slot) or None,
+                            "rescheduled_booking_id": (created_reschedule_booking or {}).get("booking_id"),
+                            "rescheduled_booking_code": (created_reschedule_booking or {}).get("booking_code"),
+                            "odt_ticket_id": created_odt_ticket_id,
                         },
                         done_by=actor,
                     )
@@ -8435,13 +8911,14 @@ class HHomeCollectionCore:
                         panel = section.get("panel") or {}
                         billing = section.get("billing") or {}
                         selected_charge_mode = self._selected_charge_mode(billing)
+                        show_mrp = self._section_show_mrp(section)
 
                         for t in section.get("selected_tests") or []:
                             booked_code = self._norm_code(t.get("booked_code"))
                             if not booked_code:
                                 continue
                             test_name = self._norm_code(t.get("description") or booked_code)
-                            norm_mrp, norm_charge, norm_max_discount = self._normalized_test_pricing_for_mode(t, billing)
+                            norm_mrp, norm_charge, norm_max_discount = self._normalized_test_pricing_for_mode(t, billing, show_mrp=show_mrp)
                             cur.execute(
                                 """
                                 INSERT INTO hhome_collection_booking_patient_test

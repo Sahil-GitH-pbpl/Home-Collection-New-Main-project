@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Whtsap Pnl{% endblock %}
+
+{% block content %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/whatsapp_panel.css') }}?v=6" />
+    <main class="appShell" data-provider="{{ provider }}" data-current-user-id="{{ current_user.id }}" data-current-user-name="{{ current_user.display_name }}">
+      <div class="toast hidden" id="toast"></div>
+      <section class="titleRow titleActionsOnly">
+        <div class="pageActions">
+          <span class="userBadge">{{ current_user.display_name }}</span>
+          <input id="dateInput" class="dateControl" type="date" />
+          <button class="layoutToggle active" id="toggleChatList" type="button">Hide Chat List</button>
+          <button class="outlineBtn" id="newConversationBtn" type="button" disabled>+ New Conversation</button>
+        </div>
+      </section>
+      <section class="hubGrid" id="hubGrid">
+        <aside class="queueSidebar">
+          <div class="sidebarSearch">
+            <span class="uiIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+            </span>
+            <input id="searchInput" placeholder="Search chat, patient, mobile" />
+          </div>
+          <nav id="queueNav">
+            <button class="active" type="button" data-queue="All Chats" title="All Chats"><span>All</span><strong>0</strong></button>
+            <button type="button" data-queue="Unassigned" title="Unassigned"><span>Unassigned</span><strong>0</strong></button>
+            <button type="button" data-queue="My Chats" title="My Chats"><span>Mine</span><strong>0</strong></button>
+            <button type="button" data-queue="SLA Breached" title="SLA Breached"><span>SLA</span><strong>0</strong></button>
+            <button type="button" data-queue="Archived" title="Archived"><span>Archive</span><strong>0</strong></button>
+          </nav>
+          <div class="slaLegend">
+            <h3>Phase 1 SLA</h3>
+            <span><i class="dot green"></i> Reply &lt; 5 min</span>
+            <span><i class="dot amber"></i> Reply 5-15 min</span>
+            <span><i class="dot red"></i> Reply &gt; 15 min</span>
+            <span><i class="dot breach"></i> Breached &gt; 30 min</span>
+          </div>
+        </aside>
+        <section class="conversationList">
+          <div class="listHeader">
+            <h2 id="activeQueueLabel">All Chats</h2>
+            <div class="compactFilters">
+              <label class="selectWrap">
+                <select id="slaFilter">
+                  <option>SLA</option>
+                  <option>Green</option>
+                  <option>Amber</option>
+                  <option>Red</option>
+                  <option>Breached</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="chatRows" id="conversationList">
+            <div class="emptyLink">Loading conversations...</div>
+          </div>
+        </section>
+        <section class="chatPanel hubChat">
+          <div class="customerHeader">
+            <div class="waIcon">WA</div>
+            <div>
+              <h2 id="activeMobile">No conversation selected</h2>
+              <p id="activeSummary">Select a patient conversation to open the thread.</p>
+              <div class="ownerLine" id="ownerLine">
+                <span>Owner: None</span>
+                <span id="slaStatus">-</span>
+                <span id="takenAt">Not taken</span>
+              </div>
+            </div>
+          </div>
+          <div class="ownershipBar">
+            <div>
+              <strong title="Conversation Type">Type</strong>
+              <div class="typeControl">
+                <select class="typeSelect" id="typeSelect">
+                  <option>Report</option>
+                  <option>Invoice</option>
+                  <option>Lead</option>
+                  <option>Complaint</option>
+                  <option>Home Collection</option>
+                  <option>Doctor</option>
+                  <option>Pickup</option>
+                  <option>Other</option>
+                </select>
+                <button class="saveTypeBtn saved" id="saveTypeBtn" type="button" title="Conversation type saved">Saved</button>
+              </div>
+            </div>
+            <button class="applyBtn" id="takeBtn" type="button">Take Ownership</button>
+            <button class="closeBtn" id="closeBtn" type="button" title="Close Conversation">Close</button>
+          </div>
+          <div class="thread" id="messages">
+            <span class="dateDivider">Today</span>
+            <div class="emptyLink">Select a patient conversation to view messages.</div>
+          </div>
+          <div class="composer">
+            <form class="composerRow" id="replyForm">
+              <button class="composerTool" type="button" id="attachImageBtn" title="Attach image" aria-label="Attach image">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8" cy="9" r="1.5"></circle><path d="m4 18 5-5 3 3 3-3 5 5"></path></svg>
+              </button>
+              <button class="composerTool" type="button" id="attachDocumentBtn" title="Attach PDF/document" aria-label="Attach PDF/document">
+                <svg viewBox="0 0 24 24"><path d="m21.4 11.6-8.8 8.8a6 6 0 0 1-8.5-8.5l9.4-9.4a4 4 0 0 1 5.7 5.7l-9.4 9.4a2 2 0 0 1-2.8-2.8l8.8-8.8"></path></svg>
+              </button>
+              <input id="imageFileInput" class="hiddenFileInput" type="file" accept="image/jpeg,image/png,image/webp" />
+              <input id="documentFileInput" class="hiddenFileInput" type="file" accept="application/pdf" />
+              <button class="composerTool" type="button" id="dictBtn" title="Focus smart spelling autocomplete" aria-label="Focus smart spelling autocomplete">
+                <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"></path><path d="M8 7h8"></path><path d="M8 11h6"></path></svg>
+              </button>
+              <div class="composerInputWrap">
+                <div class="autocompleteGhost" id="autocompleteGhost" aria-hidden="true"></div>
+                <input id="replyText" placeholder="Take ownership to reply..." disabled autocomplete="off" />
+              </div>
+              <button class="sendBtn" id="sendBtn" type="submit" aria-label="Send WhatsApp message" disabled>
+                <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
+              </button>
+            </form>
+            <div class="assistPanel hidden" id="assistPanel"></div>
+          </div>
+        </section>
+        <aside class="contextWorkspace">
+          <header>
+            <h2>Context Workspace</h2>
+            <span>Patient, ticket, lead, collection, audit</span>
+          </header>
+          <section class="contextBlock quickBlock">
+            <h3>Fast Actions</h3>
+            <div class="actionGrid">
+              <button type="button" data-drawer="Link" disabled><span class="actionIcon">↔</span>Link</button>
+              <button type="button" data-drawer="Create" disabled><span class="actionIcon">+</span>Create</button>
+              <button type="button" data-drawer="Add Tag" disabled><span class="actionIcon">#</span>Add Tag</button>
+              <button type="button" data-drawer="Reassign"><span class="actionIcon">↪</span>Reassign</button>
+            </div>
+          </section>
+          <section class="patientTagsBlock">
+            <div>
+              <h3>Conversation Type & Tags</h3>
+              <p id="tagNote">Live from WhatsApp table</p>
+            </div>
+            <div class="prominentTagList" id="tagStrip"></div>
+          </section>
+          <nav class="contextTabs" aria-label="Context sections">
+            <button class="active" type="button" data-context-tab="contact">Contact</button>
+            <button type="button" data-context-tab="hc">HC</button>
+            <button type="button" data-context-tab="leads">Leads</button>
+            <button type="button" data-context-tab="tickets">Tickets</button>
+            <button type="button" data-context-tab="audit">Audit</button>
+          </nav>
+          <div class="contextScroll">
+            <section class="contextBlock contextPanel active" data-context-panel="contact">
+              <h3>Linked Contact</h3>
+              <article class="entityCard">
+                <strong id="contactName">No conversation selected</strong>
+                <dl class="keyValues" id="contactContext">
+                  <div><dt>Mobile</dt><dd>-</dd></div>
+                  <div><dt>Last Message</dt><dd>-</dd></div>
+                  <div><dt>Provider</dt><dd>{{ provider }}</dd></div>
+                </dl>
+              </article>
+            </section>
+            <section class="contextBlock contextPanel" data-context-panel="tickets">
+              <h3>Open Tickets</h3>
+              <div class="miniRecords" id="ticketList"><p class="emptyLink">Select a conversation.</p></div>
+            </section>
+            <section class="contextBlock contextPanel" data-context-panel="hc">
+              <h3>Home Collections</h3>
+              <div class="miniRecords" id="homeCollectionList"><p class="emptyLink">Select a conversation.</p></div>
+            </section>
+            <section class="contextBlock contextPanel" data-context-panel="leads">
+              <h3>Leads</h3>
+              <div class="miniRecords" id="leadList"><p class="emptyLink">Select a conversation.</p></div>
+            </section>
+            <section class="contextBlock contextPanel" data-context-panel="audit">
+              <h3>Audit Summary</h3>
+              <p class="contextText" id="auditSummary">Open a conversation to see ownership, status, and delivery details.</p>
+            </section>
+          </div>
+        </aside>
+      </section>
+      <div class="drawerBackdrop hidden" id="drawerBackdrop">
+        <aside class="sideDrawer">
+          <header>
+            <div>
+              <h2 id="drawerTitle">Action</h2>
+              <p>Side drawer workflow · no full-page navigation.</p>
+            </div>
+            <button id="drawerClose" type="button" aria-label="Close drawer">×</button>
+          </header>
+          <div class="drawerBody">
+            <div id="drawerQuestion"></div>
+            <div id="drawerFields"></div>
+            <p class="drawerHint">Chat reference will be stored automatically.</p>
+          </div>
+          <footer>
+            <button class="layoutToggle" id="drawerCancel" type="button">Cancel</button>
+            <button class="applyBtn" id="drawerSave" type="button">Save</button>
+          </footer>
+        </aside>
+      </div>
+    </main>
+    <script src="{{ url_for('static', filename='js/socket.io.min.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/whatsapp_panel.js') }}?v=15"></script>
+{% endblock %}

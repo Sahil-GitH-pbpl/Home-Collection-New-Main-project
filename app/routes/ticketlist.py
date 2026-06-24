@@ -137,6 +137,13 @@ def _coerce_int(val):
 def _casefold(s):
     return (s or "").strip().casefold()
 
+def _panel_doctor_display(panel_name, client_name):
+    panel = (panel_name or "").strip()
+    doctor = (client_name or "").strip()
+    if panel and doctor:
+        return f"{panel} / {doctor}"
+    return panel or doctor or "-"
+
 def _expire_stale_claims(conn, ticket_id=None):
     """Expire any active claims that have passed expires_at."""
     with conn.cursor() as cur:
@@ -258,7 +265,7 @@ def tickets_list():
         return redirect(url_for("auth.home"))
 
     page = max(int(request.args.get("page", 1)), 1)
-    page_size = min(max(int(request.args.get("page_size", 25)), 5), 100)
+    page_size = min(max(int(request.args.get("page_size", 50)), 5), 100)
     view_mode = request.args.get("view", "my")
     if view_mode not in ("my", "all"):
         view_mode = "my"
@@ -284,7 +291,7 @@ def tickets_list():
             with conn.cursor(pymysql.cursors.DictCursor) as cur:
                 cur.execute("""
                     SELECT
-                      t.id, t.mobile_number, t.patient_name, t.client_name,
+                      t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
                       t.assign_to_user_id, u.name AS assign_to_name
                     FROM tickets t
@@ -310,7 +317,7 @@ def tickets_list():
             if is_special_user:
                 cur.execute("""
                     SELECT
-                      t.id, t.mobile_number, t.patient_name, t.client_name,
+                      t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
                       t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
                       t.created_at, t.created_by
@@ -326,7 +333,7 @@ def tickets_list():
             else:
                 cur.execute("""
                     SELECT
-                      t.id, t.mobile_number, t.patient_name, t.client_name,
+                      t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
                       t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
                       t.created_at, t.created_by
@@ -347,7 +354,7 @@ def tickets_list():
             if is_special_user:
                 cur.execute("""
                     SELECT
-                      t.id, t.mobile_number, t.patient_name, t.client_name,
+                      t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
                       t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
                       t.created_at, t.created_by
@@ -368,7 +375,7 @@ def tickets_list():
             if is_special_user:
                 cursor.execute("""
                     SELECT
-                      t.id, t.mobile_number, t.patient_name, t.client_name,
+                      t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
                       t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
                       t.created_at, t.created_by
@@ -380,7 +387,7 @@ def tickets_list():
             else:
                 cursor.execute("""
                     SELECT
-                      t.id, t.mobile_number, t.patient_name, t.client_name,
+                      t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
                       t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
                       t.created_at, t.created_by
@@ -406,6 +413,7 @@ def tickets_list():
         for ticket in unassigned_odt_raw:
             active_claim = claim_by_ticket.get(ticket.get("id"))
             ticket = _enrich_ticket_data(ticket, active_claim, now_ist)
+            ticket["panel_doctor_display"] = _panel_doctor_display(ticket.get("panel_name"), ticket.get("client_name"))
             
             tags_for_user = []
             for tag in ticket.get("tags", []):
@@ -425,6 +433,7 @@ def tickets_list():
         for ticket in unassigned_rs_raw if is_special_user else []:
             active_claim = claim_by_ticket.get(ticket.get("id"))
             ticket = _enrich_ticket_data(ticket, active_claim, now_ist)
+            ticket["panel_doctor_display"] = _panel_doctor_display(ticket.get("panel_name"), ticket.get("client_name"))
             ticket["tags_for_user"] = []
             ticket["actions_enabled"] = is_special_user
             unassigned_rs_tickets.append(ticket)
@@ -432,6 +441,7 @@ def tickets_list():
         for ticket in all_tickets:
             active_claim = claim_by_ticket.get(ticket.get("id"))
             ticket = _enrich_ticket_data(ticket, active_claim, now_ist)
+            ticket["panel_doctor_display"] = _panel_doctor_display(ticket.get("panel_name"), ticket.get("client_name"))
             
             assign_match, has_active_claim, tag_match, creator_match = _check_ticket_ownership(
                 ticket, user_id_int, username_cf, active_claim
@@ -460,6 +470,7 @@ def tickets_list():
             filtered_tickets.append(ticket)
 
         for ticket in breach_pool:
+            ticket["panel_doctor_display"] = _panel_doctor_display(ticket.get("panel_name"), ticket.get("client_name"))
             dt = ticket.get("commitment_at")
             if dt:
                 try:

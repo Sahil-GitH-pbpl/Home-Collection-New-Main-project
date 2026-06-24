@@ -194,6 +194,27 @@ def upload_prescriptions(patient_id: int):
     return jsonify(result), status
 
 
+@hhome_collection_bp.post("/hhome-collection/patient/<int:patient_id>/prescriptions/remove")
+def remove_prescription(patient_id: int):
+    caller_id = session.get("hcaller_id")
+    if not caller_id:
+        return jsonify({"ok": False, "message": "Caller is required first"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    rel_name = payload.get("rel_name")
+    result = service.remove_staged_patient_prescription(
+        session,
+        caller_id=caller_id,
+        patient_id=patient_id,
+        rel_name=rel_name,
+    )
+    if result.get("ok"):
+        selected = session.get("hselected_patients", [])
+        result["selected_patients"] = service.get_selected_patients_enriched(caller_id, selected, session=session)
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
 @hhome_collection_bp.post("/hhome-collection/create-patient")
 def create_patient():
     caller_id = session.get("hcaller_id")
@@ -503,6 +524,20 @@ def panel_companies_initial():
     try:
         rows = service.panel_companies_initial(limit=request.args.get("limit", default=5, type=int))
         return jsonify({"ok": True, "items": rows})
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
+@hhome_collection_bp.post("/hhome-collection/panel-company-show-mrp")
+def panel_company_show_mrp():
+    try:
+        data = request.get_json(silent=True) or {}
+        comp_cat_id = (data.get("comp_cat_id") or "").strip()
+        panel_name = (data.get("panel_name") or "").strip()
+        showmrp = bool(data.get("showmrp"))
+        result = service.update_panel_show_mrp(comp_cat_id, panel_name, showmrp)
+        status = 200 if result.get("ok") else 400
+        return jsonify(result), status
     except Exception as exc:
         return jsonify({"ok": False, "message": str(exc)}), 500
 

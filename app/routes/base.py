@@ -1,10 +1,10 @@
 # base.py
 from flask import Blueprint, render_template, redirect, url_for, session, jsonify, current_app
-from app.db.connection import get_complaint_connection, get_db_connection
+from app.db.connection import get_complaint_connection, get_db_connection, get_whatsapp_panel_connection
 import pymysql
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import mysql.connector
 
@@ -253,8 +253,49 @@ def tickets_counters():
 
 
 
-     # 7) NEW: Failed WhatsApp Messages Count from LabMate database
-    failed_messages = 0
+    wchat_unassigned = 0
+    wchat_mine = 0
+    wa_conn = None
+    try:
+        current_user_name = (session.get("username") or "").strip()
+        wa_conn = get_whatsapp_panel_connection()
+        with wa_conn.cursor(pymysql.cursors.DictCursor) as cur:
+            cur.execute("""
+                SELECT
+                  SUM(CASE
+                    WHEN COALESCE(cs.status, 'open') <> 'closed'
+                     AND COALESCE(TRIM(cs.owner_name), '') = ''
+                    THEN 1 ELSE 0 END) AS wchat_unassigned,
+                  SUM(CASE
+                    WHEN COALESCE(cs.status, 'open') <> 'closed'
+                     AND COALESCE(TRIM(cs.owner_name), '') = %s
+                    THEN 1 ELSE 0 END) AS wchat_mine
+                FROM (
+                  SELECT mobile
+                  FROM (
+                    SELECT mobile, datetimess, msg, img, pdff, docid, imgid FROM ofc_waba_incoming
+                    UNION ALL
+                    SELECT mobile, datetimess, msg, img, pdff, docid, imgid FROM ofc_waba_outgoing
+                  ) msg_rows
+                  WHERE msg <> '' OR img <> '' OR pdff <> '' OR docid <> '' OR imgid <> ''
+                  GROUP BY mobile
+                ) active_chats
+                LEFT JOIN ofc_conversation_live_state cs ON cs.mobile = active_chats.mobile
+            """, (current_user_name,))
+            row = cur.fetchone() or {}
+            wchat_unassigned = int(row.get("wchat_unassigned") or 0)
+            wchat_mine = int(row.get("wchat_mine") or 0)
+    except Exception as e:
+        current_app.logger.error(f"[tickets_counters] WhatsApp panel counter error: {e}")
+        wchat_unassigned = 0
+        wchat_mine = 0
+    finally:
+        try:
+            if wa_conn:
+                wa_conn.close()
+        except Exception:
+            pass
+
     return jsonify({
         "ok": True,
         "assigned": assigned,
@@ -265,6 +306,9 @@ def tickets_counters():
         "odt_rst_unassigned": int(odt_rst_unassigned),
         "cvt_open": cvt_open,
         "hcb_due_unassigned": int(hcb_due_unassigned),
+        "wchat_unassigned": wchat_unassigned,
+        "wchat_mine": wchat_mine,
+        "nchat_unassigned": wchat_unassigned,
     })
 
 

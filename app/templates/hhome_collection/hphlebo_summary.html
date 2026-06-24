@@ -1,6 +1,7 @@
 ﻿{% extends 'base.html' %}
 {% block title %}Home Collection Phlebo Summary{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <style>
   .phlebo-summary-page { font-family: 'Segoe UI', sans-serif; background-color: #f4f4f4; min-height: calc(100vh - 120px); padding: 0 0 20px; }
     .phlebo-summary-page .summary-shell {
@@ -87,6 +88,7 @@
   .phlebo-summary-page .ns-indicator { background-color: #9c27b0; }
   .phlebo-summary-page .patient-count-indicator { background-color: #1565c0; }
   .phlebo-summary-page .booking-colony { font-weight: 700; color: navy; font-size: 12px; }
+  .phlebo-summary-page .booking-chip { cursor: pointer; }
   .phlebo-summary-page .loader-container { display: flex; justify-content: center; align-items: center; height: 200px; }
   .phlebo-summary-page .loader-dots { display: flex; gap: 12px; }
   .phlebo-summary-page .loader-dot { width: 16px; height: 16px; border-radius: 50%; animation: bounce 0.6s infinite alternate; }
@@ -110,6 +112,85 @@
   }
   .phlebo-summary-page .late-column { background-color: #ffebee !important; }
   .phlebo-summary-page .summary-item { white-space: nowrap; }
+  .location-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1200;
+    padding: 16px;
+  }
+  .location-modal-backdrop.is-open { display: flex; }
+  .location-modal {
+    width: min(1280px, calc(100vw - 24px));
+    max-height: 98vh;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+    overflow: hidden;
+  }
+  .location-modal-header {
+    display: grid;
+    grid-template-columns: 1fr auto 40px;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #dbe2ea;
+    column-gap: 12px;
+  }
+  .location-modal-title { margin: 0; font-size: 18px; font-weight: 700; color: #12324a; }
+  .location-modal-close {
+    border: 0;
+    background: transparent;
+    color: #475569;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+  }
+  .location-modal-body {
+    padding: 12px 16px 16px;
+    max-height: calc(98vh - 56px);
+    overflow: auto;
+  }
+  .location-option-list {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    margin: 0;
+  }
+  .location-option-btn {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #0f172a;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .location-option-btn.active {
+    background: #0b5d57;
+    border-color: #a86103;
+    color: #fff;
+  }
+  #location-map {
+    width: 100%;
+    height: 78vh;
+    min-height: 700px;
+    max-height: 860px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #eef2f7;
+  }
+  .location-modal-empty {
+    font-size: 13px;
+    color: #64748b;
+    padding: 12px 0 0;
+  }
 </style>
 
 <div class="phlebo-summary-page">
@@ -181,10 +262,182 @@
   </div>
 </div>
 
+<div class="location-modal-backdrop" id="location-modal-backdrop">
+  <div class="location-modal" role="dialog" aria-modal="true" aria-labelledby="location-modal-title">
+    <div class="location-modal-header">
+      <h3 class="location-modal-title" id="location-modal-title">Booking Location</h3>
+      <div class="location-option-list" id="location-option-list"></div>
+      <button type="button" class="location-modal-close" id="location-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="location-modal-body">
+      <div id="location-map"></div>
+      <div class="location-modal-empty" id="location-modal-empty" style="display:none;">No saved location available for this booking.</div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
   const DATA_URL = "{{ url_for('phlebo_summary.summary_data') }}";
+  const summaryAreaEl = document.getElementById("summary-area");
+  const locationModalBackdropEl = document.getElementById("location-modal-backdrop");
+  const locationModalCloseEl = document.getElementById("location-modal-close");
+  const locationOptionListEl = document.getElementById("location-option-list");
+  const locationMapEl = document.getElementById("location-map");
+  const locationEmptyEl = document.getElementById("location-modal-empty");
+  const summaryState = { bookingsById: {}, activeBookingId: null, activeLocationType: null };
+  let leafletMap = null;
+  let leafletMarker = null;
+  const locationAddressCache = new Map();
   document.getElementById("date").valueAsDate = new Date();
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function parseLocationPair(rawValue) {
+    const text = String(rawValue || "").trim();
+    if (!text) return null;
+    const parts = text.split(",").map(v => v.trim());
+    if (parts.length < 2) return null;
+    const lat = Number(parts[0]);
+    const lng = Number(parts[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng, label: `${lat}, ${lng}` };
+  }
+
+  function closeLocationModal() {
+    locationModalBackdropEl.classList.remove("is-open");
+    summaryState.activeBookingId = null;
+    summaryState.activeLocationType = null;
+  }
+
+  async function fetchLocationAddress(lat, lng) {
+    const cacheKey = `${lat},${lng}`;
+    if (locationAddressCache.has(cacheKey)) {
+      return locationAddressCache.get(cacheKey);
+    }
+
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&format=jsonv2`;
+    const response = await fetch(url, {
+      headers: {
+        "Accept": "application/json"
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`Address lookup failed with status ${response.status}`);
+    }
+    const data = await response.json();
+    const address = String(data?.display_name || "").trim() || "Address not found";
+    locationAddressCache.set(cacheKey, address);
+    return address;
+  }
+
+  function ensureLeafletMap() {
+    if (leafletMap) return;
+    leafletMap = L.map("location-map");
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(leafletMap);
+  }
+
+  function renderLocationMap(locationType) {
+    const booking = summaryState.bookingsById[String(summaryState.activeBookingId || "")];
+    if (!booking) return;
+    const rawValue = locationType === "complete" ? booking.complete_location : booking.start_location;
+    const parsed = parseLocationPair(rawValue);
+    summaryState.activeLocationType = locationType;
+
+    Array.from(locationOptionListEl.querySelectorAll(".location-option-btn")).forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.locationType === locationType);
+    });
+
+    if (!parsed) {
+      locationMapEl.style.display = "none";
+      locationEmptyEl.style.display = "block";
+      return;
+    }
+
+    locationEmptyEl.style.display = "none";
+    locationMapEl.style.display = "block";
+    ensureLeafletMap();
+
+    if (leafletMarker) {
+      leafletMap.removeLayer(leafletMarker);
+    }
+    leafletMap.setView([parsed.lat, parsed.lng], 17);
+    leafletMarker = L.marker([parsed.lat, parsed.lng]).addTo(leafletMap);
+    leafletMarker.bindPopup(`${locationType === "complete" ? "Complete" : "Start"} Location`).openPopup();
+    setTimeout(() => leafletMap.invalidateSize(), 100);
+
+    const activeBookingId = summaryState.activeBookingId;
+    const activeLocationType = summaryState.activeLocationType;
+    fetchLocationAddress(parsed.lat, parsed.lng)
+      .then((address) => {
+        if (summaryState.activeBookingId !== activeBookingId || summaryState.activeLocationType !== activeLocationType) {
+          return;
+        }
+        if (leafletMarker) {
+          leafletMarker.bindPopup(
+            `<strong>${locationType === "complete" ? "Complete" : "Start"} Location</strong><br>${escapeHtml(address)}`
+          ).openPopup();
+        }
+      })
+      .catch(() => {
+        if (summaryState.activeBookingId !== activeBookingId || summaryState.activeLocationType !== activeLocationType) {
+          return;
+        }
+        if (leafletMarker) {
+          leafletMarker.bindPopup(
+            `<strong>${locationType === "complete" ? "Complete" : "Start"} Location</strong><br>Address not available`
+          ).openPopup();
+        }
+      });
+  }
+
+  function openLocationModal(bookingId) {
+    const booking = summaryState.bookingsById[String(bookingId || "")];
+    if (!booking) return;
+
+    const options = [];
+    if (parseLocationPair(booking.start_location)) options.push({ type: "start", label: "Start Location" });
+    if (parseLocationPair(booking.complete_location)) options.push({ type: "complete", label: "Complete Location" });
+
+    summaryState.activeBookingId = bookingId;
+    summaryState.activeLocationType = null;
+    document.getElementById("location-modal-title").textContent = `Booking ${booking.booking_id} Location`;
+    locationOptionListEl.innerHTML = "";
+    locationEmptyEl.style.display = options.length ? "none" : "block";
+    locationMapEl.style.display = options.length ? "block" : "none";
+
+    options.forEach((option) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "location-option-btn";
+      btn.dataset.locationType = option.type;
+      btn.textContent = option.label;
+      btn.addEventListener("click", () => renderLocationMap(option.type));
+      locationOptionListEl.appendChild(btn);
+    });
+
+    if (!options.length) {
+      if (leafletMarker && leafletMap) {
+        leafletMap.removeLayer(leafletMarker);
+        leafletMarker = null;
+      }
+    }
+
+    locationModalBackdropEl.classList.add("is-open");
+    if (options.length) {
+      renderLocationMap(options[0].type);
+    }
+  }
 
   function generateTimeSlots() {
     const slots = [];
@@ -288,6 +541,10 @@
       const timeSlots = generateTimeSlots();
       let entries = view === "phlebo" ? (data.phlebos || []) : (data.routes || []);
       const bookings = data.bookings || [];
+      summaryState.bookingsById = {};
+      bookings.forEach((booking) => {
+        summaryState.bookingsById[String(booking.booking_id)] = booking;
+      });
 
       if (entries.includes("UNASSIGNED")) {
         entries = entries.filter((e) => e !== "UNASSIGNED");
@@ -395,7 +652,7 @@
             const tagText = (b.tags || "").trim();
             const tagClass = tagText ? " tagged-booking" : "";
             const tooltip = `Collection details:\nAddress: ${addrText}\nMobile: ${b.caller_mobile || "N/A"}\nPatients: ${b.patient_names || "N/A"}\nDOB: ${b.patient_dobs || "N/A"}\nPatient Mobiles: ${b.patient_mobiles || "N/A"}\nTags: ${tagText || "N/A"}\nSlot Time: ${b.slot || "N/A"}\nStart Time: ${b.strt_time || "Not started"}\nComplete Time: ${b.cmplt_time || "Not completed"}`;
-            return `<div class="booking-chip ${stat}${tagClass}" title="${tooltip.replace(/"/g, "&quot;")}">${text} ${indicatorsHtml}</div>`;
+            return `<div class="booking-chip ${stat}${tagClass}" data-booking-id="${escapeHtml(b.booking_id)}" title="${tooltip.replace(/"/g, "&quot;")}">${text} ${indicatorsHtml}</div>`;
             }).join("");
             let tdStyle = "";
             if (entry === "UNASSIGNED") tdStyle += "background-color: #ffe0b2;";
@@ -436,6 +693,27 @@
     XLSX.utils.book_append_sheet(wb, ws, "Summary");
     XLSX.writeFile(wb, "phlebo_summary.xlsx");
   }
+
+  summaryAreaEl.addEventListener("dblclick", function (event) {
+    const bookingChip = event.target.closest(".booking-chip");
+    if (!bookingChip) return;
+    const bookingId = Number(bookingChip.dataset.bookingId || 0);
+    if (!bookingId) return;
+    openLocationModal(bookingId);
+  });
+
+  locationModalCloseEl.addEventListener("click", closeLocationModal);
+  locationModalBackdropEl.addEventListener("click", function (event) {
+    if (event.target === locationModalBackdropEl) {
+      closeLocationModal();
+    }
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && locationModalBackdropEl.classList.contains("is-open")) {
+      closeLocationModal();
+    }
+  });
 
 </script>
 {% endblock %}

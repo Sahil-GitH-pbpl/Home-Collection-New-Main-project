@@ -4,9 +4,11 @@
 {% block content %}
 <style>
 .table-container { margin-top:5px; background:#fff; border-radius:12px; box-shadow:0 6px 16px rgba(0,0,0,0.08); overflow-x:auto; padding:8px; }
-.tickets-table { width:100%; border-collapse:collapse; font-size:14px; table-layout:auto; }
+.tickets-table { width:100%; border-collapse:separate; border-spacing:0; font-size:14px; table-layout:auto; }
 .tickets-table th, .tickets-table td { padding:6px 10px; border-bottom:1px solid #e5e7eb; text-align:center; vertical-align:middle; }
 .tickets-table th { background:#012769; font-weight:700; color:#ffffff; }
+.tickets-table thead th:first-child { border-top-left-radius:10px; }
+.tickets-table thead th:last-child { border-top-right-radius:10px; }
 th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
 .tickets-table > tbody > tr:nth-child(even) { background:#dddddd; }
 .tickets-table tr:hover { background:inherit; }
@@ -52,36 +54,55 @@ th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
 .commitment-wrap { display:flex; flex-direction:column; gap:2px; align-items:center; }
 .commitment-dt { font-size:12px; color:#6b7280; }
 .commitment-badge { align-self:center; }
-.section-head { display:flex; align-items:center; gap:8px; margin:10px 2px 6px 2px; }
-.section-head h2 { margin:0; font-size:18px; }
-.section-sub { color:#6b7280; font-size:12px; }
+.section-head { display:flex; align-items:center; gap:8px; margin:10px 2px 6px 2px; flex-wrap:wrap; }
+.section-head h2,
+.page-head h2 {
+  margin:0;
+  font-size:18px;
+}
+.section-head h2.section-title-chip,
+.page-head h2.section-title-chip {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:1px 6px;
+  border-radius:999px;
+  background:#c7d8ff;
+  color:#0b2f6b;
+  border:1px solid #b7cdfb;
+  box-shadow:0 1px 4px rgba(1,39,105,0.10);
+  font-size:15px;
+}
+.section-sub {
+  color:#4b5563;
+  font-size:12px;
+  margin-left:2px;
+}
 .page-head { margin:10px 2px 6px 2px; }
-.page-head h2 { margin:0; font-size:18px; }
 .page-head-flex { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .toggle-group { display:flex; gap:8px; }
 .toggle-btn {
   display:inline-block; padding:6px 12px; border-radius:6px;
-  background:#4f504f; color:#fff; text-decoration:none;
+  background:#4b5563; color:#fff; text-decoration:none;
   font-size:13px;
 }
 .toggle-btn.active { background:#014c69; }
 </style>
 {% if breach_pool and breach_pool|length > 0 %}
   <div class="section-head">
-    <h2>🚨 Breach Pool (Available to Pick)</h2>
-    <span class="section-sub">Open + SLA breached + no active pick</span>
+    <h2 class="section-title-chip">🚨 Breach Pool (Available to Pick) <span class="section-sub">Open + SLA breached + no active pick</span></h2>
   </div>
 
   <div class="table-container">
     <table class="tickets-table">
       <thead>
         <tr>
-          <th>Ticket No</th>
+          <th>Tkt No</th>
           <th>Mobile No</th>
           <th>Patient Name</th>
-          <th>Client Name</th>
-          <th>Ticket Category</th>
-          <th>Ticket Type</th>
+          <th>Panel / Doctor</th>
+          <th>Tkt Category</th>
+          <th>Tkt Type</th>
           <th>Commitment At</th>
           <th>Assigned To</th>
           <th class="actions-col">Actions</th> <!-- 🆕 Changed from "Pick" to "Actions" -->
@@ -92,8 +113,8 @@ th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
         <tr>
           <td>{{ r.id }}</td>
           <td>{{ r.mobile_number }}</td>
-          <td>{{ r.patient_name or '-' }}</td>
-          <td>{{ r.client_name or '-' }}</td>
+          <td>{{ r.patient_name or '-' }}{% if r.patient_labmate_id %}<br><small>({{ r.patient_labmate_id }})</small>{% endif %}</td>
+          <td>{{ r.panel_doctor_display or '-' }}</td>
           <td>{{ r.ticket_category }}</td>
           <td>{{ r.ticket_origin or 'CCE' }}</td>
           <td>
@@ -132,19 +153,18 @@ th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
 
 {% if unassigned_rs_tickets and unassigned_rs_tickets|length > 0 %}
   <div class="section-head">
-    <h2>🧪 Open Rejected Sample Tickets</h2>
-    <span class="section-sub">RS tickets available for pick</span>
+    <h2 class="section-title-chip">🧪 Open Rejected Sample Tickets <span class="section-sub">RS tickets available for pick</span></h2>
   </div>
 
   <div class="table-container" style="overflow-x:hidden;">
     <table class="tickets-table">
       <thead>
         <tr>
-          <th>Ticket No</th>
+          <th>Tkt No</th>
           <th>Mobile No</th>
           <th>Patient Name</th>
-          <th>Ticket Category</th>
-          <th>Ticket Type</th>
+          <th>Tkt Category</th>
+          <th>Tkt Type</th>
           <th>Commitment At</th>
           <th class="actions-col" style="width:140px;">Actions</th>
         </tr>
@@ -154,7 +174,7 @@ th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
         <tr>
           <td>{{ t.id }}</td>
           <td>{{ t.mobile_number }}</td>
-          <td>{{ t.patient_name or '-' }}</td>
+          <td>{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
           <td>{{ t.ticket_category }}</td>
           <td>{{ t.ticket_origin or 'RST' }}</td>
           <td>
@@ -194,20 +214,19 @@ th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
 
 {% if unassigned_odt_tickets and unassigned_odt_tickets|length > 0 %}
   <div class="section-head">
-    <h2>📋 Unassigned ODT Tickets</h2>
-    <span class="section-sub">ODT tickets available for pick</span>
+    <h2 class="section-title-chip">📋 Unassigned ODT Tickets <span class="section-sub">ODT tickets available for pick</span></h2>
   </div>
 
   <div class="table-container">
     <table class="tickets-table">
       <thead>
         <tr>
-          <th>Ticket No</th>
+          <th>Tkt No</th>
           <th>Mobile No</th>
           <th>Patient Name</th>
-          <th>Client Name</th>
-          <th>Ticket Category</th>
-          <th>Ticket Type</th>
+          <th>Panel / Doctor</th>
+          <th>Tkt Category</th>
+          <th>Tkt Type</th>
           <th>Commitment At</th>
           <th>Assigned To</th>
           <th>Tag To</th>
@@ -219,8 +238,8 @@ th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
         <tr>
           <td>{{ t.id }}</td>
           <td>{{ t.mobile_number }}</td>
-          <td>{{ t.patient_name or '-' }}</td>
-          <td>{{ t.client_name or '-' }}</td>
+          <td>{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
+          <td>{{ t.panel_doctor_display or '-' }}</td>
           <td>{{ t.ticket_category }}</td>
           <td>{{ t.ticket_origin or 'ODT' }}</td>
           <td>
@@ -291,7 +310,7 @@ th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
 {% endif %}
 
 <div class="page-head page-head-flex">
-  <h2>🗂️ Open Tickets</h2>
+  <h2 class="section-title-chip">🗂️ Open Tickets</h2>
   <div class="toggle-group">
     <a href="{{ url_for('ticketlist.tickets_list', view='my') }}" class="toggle-btn {% if view_mode == 'my' %}active{% endif %}">My Tickets</a>
     <a href="{{ url_for('ticketlist.tickets_list', view='all') }}" class="toggle-btn {% if view_mode == 'all' %}active{% endif %}">All Tickets</a>
@@ -302,12 +321,12 @@ th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
   <table class="tickets-table">
     <thead>
       <tr>
-        <th>Ticket No</th>
+        <th>Tkt No</th>
         <th>Mobile No</th>
         <th>Patient Name</th>
-        <th>Client Name</th>
-        <th>Ticket Category</th>
-        <th>Ticket Type</th>
+        <th>Panel / Doctor</th>
+        <th>Tkt Category</th>
+        <th>Tkt Type</th>
         <th>Commitment At</th>
         <th>Assign To</th>
         <th>Tag To</th>
@@ -319,8 +338,8 @@ th.actions-col, td.actions-col { width:140px; } /* Adjusted width */
       <tr>
         <td>{{ t.id }}</td>
         <td>{{ t.mobile_number }}</td>
-        <td>{{ t.patient_name or '-' }}</td>
-        <td>{{ t.client_name or '-' }}</td>
+        <td>{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small><strong>({{ t.patient_labmate_id }})</strong></small>{% endif %}</td>
+        <td>{{ t.panel_doctor_display or '-' }}</td>
         <td>{{ t.ticket_category }}</td>
         <td>{{ t.ticket_origin or 'CCE' }}</td>
         <td>

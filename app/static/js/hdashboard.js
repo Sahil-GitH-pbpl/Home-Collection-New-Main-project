@@ -174,6 +174,10 @@ function renderBookingReviewModalContent(booking) {
   const $body = $('#booking-modal-body');
   if (!$body.length) return;
   const patients = Array.isArray(booking?.patients) ? booking.patients : [];
+  const patientMobiles = patients
+    .map((p) => String(p?.contact_mobile || '').trim())
+    .filter(Boolean)
+    .join(', ');
   const total = Number(booking?.total_amount || 0);
   const computedSub = patients.reduce((acc, p) => acc + ((Array.isArray(p.tests) ? p.tests : []).reduce((a, t) => a + Number(t.mrp || 0), 0)), 0);
   const computedDis = patients.reduce((acc, p) => acc + ((Array.isArray(p.tests) ? p.tests : []).reduce((a, t) => a + Number(t.discount || 0), 0)), 0);
@@ -243,7 +247,10 @@ function renderBookingReviewModalContent(booking) {
     <div class="card mb-2">
       <div class="card-body">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 hc-patient-name-red mb-2">
-          <h6 class="mb-0"><span>Patient Name:</span> ${esc(p.full_name || '-')}</h6>
+          <div>
+            <h6 class="mb-0"><span>Patient Name:</span> ${esc(p.full_name || '-')}</h6>
+            <div><strong>Patient Mobile:</strong> ${esc(p.contact_mobile || '-')}</div>
+          </div>
           <h6 class="mb-0 text-end"><span>Referred By:</span> ${esc(p.ref_by || '-')}</h6>
         </div>
         ${sectionHtml || '<div class="text-muted">No tests.</div>'}
@@ -257,7 +264,7 @@ function renderBookingReviewModalContent(booking) {
   $body.html(`
     <div class="hc-review-grid mb-2">
       <div class="hc-review-meta">
-        <div><strong>Caller:</strong> ${esc(booking.primary_mobile || '-')} | <strong>Patients:</strong> ${patients.length}</div>
+        <div><strong>Mobile No:</strong> ${esc(patientMobiles || '-')} | <strong>Patients:</strong> ${patients.length}</div>
         <div><strong>Google Location:</strong> <span class="hc-review-linkish">${esc(booking.google_location || '-')}</span></div>
         <div><strong>Internal Referred By:</strong> ${esc(booking.intrnl_rfrncd_by || '-')}</div>
         <div><strong>Lead ID:</strong> ${esc(booking.lead_id || '-')}</div>
@@ -396,7 +403,7 @@ function renderDashboardRows(rows) {
     const bookingId = Number(r.booking_id || r.id || 0);
     const cceTbsHtml = renderCceTbsCell(r.cce_tbs_values);
     const patientText = String(r.patient_names || r.caller_name || '-');
-    const mobileText = String(r.primary_mobile || '-');
+    const mobileText = String(r.patient_primary_mobiles || '-');
     const batchBadge = Number(r.is_batched || 0) === 1 ? ' <span class="dash-batched-badge">(Batched)</span>' : '';
     const hasPatientTag = Number(r.has_patient_tag || 0) === 1;
     const hasBookingTag = String(r.booking_tags || '').trim() && String(r.booking_tags || '').trim() !== '-';
@@ -697,6 +704,8 @@ function openCancelReasonModal(bookingId) {
   $('#cancel-booking-id').val(String(bookingId || 0));
   $('#cancel-appointment-id').val(String(appointmentId || 0));
   $('#cancel-reason-select').val('');
+  $('#cancel-additional-info').val('');
+  $('#cancel-additional-info-wrap').addClass('d-none');
   $('input[name="cancel-reschedule-requested"][value="no"]').prop('checked', true);
 
   const allSlots = generateRescheduleSlots();
@@ -728,11 +737,20 @@ function openCancelReasonModal(bookingId) {
     const yes = $('input[name="cancel-reschedule-requested"]:checked').val() === 'yes';
     $('#cancel-new-date, #cancel-new-slot').prop('disabled', !yes);
   });
+  $('#cancel-reason-select').off('change.cancelInfo').on('change.cancelInfo', function () {
+    const needsInfo = String($(this).val() || '').trim() === 'Patient requested cancellation';
+    $('#cancel-additional-info-wrap').toggleClass('d-none', !needsInfo);
+    if (!needsInfo) $('#cancel-additional-info').val('');
+  });
 
   m.show();
   $('#btn-confirm-cancel-reason').off('click').on('click', function () {
     const reason = ($('#cancel-reason-select').val() || '').trim();
     if (!reason) return alert('Please select cancel reason.');
+    const additionalInfo = ($('#cancel-additional-info').val() || '').trim();
+    if (reason === 'Patient requested cancellation' && !additionalInfo) {
+      return alert('Please enter additional information.');
+    }
     const bookingCode = String($('#cancel-booking-code').val() || '');
     if (!window.confirm(`Are you sure you want to cancel ${bookingCode || `booking #${bookingId}`}? Cancellation is final and will be recorded in timeline.`)) {
       return;
@@ -746,6 +764,7 @@ function openCancelReasonModal(bookingId) {
         booking_id: bookingId,
         appointment_id: appointmentId,
         reason_text: reason,
+        additional_info: additionalInfo,
         reschedule_requested: rescheduleRequested ? 1 : 0,
         new_slot_known: rescheduleRequested ? 1 : 0,
         proposed_visit_date: newDate,

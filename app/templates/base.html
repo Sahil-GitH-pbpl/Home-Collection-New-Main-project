@@ -194,7 +194,7 @@
       color:#fff;font-weight:600;border-radius:8px;padding:8px 12px;cursor:pointer;
       transition:filter .18s ease, transform .12s ease;
       box-shadow:0 4px 12px rgba(0,0,0,.22);
-      font-size:13px;
+      font-size:11px;
     }
     .logout:hover{filter:brightness(1.05);transform:translateY(-2px)}
 
@@ -366,7 +366,7 @@
       .control-stack .logout{
         width:auto;
         padding:8px 12px;
-        font-size:12px;
+        font-size:11px;
       }
     }
   </style>
@@ -400,6 +400,10 @@
         <a href="{{ url_for('cce.live_page') }}#missed" class="mini-tile tile-breached hidden" id="btn-missed" title="Total missed calls">
           <span class="icon" aria-hidden="true">📵</span>
           <span class="lbl">Missed</span> <span class="badge" id="count-missed">0</span>
+        </a>
+        <a href="{{ url_for('whatsapp_panel.whatsapp_panel_page') }}" class="mini-tile tile-breached hidden" id="btn-wchat" title="Open WhatsApp chats: unassigned + mine">
+          <span class="icon" aria-hidden="true">&#128172;</span>
+          <span class="lbl">WChat</span> <span class="badge" id="count-wchat">0 + 0</span>
         </a>
         <a href="{{ url_for('hhome_collection_dashboard.dashboard') }}" class="mini-tile tile-breached hidden" id="btn-hcb-due-unassigned" title="Home collection due within 30 minutes and still unassigned">
           <span class="icon" aria-hidden="true">&#127968;</span>
@@ -525,13 +529,36 @@
                   <span class="icon">📄</span> Consent Form
                 </a>
               </div>
+              <div class="menu-section direct-link">
+                <a class="section-label" href="{{ url_for('whatsapp_panel.whatsapp_panel_page') }}">
+                  <span class="icon">&#128172;</span> Whtsap Panel
+                </a>
+              </div>
             </div>
           </div>
         </div>
 
         <div class="control-stack">
           <form action="{{ url_for('auth.logout') }}" method="post">
-            <button class="logout" type="submit">Logout</button>
+            {% set _login_name = (session.get('username') or 'Logout').strip() %}
+            {% set _normalized_name = _login_name.replace('.', ' ') %}
+            {% set _raw_parts = _normalized_name.split() %}
+            {% set _ns = namespace(parts=[]) %}
+            {% for _part in _raw_parts %}
+              {% if _part.strip() %}
+                {% set _ns.parts = _ns.parts + [_part.strip()] %}
+              {% endif %}
+            {% endfor %}
+            {% set _name_parts = _ns.parts %}
+            {% set _first_part = _name_parts[0] if _name_parts else _login_name %}
+            {% set _first_clean = _first_part|lower %}
+            {% set _prefixes = ['mr', 'mrs', 'ms', 'dr', 'md', 'er', 'ca', 'prof'] %}
+            {% if _name_parts|length > 1 and _first_clean in _prefixes %}
+              {% set _login_label = (_name_parts[0] ~ ' ' ~ _name_parts[1])[:10].strip() %}
+            {% else %}
+              {% set _login_label = _first_part[:10].strip() %}
+            {% endif %}
+            <button class="logout" type="submit">{{ _login_label }}</button>
           </form>
           {% if is_allowed_user %}
           <label class="switch" title="Enable/disable CCE popups">
@@ -584,6 +611,22 @@
       }
     }
 
+    function setWChatTile(unassigned, mine){
+      const tile = document.getElementById('btn-wchat');
+      const badge = document.getElementById('count-wchat');
+      if(!tile || !badge) return;
+      const u = Number(unassigned || 0);
+      const m = Number(mine || 0);
+      badge.textContent = `${u} + ${m}`;
+      if((u + m) > 0){
+        tile.classList.remove('hidden');
+        tile.classList.add('alert');
+      }else{
+        tile.classList.remove('alert');
+        tile.classList.add('hidden');
+      }
+    }
+
     async function refreshCounters() {
       try {
         const res = await fetch("{{ url_for('base.tickets_counters') }}", {
@@ -597,6 +640,7 @@
         setTile('btn-breached','count-breached', data.my_breached);
         setTile('btn-leads-fresh','count-leads-fresh', data.leads_fresh);
         setTile('btn-missed','count-missed', data.missed_calls);
+        setWChatTile(data.wchat_unassigned ?? data.nchat_unassigned, data.wchat_mine);
         setTile('btn-hcb-due-unassigned','count-hcb-due-unassigned', data.hcb_due_unassigned);
         setTile('btn-odt-rst-unassigned','count-odt-rst-unassigned', data.odt_rst_unassigned);
         setTile('btn-cvt-open','count-cvt-open', data.cvt_open);
@@ -632,7 +676,7 @@
     (function initialHide(){
       const ids = [
         'btn-breached', 'btn-leads-fresh', 'btn-missed',
-        'btn-hcb-due-unassigned', 'btn-odt-rst-unassigned', 'btn-cvt-open', 'btn-complaint', 'btn-failed-messages'
+        'btn-wchat', 'btn-hcb-due-unassigned', 'btn-odt-rst-unassigned', 'btn-cvt-open', 'btn-complaint', 'btn-failed-messages'
       ];
       ids.forEach(id => {
         const el = document.getElementById(id);

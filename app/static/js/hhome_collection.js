@@ -184,6 +184,26 @@ function normalizePanelSection(section) {
   return s;
 }
 
+function panelShowMrp(section) {
+  const s = section && typeof section === 'object' ? section : {};
+  const panel = s.panel && typeof s.panel === 'object' ? s.panel : {};
+  const billing = s.billing && typeof s.billing === 'object' ? s.billing : {};
+  return Number(panel.showmrp || billing.showmrp || 0) === 1;
+}
+
+function pricedForPanel(t, showMrp) {
+  const mrp = Number(t?.mrp || 0);
+  if (showMrp) {
+    return { mrp, charge: mrp, max_discount: 0, max_allowed_discount: Number(t?.max_allowed_discount || 0) };
+  }
+  return {
+    mrp,
+    charge: Number(t?.charge || 0),
+    max_discount: Number(t?.max_discount || 0),
+    max_allowed_discount: Number(t?.max_allowed_discount || 0)
+  };
+}
+
 function getPatientPanels(patientId) {
   const tb = ensureTbObject(patientId);
   return tb.panels;
@@ -277,6 +297,16 @@ function getLocalPrescriptionUploadCount(patientId) {
   const map = wizardData.prescriptionUploads || {};
   const count = Number(map[pid] || 0);
   return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+function getStagedPrescriptionItems(patient) {
+  const items = Array.isArray(patient?.staged_prescription_files) ? patient.staged_prescription_files : [];
+  return items
+    .map((item) => ({
+      rel_name: String(item?.rel_name || '').trim(),
+      label: String(item?.label || '').trim()
+    }))
+    .filter((item) => item.rel_name);
 }
 
 function renderReferenceAddressChip(r) {
@@ -1999,7 +2029,7 @@ function computeAdditionalDiscountAmount(mode, value, subtotal) {
   return 0;
 }
 
-function renderReviewTestsHtml(selectedTests, catalog, chargeMode = 'P') {
+function renderReviewTestsHtml(selectedTests, catalog, chargeMode = 'P', showMrp = false) {
   const list = Array.isArray(selectedTests) ? selectedTests : [];
   if (!list.length) {
     return { html: '<div class="text-muted">No tests selected.</div>', total: 0, subtotal: 0, discountTotal: 0, tubes: [] };
@@ -2016,8 +2046,9 @@ function renderReviewTestsHtml(selectedTests, catalog, chargeMode = 'P') {
     const code = normalizeTestCode(t?.booked_code || t?.testcode1 || t?.test_code || '');
     const desc = String(t?.description || '').trim();
     const label = [code, desc].filter(Boolean).join(' - ') || 'Test';
-    const rawMrp = Number(t?.mrp || 0);
-    const rawDiscount = Number(t?.max_discount || 0);
+    const priced = pricedForPanel(t, showMrp);
+    const rawMrp = Number(priced.mrp || 0);
+    const rawDiscount = Number(priced.max_discount || 0);
     const mrp = isFreeMode ? 0 : rawMrp;
     const discount = isFreeMode ? 0 : (isPayingMode ? rawDiscount : 0);
     const finalCharge = isFreeMode ? 0 : Math.max(0, mrp - discount);
@@ -2611,7 +2642,8 @@ function autoResolveBillingFromPanel(patientId, panelName, panelIndex = 0) {
 
     section.panel = {
       center_id: String(picked.CenterID || ''),
-      pname: String(picked.pname || '')
+      pname: String(picked.pname || ''),
+      showmrp: Number(picked.showmrp || 0)
     };
     const allowedChargeMode = normalizeChargeModeCode(picked.BillingChargeMode || '');
     section.billing = {
@@ -2620,7 +2652,8 @@ function autoResolveBillingFromPanel(patientId, panelName, panelIndex = 0) {
       allowed_charge_mode_code: allowedChargeMode,
       charge_mode: allowedChargeMode,
       charge_mode_code: allowedChargeMode,
-      selected_charge_mode: ''
+      selected_charge_mode: '',
+      showmrp: Number(picked.showmrp || 0)
     };
     syncPrimaryPanelFields(ensureTbObject(pid));
 
@@ -2669,6 +2702,7 @@ function bindPanelBillingEvents() {
              data-pname="${escHtml(x.pname)}"
              data-comp-cat-id="${escHtml(x.CompCatID ?? '')}"
              data-cat-details="${escHtml(x.CatDetails || '')}"
+             data-showmrp="${escHtml(x.showmrp || 0)}"
              data-billing-charge-mode="${escHtml(x.BillingChargeMode || '')}">
           <strong>${escHtml(x.pname)}</strong>
           <span class="meta">CenterID: ${escHtml(x.CenterID)}</span>
@@ -2688,6 +2722,7 @@ function bindPanelBillingEvents() {
     const compCatId = String($(this).data('comp-cat-id') ?? '');
     const catDetails = String($(this).data('cat-details') || '');
     const billingChargeMode = String($(this).data('billing-charge-mode') || '');
+    const showmrp = Number($(this).data('showmrp') || 0) === 1 ? 1 : 0;
 
     $(`#tb-panel-input-${key}`).val(pname);
     $(`#tb-panel-suggest-${key}`).addClass('d-none').html('');
@@ -2695,14 +2730,15 @@ function bindPanelBillingEvents() {
     const tb = ensureTbObject(patientId);
     const section = getPanelSection(patientId, panelIndex);
     const allowedChargeMode = normalizeChargeModeCode(billingChargeMode);
-    section.panel = { center_id: centerId, pname };
+    section.panel = { center_id: centerId, pname, showmrp };
     section.billing = {
       comp_cat_id: compCatId,
       cat_details: catDetails,
       allowed_charge_mode_code: allowedChargeMode,
       charge_mode: allowedChargeMode,
       charge_mode_code: allowedChargeMode,
-      selected_charge_mode: ''
+      selected_charge_mode: '',
+      showmrp
     };
     section.selected_tests = [];
     syncPrimaryPanelFields(tb);
@@ -2845,6 +2881,31 @@ function bindPanelBillingEvents() {
     });
   });
 
+  $('#tests-billing-sections').off('click', '.tb-remove-prescription').on('click', '.tb-remove-prescription', function () {
+    if (isModifyContextActive()) return;
+    const pid = String($(this).data('patient-id') || '');
+    const relName = String($(this).data('rel-name') || '');
+    if (!pid || !relName) return;
+
+    const $btn = $(this);
+    $btn.prop('disabled', true);
+
+    $.ajax({
+      url: `/hhome-collection/patient/${pid}/prescriptions/remove`,
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({ rel_name: relName }),
+      success: function (res) {
+        renderSelectedPatientsState(res.selected_patients || []);
+        renderTestsBilling();
+      },
+      error: function (xhr) {
+        alert(xhr.responseJSON?.message || 'Prescription remove failed');
+        $btn.prop('disabled', false);
+      }
+    });
+  });
+
   $('#tests-billing-sections').off('click', '.tb-remove-selected-test').on('click', '.tb-remove-selected-test', function () {
     const pid = String($(this).data('patient-id') || '');
     const idx = Number($(this).data('panel-index') || 0);
@@ -2940,9 +3001,10 @@ function renderPanelTestsList(tests, emptyMessage) {
   const modalSelected = activePanelPicker.tempSelected || {};
   const selectedOwners = activePanelPicker.selectedOwners || {};
   const html = list.map(t => {
-    const mrp = Number(t?.mrp || 0);
-    const discount = Number(t?.max_discount || 0);
-    const finalCharge = Math.max(0, mrp - discount);
+    const priced = pricedForPanel(t, activePanelPicker?.showMrp);
+    const mrp = Number(priced.mrp || 0);
+    const discount = Number(priced.max_discount || 0);
+    const finalCharge = Math.max(0, Number(priced.charge || 0));
     const key = testSelKey(t);
     const owner = selectedOwners[key];
     const disabledByOtherPanel = owner && !owner.isCurrent;
@@ -2970,9 +3032,9 @@ function renderPanelTestsList(tests, emptyMessage) {
           data-booked-code="${escHtml(t.booked_code || '')}"
           data-gender-rule="${escHtml(t.gender_rule || '')}"
           data-description="${escHtml(t.description || '')}"
-          data-charge="${escHtml(t.charge || '')}"
-          data-mrp="${escHtml(t.mrp || '')}"
-          data-max-discount="${escHtml(t.max_discount || '')}"
+          data-charge="${escHtml(finalCharge)}"
+          data-mrp="${escHtml(mrp)}"
+          data-max-discount="${escHtml(discount)}"
           data-max-allowed-discount="${escHtml(t.max_allowed_discount || '')}"
         />
           <div class="panel-test-main">
@@ -3272,6 +3334,7 @@ function openPanelTestsModal(patientId, panelIndex = 0) {
     panelIndex: idx,
     compCatId,
     billingName: section.billing?.cat_details || '',
+    showMrp: panelShowMrp(section),
     selectedGcode: '',
     selectedScode: '',
     selectedOwners: selectedTestOwnerMap(pid, idx),
@@ -3305,14 +3368,17 @@ function applySelectedPanelTests() {
   if (!pid) return;
   const tb = ensureTbObject(pid);
   const section = getPanelSection(pid, idx);
-  section.selected_tests = Object.values(activePanelPicker.tempSelected || {}).map((t) => ({
-    booked_code: String(t.booked_code || t.testcode1 || t.test_code || '').trim(),
-    description: String(t.description || '').trim(),
-    charge: Number(t.charge || 0),
-    mrp: Number(t.mrp || 0),
-    max_discount: Number(t.max_discount || 0),
-    max_allowed_discount: Number(t.max_allowed_discount || 0)
-  })).filter((t) => !!t.booked_code);
+  section.selected_tests = Object.values(activePanelPicker.tempSelected || {}).map((t) => {
+    const priced = pricedForPanel(t, activePanelPicker?.showMrp);
+    return {
+      booked_code: String(t.booked_code || t.testcode1 || t.test_code || '').trim(),
+      description: String(t.description || '').trim(),
+      charge: Number(priced.charge || 0),
+      mrp: Number(priced.mrp || 0),
+      max_discount: Number(priced.max_discount || 0),
+      max_allowed_discount: Number(priced.max_allowed_discount || 0)
+    };
+  }).filter((t) => !!t.booked_code);
   syncPrimaryPanelFields(tb);
   renderSelectedTestsForPanel(pid, idx);
   if (panelTestsModal) panelTestsModal.hide();
@@ -3381,6 +3447,20 @@ function renderTestsBilling() {
       const selectedTbs = normalizePatientTbs(existing.cce_level_tbs);
       const patientRefBy = String(existing.referred_by || p.referred_by || '').trim();
       const localUploadCount = getLocalPrescriptionUploadCount(pid);
+      const stagedPrescriptionItems = !isModifyContextActive() ? getStagedPrescriptionItems(p) : [];
+      const prescriptionChipHtml = stagedPrescriptionItems.map((item) => `
+        <span class="badge border me-1 mb-1 d-inline-flex align-items-center gap-1" style="background:#f3e8d7;border-color:#d6b98f !important;color:#4a3420;">
+          ${escHtml(item.label || 'Prescription')}
+          <button
+            type="button"
+            class="tb-remove-prescription"
+            aria-label="Remove prescription"
+            data-patient-id="${escHtml(pid)}"
+            data-rel-name="${escHtml(item.rel_name)}"
+            style="border:0;background:transparent;color:#dc3545;font-weight:700;line-height:1;padding:0 2px;"
+          >x</button>
+        </span>
+      `).join('');
       const firstSection = getPanelSection(pid, 0);
       if ((!firstSection.panel || !firstSection.panel.pname) && p.panel_company) {
         firstSection.panel = firstSection.panel || {};
@@ -3411,6 +3491,9 @@ function renderTestsBilling() {
           <div class="d-flex justify-content-end align-items-center gap-2 mt-2">
             <div id="tb-prescription-upload-count-${pid}" class="small text-success ${localUploadCount ? '' : 'd-none'}">
               Uploaded in this booking: ${localUploadCount}
+            </div>
+            <div class="tb-staged-prescription-items flex-grow-1 text-start">
+              ${prescriptionChipHtml}
             </div>
             <input id="tb-prescription-input-${pid}" type="file" class="d-none tb-prescription-input" data-patient-id="${pid}" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" multiple>
             <button type="button" class="btn btn-dark btn-sm tb-attach-prescription tb-compact-action" data-patient-id="${pid}">
@@ -3580,12 +3663,13 @@ function renderReview() {
           const isPayingPanel = selectedMode === 'P';
           const isCreditPanel = selectedMode === 'C';
           const isFreePanel = selectedMode === 'F';
-          const testsSummary = renderReviewTestsHtml(selectedTests, catalog, selectedMode);
+          const showMrp = panelShowMrp(section);
+          const testsSummary = renderReviewTestsHtml(selectedTests, catalog, selectedMode, showMrp);
           const chargeMode = chargeModeLabel(selectedMode);
           const panelMaxAllowed = isFreePanel ? 0 : selectedTests.reduce((acc, t) => acc + Number(t?.max_allowed_discount || 0), 0);
           const panelAdditionalCap = isFreePanel ? 0 : selectedTests.reduce((acc, t) => {
             const allowed = Number(t?.max_allowed_discount || 0);
-            const base = Number(t?.max_discount || 0);
+            const base = showMrp ? 0 : Number(t?.max_discount || 0);
             return acc + Math.max(0, allowed - base);
           }, 0);
           patientTotal += Number(testsSummary.total || 0);

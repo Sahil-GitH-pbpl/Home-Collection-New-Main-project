@@ -16,7 +16,7 @@ from app.alerts import send_whatsapp_to_number
 from app.db.connection import get_db_connection
 
 
-TARGET_PHONE = "8057054076"
+TARGET_PHONES = ["8057054076", "120363417280731168"]
 
 TBS_LABELS = {
     "1": "Test confirmed and booked",
@@ -523,7 +523,12 @@ def build_actual_message(cur, target_date: date):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Send Home Collection daily WhatsApp summaries.")
-    parser.add_argument("--phone", default=TARGET_PHONE, help="WhatsApp target number.")
+    parser.add_argument(
+        "--phone",
+        action="append",
+        default=None,
+        help="WhatsApp target number/group id. Can be passed multiple times.",
+    )
     parser.add_argument("--today", default="", help="Override today date as YYYY-MM-DD for testing.")
     return parser.parse_args()
 
@@ -541,8 +546,10 @@ def main():
     finally:
         conn.close()
 
-    for msg in (actual_msg, planned_msg):
-        send_whatsapp_to_number(args.phone, msg)
+    targets = args.phone or TARGET_PHONES
+    for target in targets:
+        for msg in (actual_msg, planned_msg):
+            send_whatsapp_to_number(target, msg)
 
 
 if __name__ == "__main__":
