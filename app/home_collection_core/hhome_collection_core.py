@@ -5876,14 +5876,7 @@ class HHomeCollectionCore:
         finally:
             conn.close()
 
-    def leaderboard_counts(self, date_from: str = "", date_to: str = ""):
-        """
-        TEMP FEATURE:
-        Returns two leaderboards for HC dashboard:
-        1) booking_creators: who created how many bookings
-        2) phlebo_completions: who completed how many items (bookings + appointments)
-        This block is documented in README for future cleanup/removal.
-        """
+    def marketing_rows(self, date_from: str = "", date_to: str = ""):
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
@@ -5894,87 +5887,73 @@ class HHomeCollectionCore:
                 if not to_date:
                     to_date = from_date
 
-                # Rule requested by user:
-                # - Booking leaderboard date source: hhome_collection_booking.created_at
-                # - Phlebo leaderboard date source: hhome_collection_booking.preferred_visit_date
-                # - Booking leaderboard: count by created_by
-                # - Phlebo leaderboard: count by assigned_phlebotomist_id for completed bookings only
                 cur.execute(
                     """
                     SELECT
-                        u.id AS user_id,
-                        TRIM(COALESCE(u.name, 'Unknown')) AS full_name,
-                        COUNT(*) AS total_count
-                    FROM hhome_collection_booking hcb
-                    LEFT JOIN users u ON u.id = hcb.created_by
-                    WHERE hcb.created_by IS NOT NULL
-                      AND hcb.created_by > 0
-                      AND DATE(hcb.created_at) >= %s
-                      AND DATE(hcb.created_at) <= %s
-                    GROUP BY u.id, TRIM(COALESCE(u.name, 'Unknown'))
-                    ORDER BY total_count DESC, full_name ASC
+                        b.id AS booking_id,
+                        b.preferred_visit_date,
+                        b.preferred_time_slot,
+                        b.booking_status,
+                        b.total_amount,
+                        b.intrnl_rfrncd_by,
+                        GROUP_CONCAT(
+                            NULLIF(TRIM(CONCAT_WS(' ', p.title, p.full_name)), '')
+                            ORDER BY bp.id SEPARATOR ', '
+                        ) AS patient_names,
+                        GROUP_CONCAT(
+                            NULLIF(TRIM(COALESCE(p.contact_mobile, '')), '')
+                            ORDER BY bp.id SEPARATOR ', '
+                        ) AS patient_mobiles,
+                        GROUP_CONCAT(
+                            COALESCE(NULLIF(TRIM(p.panel_company), ''), '-')
+                            ORDER BY bp.id SEPARATOR ', '
+                        ) AS panel_companies,
+                        GROUP_CONCAT(
+                            NULLIF(TRIM(COALESCE(bp.ref_by, '')), '')
+                            ORDER BY bp.id SEPARATOR ', '
+                        ) AS ref_by_values,
+                        GROUP_CONCAT(
+                            COALESCE(bp.patient_final_amount, 0)
+                            ORDER BY bp.id SEPARATOR ','
+                        ) AS patient_amounts
+                    FROM hhome_collection_booking b
+                    LEFT JOIN hhome_collection_booking_patient bp ON bp.booking_id = b.id
+                    LEFT JOIN hpatient_master p ON p.id = bp.patient_id
+                    WHERE DATE(b.preferred_visit_date) >= %s
+                      AND DATE(b.preferred_visit_date) <= %s
+                    GROUP BY b.id
+                    ORDER BY b.preferred_visit_date ASC, b.id ASC
                     """,
                     (from_date, to_date),
                 )
-                creators = cur.fetchall() or []
-
-                cur.execute(
-                    """
-                    SELECT
-                        x.user_id AS user_id,
-                        TRIM(COALESCE(u.name, 'Unknown')) AS full_name,
-                        COUNT(*) AS total_count
-                    FROM (
-                        SELECT
-                            hcb.assigned_phlebotomist_id AS user_id
-                        FROM hhome_collection_booking hcb
-                        WHERE hcb.booking_status = 3
-                          AND hcb.assigned_phlebotomist_id IS NOT NULL
-                          AND hcb.assigned_phlebotomist_id > 0
-                          AND DATE(hcb.preferred_visit_date) >= %s
-                          AND DATE(hcb.preferred_visit_date) <= %s
-
-                        UNION ALL
-
-                        SELECT
-                            ap.assigned_phlebotomist_id AS user_id
-                        FROM hhome_collection_booking_appointment ap
-                        WHERE ap.appointment_status = 3
-                          AND ap.assigned_phlebotomist_id IS NOT NULL
-                          AND ap.assigned_phlebotomist_id > 0
-                          AND DATE(ap.preferred_visit_date) >= %s
-                          AND DATE(ap.preferred_visit_date) <= %s
-                    ) x
-                    LEFT JOIN users u ON u.id = x.user_id
-                    GROUP BY x.user_id, TRIM(COALESCE(u.name, 'Unknown'))
-                    ORDER BY total_count DESC, full_name ASC
-                    """,
-                    (from_date, to_date, from_date, to_date),
-                )
-                completions = cur.fetchall() or []
-
-                return {
-                    "booking_creators": [
+                rows = cur.fetchall() or []
+                result = []
+                for r in rows:
+                    visit_date = r.get("preferred_visit_date")
+                    patient_amounts = [
+                        float(x or 0)
+                        for x in self._norm_code(r.get("patient_amounts")).split(",")
+                        if self._norm_code(x) != ""
+                    ]
+                    total_amount = float(r.get("total_amount") or 0)
+                    result.append(
                         {
-                            "sr_no": i + 1,
-                            "user_id": int(r.get("user_id") or 0),
-                            "name": self._norm_code(r.get("full_name")) or "Unknown",
-                            "count": int(r.get("total_count") or 0),
+                            "booking_id": int(r.get("booking_id") or 0),
+                            "patient_names": self._norm_code(r.get("patient_names")) or "-",
+                            "patient_mobiles": self._norm_code(r.get("patient_mobiles")) or "-",
+                            "preferred_visit_date": visit_date.isoformat() if hasattr(visit_date, "isoformat") else self._norm_code(visit_date),
+                            "preferred_time_slot": self._norm_code(r.get("preferred_time_slot")) or "-",
+                            "panel_companies": self._norm_code(r.get("panel_companies")) or "-",
+                            "ref_by": self._norm_code(r.get("ref_by_values")) or "-",
+                            "internal_ref_by": self._norm_code(r.get("intrnl_rfrncd_by")) or "-",
+                            "total_amount": total_amount,
+                            "patient_amounts": patient_amounts,
+                            "status": self._booking_status_label(int(r.get("booking_status") or 0)),
                         }
-                        for i, r in enumerate(creators)
-                    ],
-                    "phlebo_completions": [
-                        {
-                            "sr_no": i + 1,
-                            "user_id": int(r.get("user_id") or 0),
-                            "name": self._norm_code(r.get("full_name")) or "Unknown",
-                            "count": int(r.get("total_count") or 0),
-                        }
-                        for i, r in enumerate(completions)
-                    ],
-                }
+                    )
+                return result
         except Exception:
-            return {"booking_creators": [], "phlebo_completions": []}
+            return []
         finally:
             conn.close()
 

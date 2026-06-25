@@ -3,54 +3,31 @@
 {% block title %}Whtsap Pnl{% endblock %}
 
 {% block content %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/whatsapp_panel.css') }}?v=6" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/whatsapp_panel.css') }}?v=22" />
     <main class="appShell" data-provider="{{ provider }}" data-current-user-id="{{ current_user.id }}" data-current-user-name="{{ current_user.display_name }}">
       <div class="toast hidden" id="toast"></div>
       <section class="titleRow titleActionsOnly">
         <div class="pageActions">
           <span class="userBadge">{{ current_user.display_name }}</span>
           <input id="dateInput" class="dateControl" type="date" />
-          <button class="layoutToggle active" id="toggleChatList" type="button">Hide Chat List</button>
-          <button class="outlineBtn" id="newConversationBtn" type="button" disabled>+ New Conversation</button>
-        </div>
-      </section>
-      <section class="hubGrid" id="hubGrid">
-        <aside class="queueSidebar">
-          <div class="sidebarSearch">
-            <span class="uiIcon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
-            </span>
-            <input id="searchInput" placeholder="Search chat, patient, mobile" />
-          </div>
-          <nav id="queueNav">
+          <nav id="queueNav" class="queueTopNav">
             <button class="active" type="button" data-queue="All Chats" title="All Chats"><span>All</span><strong>0</strong></button>
             <button type="button" data-queue="Unassigned" title="Unassigned"><span>Unassigned</span><strong>0</strong></button>
             <button type="button" data-queue="My Chats" title="My Chats"><span>Mine</span><strong>0</strong></button>
             <button type="button" data-queue="SLA Breached" title="SLA Breached"><span>SLA</span><strong>0</strong></button>
             <button type="button" data-queue="Archived" title="Archived"><span>Archive</span><strong>0</strong></button>
           </nav>
-          <div class="slaLegend">
-            <h3>Phase 1 SLA</h3>
-            <span><i class="dot green"></i> Reply &lt; 5 min</span>
-            <span><i class="dot amber"></i> Reply 5-15 min</span>
-            <span><i class="dot red"></i> Reply &gt; 15 min</span>
-            <span><i class="dot breach"></i> Breached &gt; 30 min</span>
-          </div>
-        </aside>
+          <button class="layoutToggle active" id="toggleChatList" type="button">Hide Chat List</button>
+          <button class="outlineBtn" id="newConversationBtn" type="button" disabled>+ New Conversation</button>
+        </div>
+      </section>
+      <section class="hubGrid" id="hubGrid">
         <section class="conversationList">
-          <div class="listHeader">
-            <h2 id="activeQueueLabel">All Chats</h2>
-            <div class="compactFilters">
-              <label class="selectWrap">
-                <select id="slaFilter">
-                  <option>SLA</option>
-                  <option>Green</option>
-                  <option>Amber</option>
-                  <option>Red</option>
-                  <option>Breached</option>
-                </select>
-              </label>
-            </div>
+          <div class="sidebarSearch chatListSearch">
+            <span class="uiIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+            </span>
+            <input id="searchInput" placeholder="Search chat, patient, mobile" />
           </div>
           <div class="chatRows" id="conversationList">
             <div class="emptyLink">Loading conversations...</div>
@@ -62,14 +39,16 @@
             <div>
               <h2 id="activeMobile">No conversation selected</h2>
               <p id="activeSummary">Select a patient conversation to open the thread.</p>
-              <div class="ownerLine" id="ownerLine">
-                <span>Owner: None</span>
-                <span id="slaStatus">-</span>
-                <span id="takenAt">Not taken</span>
-              </div>
             </div>
+            <button class="applyBtn" id="takeBtn" type="button">Take Ownership</button>
+            <button class="closeBtn" id="closeBtn" type="button" title="Close Conversation">Close</button>
           </div>
           <div class="ownershipBar">
+            <div class="ownerLine" id="ownerLine">
+              <span>Owner: None</span>
+              <span id="slaStatus">-</span>
+              <span id="takenAt">Not taken</span>
+            </div>
             <div>
               <strong title="Conversation Type">Type</strong>
               <div class="typeControl">
@@ -86,8 +65,6 @@
                 <button class="saveTypeBtn saved" id="saveTypeBtn" type="button" title="Conversation type saved">Saved</button>
               </div>
             </div>
-            <button class="applyBtn" id="takeBtn" type="button">Take Ownership</button>
-            <button class="closeBtn" id="closeBtn" type="button" title="Close Conversation">Close</button>
           </div>
           <div class="thread" id="messages">
             <span class="dateDivider">Today</span>
@@ -197,5 +174,5 @@
       </div>
     </main>
     <script src="{{ url_for('static', filename='js/socket.io.min.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/whatsapp_panel.js') }}?v=15"></script>
+    <script src="{{ url_for('static', filename='js/whatsapp_panel.js') }}?v=19"></script>
 {% endblock %}

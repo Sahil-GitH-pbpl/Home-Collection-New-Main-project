@@ -10,8 +10,10 @@
       <a class="btn btn-outline-primary btn-sm top-action-btn" href="/hhome-collection"><span class="me-1"><strong>+</strong></span>Add Booking</a>
       <a class="btn btn-primary btn-sm top-action-btn" href="/hhome-collection/dashboard" style="background:#0b1f4d;border-color:#0b1f4d;"><span class="me-1">&#128196;</span>All Booking</a>
       <a class="btn btn-outline-primary btn-sm top-action-btn" id="btn-go-assign-booking" href="/hhome-collection/assign-booking"><span class="me-1">&#128203;</span>Asgn Booking</a>
-      <!-- TEMP FEATURE: Leaderboard button. Remove later with related files listed in README. -->
-      <a class="btn btn-outline-primary btn-sm top-action-btn" href="/hhome-collection/leaderboard"><span class="me-1">&#127942;</span>Leaderboard</a>
+      {% set hc_desig = ((session.get('designation') or session.get('role') or '')|lower|trim) %}
+      {% if hc_desig in ['admin', 'marketing'] %}
+      <a class="btn btn-outline-primary btn-sm top-action-btn" href="/hhome-collection/marketing"><span class="me-1">&#128202;</span>Marketing</a>
+      {% endif %}
       <a class="btn btn-outline-primary btn-sm top-action-btn" href="/hhome-collection/audit-trail"><span class="me-1">&#128269;</span>Audit Trail</a>
     </div>
   </div>

@@ -41,16 +41,22 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body p-2">
-        <div class="row g-2 align-items-end mb-2">
+        <div class="row g-2 align-items-center mb-2">
           <div class="col-md-3">
-            <label class="form-label">Date</label>
-            <input type="text" id="slot-grid-date" class="form-control" placeholder="dd/mm/yyyy" autocomplete="off">
+            <div class="dashboard-filter-inline">
+              <label class="form-label mb-0">Date</label>
+              <input type="text" id="slot-grid-date" class="form-control" placeholder="dd/mm/yyyy" autocomplete="off">
+            </div>
           </div>
           <div class="col-md-3">
-            <label class="form-label">Selected Route</label>
-            <input type="text" id="slot-selected-route" class="form-control" readonly>
+            <div class="dashboard-filter-inline">
+              <label class="form-label mb-0">Selected Route</label>
+              <input type="text" id="slot-selected-route" class="form-control" readonly>
+            </div>
           </div>
-          <div class="col-md-6 text-md-end small text-muted" id="slot-grid-meta"></div>
+          <div class="col-md-6">
+            <div id="slot-grid-meta" class="dash-mini-chip slot-grid-total-chip">Total bookings: 0</div>
+          </div>
         </div>
         <div id="slot-grid-wrap" class="slot-grid-wrap">
           <div class="text-muted p-2">Loading...</div>

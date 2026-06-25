@@ -2491,22 +2491,28 @@ function renderRouteSlotGrid(res) {
   }
 
   const indexed = {};
+  const routeCounts = {};
+  const slotCounts = {};
   bookings.forEach(b => {
     const key = `${b.route || 'UNASSIGNED'}|${b.slot_key}`;
     indexed[key] = indexed[key] || [];
     indexed[key].push(b);
+    const routeKey = b.route || 'UNASSIGNED';
+    const slotKey = b.slot_key;
+    routeCounts[routeKey] = (routeCounts[routeKey] || 0) + 1;
+    slotCounts[slotKey] = (slotCounts[slotKey] || 0) + 1;
   });
 
   const slots = generateHalfHourSlots();
   let html = '<table class="slot-grid-table"><thead><tr><th class="slot-time-col">Time Slot</th>';
   routes.forEach(r => {
     const cls = r === selectedRoute ? 'route-selected' : '';
-    html += `<th class="${cls}"${routeBgStyle(r, true, r === selectedRoute)}>${r}</th>`;
+    html += `<th class="${cls}"${routeBgStyle(r, true, r === selectedRoute)}>${escHtml(r)} <span class="slot-count-chip">${Number(routeCounts[r] || 0)}</span></th>`;
   });
   html += '</tr></thead><tbody>';
 
   slots.forEach(s => {
-    html += `<tr><td class="slot-time-col">${s.label}</td>`;
+    html += `<tr><td class="slot-time-col">${escHtml(s.label)} <span class="slot-count-chip">${Number(slotCounts[s.key] || 0)}</span></td>`;
     routes.forEach(r => {
       const cls = r === selectedRoute ? 'route-selected' : '';
       const items = indexed[`${r}|${s.key}`] || [];

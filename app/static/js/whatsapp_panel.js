@@ -31,7 +31,6 @@ const els = {
   breachCount: document.querySelector("#breachCount"),
   topStateChip: document.querySelector("#topStateChip"),
   queueNav: document.querySelector("#queueNav"),
-  activeQueueLabel: document.querySelector("#activeQueueLabel"),
   conversationList: document.querySelector("#conversationList"),
   messages: document.querySelector("#messages"),
   activeMobile: document.querySelector("#activeMobile"),
@@ -568,7 +567,7 @@ function renderPatientTags(linkedPatients, row) {
   if (els.tagNote) els.tagNote.textContent = "";
   if (!els.tagStrip) return;
   els.tagStrip.innerHTML = tags.length
-    ? `<span class="patientTagText">${escapeHtml(tags.join(", "))}</span>`
+    ? tags.map((tag) => `<span class="patientTagChip">${escapeHtml(tag)}</span>`).join("")
     : '<span class="emptyTag">-</span>';
 }
 
@@ -657,19 +656,17 @@ function renderUnifiedLookup(data, row) {
       : "No linked patients found";
     els.contactContext.innerHTML = linkedPatients.length
       ? `
-        <table class="linkedPatientTable">
-          <thead>
-            <tr><th>Name</th><th>Mobile</th></tr>
-          </thead>
-          <tbody>
-          ${linkedPatients.slice(0, 6).map((patient, index) => `
-            <tr>
-              <td>${escapeHtml(patientDisplayName(patient))}</td>
-              <td>${escapeHtml(patient.contact_mobile || patient.alternate_mobile || "-")}</td>
-            </tr>
-          `).join("")}
-          </tbody>
-        </table>
+        <div class="linkedPatientList">
+          ${linkedPatients.slice(0, 6).map((patient) => {
+            const name = patientDisplayName(patient);
+            return `
+              <div class="linkedPatientItem">
+                <strong>${escapeHtml(name)}</strong>
+                <span>${escapeHtml(patient.contact_mobile || patient.alternate_mobile || "-")}</span>
+              </div>
+            `;
+          }).join("")}
+        </div>
       `
       : `
         <p class="emptyLink">No linked patients found.</p>
@@ -809,6 +806,7 @@ function renderConversations() {
     const currentSla = sla(row);
     const owner = ownerFor(row);
     const selected = row.mobile === state.activeMobile ? " selected" : "";
+    const tags = mergeTags(row);
     return `
       <button class="chatRow${selected}" type="button" data-mobile="${escapeHtml(row.mobile)}">
         <div class="rowTop">
@@ -817,13 +815,11 @@ function renderConversations() {
         </div>
         <p>${escapeHtml(conversationPreview(row))}</p>
         <div class="rowMeta">
+          ${tags.map((tag) => `<span class="${tagClass(tag)}">${escapeHtml(tag)}</span>`).join("")}
           ${slaBadge(row)}
           <span>${escapeHtml(owner || "Unassigned")}</span>
           ${isClosed(row) ? '<span class="status closed">Closed</span>' : ""}
           ${row.color === "red" ? "<b>1</b>" : ""}
-        </div>
-        <div class="tagList">
-          ${mergeTags(row).map((tag) => `<span class="${tagClass(tag)}">${escapeHtml(tag)}</span>`).join("")}
         </div>
       </button>
     `;
@@ -1291,7 +1287,6 @@ els.queueNav.addEventListener("click", (event) => {
   const button = event.target.closest("[data-queue]");
   if (!button) return;
   state.activeQueue = button.dataset.queue;
-  els.activeQueueLabel.textContent = state.activeQueue;
   els.queueNav.querySelectorAll("[data-queue]").forEach((item) => item.classList.toggle("active", item === button));
   renderConversations();
 });

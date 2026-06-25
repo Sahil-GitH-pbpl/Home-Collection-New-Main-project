@@ -1,10 +1,15 @@
-from flask import Blueprint, current_app, jsonify, render_template, request, session
+from flask import Blueprint, abort, current_app, jsonify, render_template, request, session
 from datetime import date, timedelta
 
 from app.home_collection_core import HHomeCollectionCore
 
 hhome_collection_dashboard_bp = Blueprint("hhome_collection_dashboard", __name__)
 service = HHomeCollectionCore()
+
+
+def _can_view_marketing() -> bool:
+    desig = (session.get("designation") or session.get("role") or "").strip().lower()
+    return desig in {"admin", "marketing"}
 
 
 @hhome_collection_dashboard_bp.get("/hhome-collection/dashboard")
@@ -18,10 +23,11 @@ def assign_booking():
     return render_template("hhome_collection/hassign_booking.html", default_date=default_date)
 
 
-@hhome_collection_dashboard_bp.get("/hhome-collection/leaderboard")
-def leaderboard():
-    # Temporary HC leaderboard screen (explicitly documented in README for future removal).
-    return render_template("hhome_collection/hleaderboard.html")
+@hhome_collection_dashboard_bp.get("/hhome-collection/marketing")
+def marketing():
+    if not _can_view_marketing():
+        abort(403)
+    return render_template("hhome_collection/hmarketing.html", default_date=date.today().isoformat())
 
 
 @hhome_collection_dashboard_bp.get("/hhome-collection/audit-trail")
@@ -50,12 +56,13 @@ def dashboard_data():
     return jsonify({"ok": True, **service.dashboard_rows(params)})
 
 
-@hhome_collection_dashboard_bp.get("/hhome-collection/leaderboard-data")
-def leaderboard_data():
-    # TEMP: simple aggregated leaderboard for booking creation + completion ownership.
+@hhome_collection_dashboard_bp.get("/hhome-collection/marketing-data")
+def marketing_data():
+    if not _can_view_marketing():
+        abort(403)
     date_from = (request.args.get("date_from") or "").strip()
     date_to = (request.args.get("date_to") or "").strip()
-    return jsonify({"ok": True, **service.leaderboard_counts(date_from=date_from, date_to=date_to)})
+    return jsonify({"ok": True, "rows": service.marketing_rows(date_from=date_from, date_to=date_to)})
 
 
 @hhome_collection_dashboard_bp.get("/hhome-collection/audit-trail-data")
