@@ -536,6 +536,33 @@ def attach_patient_names(rows):
     return rows
 
 
+def patient_mobile_variants_for_name_search(query):
+    query = str(query or "").strip()
+    if len(query) < 2:
+        return []
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT contact_mobile, alternate_mobile
+                FROM hpatient_master
+                WHERE full_name LIKE %s
+                LIMIT 500
+                """,
+                (f"%{query}%",),
+            )
+            patients = cur.fetchall()
+    finally:
+        conn.close()
+    return sorted({
+        variant
+        for patient in patients
+        for mobile in (patient.get("contact_mobile"), patient.get("alternate_mobile"))
+        for variant in phone_variants(mobile)
+    })
+
+
 def resolve_caller(cur, variants):
     if not variants:
         return None
@@ -1080,8 +1107,15 @@ def whatsapp_conversations():
             )
         """)
     if query:
-        filters.append("(mobile LIKE %s OR msg LIKE %s OR empname LIKE %s)")
-        params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
+        patient_mobile_variants = patient_mobile_variants_for_name_search(query)
+        search_filters = ["mobile LIKE %s"]
+        search_params = [f"%{query}%"]
+        if patient_mobile_variants:
+            placeholders = ", ".join(["%s"] * len(patient_mobile_variants))
+            search_filters.append(f"mobile IN ({placeholders})")
+            search_params.extend(patient_mobile_variants)
+        filters.append(f"({' OR '.join(search_filters)})")
+        params.extend(search_params)
     sql = f"""
         SELECT w.id, w.mobile, w.msg, w.img, w.pdff, w.docid, w.imgid, w.empname, w.datetimess, w.color,
                w.provider_message_id, w.delivery_status,

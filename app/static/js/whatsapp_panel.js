@@ -775,7 +775,7 @@ function visibleRows() {
       (state.activeQueue === "My Chats" && isOpenConversation(row) && owner === currentUser) ||
       (state.activeQueue === "SLA Breached" && isOpenConversation(row) && currentSla.value > 30) ||
       (state.activeQueue === "Archived" && isArchivedForSelectedDate(row));
-    const text = `${row.mobile} ${row.msg || ""} ${row.empname || ""} ${row.patient_name || ""} ${row.patient_code || ""} ${row.id}`.toLowerCase();
+    const text = `${row.mobile || ""} ${row.patient_name || ""}`.toLowerCase();
     return matchesQueue && (!q || text.includes(q));
   });
 }
