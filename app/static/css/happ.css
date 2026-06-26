@@ -2169,6 +2169,10 @@ button.dash-doc-thumb {
   background: #dcecff !important;
 }
 
+.ptm-table tbody tr.ptm-pending-mrp td {
+  background: #fff7d6 !important;
+}
+
 .ptm-table .form-check-input {
   border: 1px solid #000000;
   box-shadow: none;

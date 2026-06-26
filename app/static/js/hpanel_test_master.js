@@ -4,6 +4,7 @@
   let panelFlags = {};
   let testFlags = {};
   let searchTimer = null;
+  let pendingShowMrp = {};
 
   function esc(v) {
     return String(v ?? '')
@@ -14,30 +15,44 @@
       .replaceAll("'", '&#39;');
   }
 
+  function panelKey(compCatId, panelName) {
+    return `${String(compCatId || '')}|${String(panelName || '').trim().toLowerCase()}`;
+  }
+
   function renderPanelRows(items) {
     const rows = Array.isArray(items) ? items : [];
     if (!rows.length) {
-      $('#ptm-panel-tbody').html('<tr><td colspan="8" class="text-muted text-center py-3">No panel company found.</td></tr>');
+      $('#ptm-panel-tbody').html('<tr><td colspan="6" class="text-muted text-center py-3">No panel company found.</td></tr>');
       return;
     }
     const html = rows.map((x, i) => {
       const comp = String(x.CompCatID ?? '');
-      const flags = panelFlags[comp] || {};
+      const pname = String(x.pname || '');
+      const key = panelKey(comp, pname);
+      if (!panelFlags[key]) {
+        panelFlags[key] = {
+          showmrp: Number(x.showmrp || 0) === 1
+        };
+      }
+      const flags = panelFlags[key] || {};
       const selectedClass = selectedCompCatId && selectedCompCatId === comp ? 'ptm-selected-row' : '';
+      const pendingClass = pendingShowMrp[key] ? 'ptm-pending-mrp' : '';
       return `
-        <tr class="${selectedClass}" data-comp-cat-id="${esc(comp)}" data-panel-name="${esc(x.pname || '')}">
+        <tr class="${selectedClass} ${pendingClass}" data-comp-cat-id="${esc(comp)}" data-panel-name="${esc(pname)}">
           <td>${i + 1}</td>
-          <td>${esc(x.pname || '')}</td>
+          <td>${esc(pname)}</td>
+          <td>${esc(comp)}</td>
           <td>${esc(x.CatDetails || '')}</td>
           <td>${esc(x.BillingChargeMode || '')}</td>
-          <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-panel" data-comp-cat-id="${esc(comp)}" data-flag="show_test_charge" ${flags.show_test_charge ? 'checked' : ''}></td>
-          <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-panel" data-comp-cat-id="${esc(comp)}" data-flag="cghs_card_no" ${flags.cghs_card_no ? 'checked' : ''}></td>
-          <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-panel" data-comp-cat-id="${esc(comp)}" data-flag="tms_flow" ${flags.tms_flow ? 'checked' : ''}></td>
-          <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-panel" data-comp-cat-id="${esc(comp)}" data-flag="is_booking_tab" ${flags.is_booking_tab ? 'checked' : ''}></td>
+          <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-panel" data-comp-cat-id="${esc(comp)}" data-panel-name="${esc(pname)}" data-flag="showmrp" ${flags.showmrp ? 'checked' : ''}></td>
         </tr>
       `;
     }).join('');
     $('#ptm-panel-tbody').html(html);
+  }
+
+  function updateApplyButton() {
+    $('#ptm-apply-show-mrp').toggleClass('d-none', !Object.keys(pendingShowMrp).length);
   }
 
   function testKey(compCatId, bookedCode) {
@@ -120,9 +135,16 @@
 
     $('#ptm-panel-tbody').on('change', '.ptm-flag-panel', function () {
       const comp = String($(this).data('comp-cat-id') ?? '');
+      const panelName = String($(this).data('panel-name') ?? '');
       const flag = String($(this).data('flag') ?? '');
-      panelFlags[comp] = panelFlags[comp] || {};
-      panelFlags[comp][flag] = $(this).is(':checked');
+      const key = panelKey(comp, panelName);
+      panelFlags[key] = panelFlags[key] || {};
+      panelFlags[key][flag] = $(this).is(':checked');
+      if (flag === 'showmrp') {
+        pendingShowMrp[key] = { comp_cat_id: comp, panel_name: panelName, showmrp: $(this).is(':checked') };
+        $(this).closest('tr').addClass('ptm-pending-mrp');
+        updateApplyButton();
+      }
     });
 
     $('#ptm-test-tbody').on('change', '.ptm-flag-test', function () {
@@ -130,6 +152,26 @@
       const flag = String($(this).data('flag') ?? '');
       testFlags[key] = testFlags[key] || {};
       testFlags[key][flag] = $(this).is(':checked');
+    });
+
+    $('#ptm-apply-show-mrp').on('click', function () {
+      const changes = Object.values(pendingShowMrp);
+      if (!changes.length) return;
+      if (!window.confirm('Are you sure you want to update Show Test MRP for selected panel company?')) return;
+      const $btn = $(this).prop('disabled', true).text('Saving...');
+      const requests = changes.map((payload) => $.ajax({
+        url: '/hhome-collection/panel-company-show-mrp',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(payload)
+      }));
+      $.when.apply($, requests).done(function () {
+        window.location.reload();
+      }).fail(function (xhr) {
+        const msg = xhr?.responseJSON?.message || 'Show Test MRP update failed';
+        alert(msg);
+        $btn.prop('disabled', false).text('Apply');
+      });
     });
   }
 
