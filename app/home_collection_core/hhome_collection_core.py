@@ -738,8 +738,12 @@ class HHomeCollectionCore:
                     if f not in merged:
                         merged.append(f)
                 cur.execute(
-                    "UPDATE hhome_collection_booking_patient SET prescription_files=%s, created_by=%s WHERE id=%s",
-                    (",".join(merged) or None, actor, int(row.get('id') or 0)),
+                    """
+                    UPDATE hhome_collection_booking_patient
+                    SET prescription_files=%s, created_by=%s, pres_up_by=%s
+                    WHERE id=%s
+                    """,
+                    (",".join(merged) or None, actor, f"W,{actor}", int(row.get('id') or 0)),
                 )
                 conn.commit()
                 return {"ok": True, "files": merged}
@@ -5497,9 +5501,16 @@ class HHomeCollectionCore:
                            p.tag, COALESCE(hcbp.selected_panel_companies, '') AS panel_company,
                            p.patient_documents,
                            COALESCE(hcbp.prescription_files, '') AS prescription_files,
-                           {patient_photo_select}
+                           {patient_photo_select},
+                           COALESCE(hcbp.pres_up_by, '') AS pres_up_by,
+                           COALESCE(pres_u.name, '') AS pres_uploaded_by_name
                     FROM hhome_collection_booking_patient hcbp
                     INNER JOIN hpatient_master p ON p.id = hcbp.patient_id
+                    LEFT JOIN users pres_u
+                      ON pres_u.id = CAST(CASE
+                        WHEN hcbp.pres_up_by LIKE 'W,%%' THEN SUBSTRING_INDEX(hcbp.pres_up_by, ',', -1)
+                        ELSE hcbp.pres_up_by
+                      END AS UNSIGNED)
                     WHERE hcbp.booking_id=%s
                       {patient_status_filter}
                     ORDER BY p.full_name
@@ -5753,6 +5764,16 @@ class HHomeCollectionCore:
                     p["patient_documents"] = self._split_patient_documents(p.get("patient_documents"))
                     p["prescription_files"] = self._split_prescription_files(p.get("prescription_files"))
                     p["patient_photo_files"] = self._split_prescription_files(p.get("patient_photo_files"))
+                    pres_up_by = self._norm_code(p.get("pres_up_by"))
+                    pres_uploaded_by_name = self._norm_code(p.get("pres_uploaded_by_name"))
+                    if pres_uploaded_by_name:
+                        p["pres_uploaded_by_display"] = (
+                            f"{pres_uploaded_by_name} (web)"
+                            if pres_up_by.lower().startswith("w,")
+                            else pres_uploaded_by_name
+                        )
+                    else:
+                        p["pres_uploaded_by_display"] = ""
                     booking_code = self._norm_code(booking.get("booking_code"))
                     if booking_code:
                         prefix = f"{booking_code}/".lower()

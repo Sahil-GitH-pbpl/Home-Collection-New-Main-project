@@ -13,8 +13,8 @@
       --focus:#0648d8;
       --accent:#026e4a;
       --danger:#ef4444;
-      --radius:14px;
-      --shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      --radius:10px;
+      --shadow: 0 6px 16px rgba(15, 23, 42, 0.16);
       --chip:#0f172a;
       --chip-bg:#975101c2;
       --input-border:#bfb0fa;
@@ -35,23 +35,28 @@
     }
     .container { 
       max-width: 1100px; 
-      margin: 16px auto 40px; 
-      padding: 0 16px; 
+      margin: 4px auto 20px; 
+      padding: 0 12px; 
     }
-
     .card { 
       background: var(--card); 
-      padding: 14px 16px; 
+      padding: 0 16px 14px; 
       border-radius: var(--radius); 
-      margin-bottom: 12px; 
+      margin-bottom: 8px; 
       box-shadow: var(--shadow); 
       border: 1px solid var(--border);
+      overflow: hidden;
     }
 
-    h2 { 
-      margin: 0 0 12px 0; 
-      font-size: 18px; 
-      color: var(--muted);
+    .card > h2 { 
+      margin: 0 -16px 14px; 
+      padding: 10px 16px;
+      font-size: 14px; 
+      line-height: 1.15;
+      color: #ffffff;
+      background: #014a7a;
+      font-weight: 800;
+      text-transform: uppercase;
     }
     label { 
       font-size: 14px; 
@@ -61,11 +66,11 @@
     }
     input, select, textarea {
       width: 100%; 
-      padding: 10px 12px; 
-      font-size: 15px; 
-      border-radius: 10px;
+      padding: 8px 10px; 
+      font-size: 14px; 
+      border-radius: 8px;
       border: 1px solid var(--input-border); 
-      margin-bottom: 12px; 
+      margin-bottom: 8px; 
       outline: none; 
       background: #f9fafb;
       box-shadow: var(--input-shadow);
@@ -75,14 +80,14 @@
       box-shadow: var(--input-shadow-focus);
       background:#ffffff;
     }
-    textarea { height: 90px; resize: vertical; }
+    textarea { height: 76px; resize: vertical; }
 
     .row-inline { display: flex; gap: 10px; }
     .row-inline > div { flex: 1; }
 
     .pill-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
     .pill-btn { 
-      padding: 8px 12px; 
+      padding: 6px 11px; 
       background: #e5edf7; 
       border-radius: 999px; 
       cursor: pointer; 
@@ -95,7 +100,7 @@
 
     .tabs { display: flex; gap: 8px; margin-bottom: 10px; }
     .tab { 
-      padding: 8px 14px; 
+      padding: 6px 12px; 
       background: #e5edf7; 
       border-radius: 999px; 
       cursor: pointer; 
@@ -110,7 +115,7 @@
     .quick-grid { display: flex; flex-wrap: wrap; gap: 8px; }
     .quick-btn {
       flex: 1 1 calc(33% - 8px); 
-      padding: 10px; 
+      padding: 8px 10px; 
       text-align: center;
       background: #e5edf7; 
       border-radius: 10px; 
@@ -123,8 +128,8 @@
 
     .submit-btn-final {
       width: 100%; 
-      padding: 12px; 
-      margin-top: 20px;
+      padding: 10px; 
+      margin-top: 8px;
       background: linear-gradient(135deg, var(--accent), var(--focus)); 
       color: white; 
       font-size: 15px; 
@@ -139,16 +144,16 @@
     .grid-main {
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 10px;
     }
 
     @media (min-width: 880px){
       .grid-main {
         display: grid;
         grid-template-columns: minmax(0,1.1fr) minmax(0,0.9fr);
-        gap: 14px;
+        gap: 10px;
       }
-      .column { display:flex; flex-direction:column; gap:14px; }
+      .column { display:flex; flex-direction:column; gap:10px; }
     }
 
     .tag-row { 
@@ -162,7 +167,7 @@
       margin-bottom: 0;
     }
     .tag-add-btn {
-      padding: 10px 12px; 
+      padding: 8px 12px; 
       border-radius: 999px; 
       border: none; 
       background: var(--accent); 
@@ -295,11 +300,11 @@
 
           <!-- Labmate ID -->
           <label for="p-id">Labmate ID (optional)</label>
-          <div style="display: flex; gap: 10px; align-items: end;">
+          <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
             <div style="flex: 1;">
-              <input id="p-id" type="text" name="patient_labmate_id" placeholder="Enter Labmate ID" />
+              <input id="p-id" type="text" name="patient_labmate_id" placeholder="Enter Labmate ID" style="margin-bottom: 0;" />
             </div>
-           <button type="button" id="fetchPatientBtn" style="padding: 6px 10px; background: #026443; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; white-space: nowrap; height: 42px; margin-bottom: 12px;">
+           <button type="button" id="fetchPatientBtn" style="padding: 0 12px; background: #026443; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; white-space: nowrap; height: 36px; margin-bottom: 0;">
   Fetch Details
 </button>
           </div>

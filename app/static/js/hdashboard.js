@@ -293,14 +293,15 @@ function renderBookingReviewModalContent(booking) {
   `);
 }
 
-function renderDocPreviewItem(url, labelPrefix) {
+function renderDocPreviewItem(url, labelPrefix, uploadedBy) {
   const src = String(url || '').trim();
   if (!src) return '';
+  const uploader = esc(String(uploadedBy || '').trim());
   const lower = src.toLowerCase();
   if (lower.endsWith('.pdf')) {
-    return `<button type="button" class="dash-doc-thumb js-doc-preview" data-kind="pdf" data-src="${src}" aria-label="Open PDF" title="Open PDF">PDF</button>`;
+    return `<button type="button" class="dash-doc-thumb js-doc-preview" data-kind="pdf" data-src="${src}" data-uploaded-by="${uploader}" aria-label="Open PDF" title="Open PDF">PDF</button>`;
   }
-  return `<img src="${src}" class="dash-doc-thumb js-doc-preview" data-kind="image" data-src="${src}" alt="doc">`;
+  return `<img src="${src}" class="dash-doc-thumb js-doc-preview" data-kind="image" data-src="${src}" data-uploaded-by="${uploader}" alt="doc">`;
 }
 
 function setDashboardPageLoading(isLoading) {
@@ -514,9 +515,10 @@ function renderExpandedDetails(b, rowStatusCode, bookingId, appointmentId, rowTy
   const patientBlocks = patients.map((p, idx) => {
     const docUrls = Array.isArray(p.patient_document_urls) ? p.patient_document_urls : [];
     const rxUrls = Array.isArray(p.prescription_urls) ? p.prescription_urls : [];
+    const rxUploadedBy = String(p.pres_uploaded_by_display || '').trim();
     const panelCompanies = Array.isArray(p.panel_companies) && p.panel_companies.length ? p.panel_companies.join(', ') : (p.panel_company || '-');
     const docThumbs = docUrls.map((u, i) => renderDocPreviewItem(u, `DOC ${i + 1}`)).join('');
-    const rxThumbs = rxUrls.map((u, i) => renderDocPreviewItem(u, `RX ${i + 1}`)).join('');
+    const rxThumbs = rxUrls.map((u, i) => renderDocPreviewItem(u, `RX ${i + 1}`, rxUploadedBy)).join('');
     const patientTagChips = String(p.tag || '')
       .split(',')
       .map((x) => String(x || '').trim())
@@ -607,7 +609,12 @@ function bindExpandActions() {
       $('.js-doc-preview').off('click').on('click', function () {
         const src = String($(this).data('src') || $(this).attr('src') || '');
         const kind = String($(this).data('kind') || '').toLowerCase();
+        const uploadedBy = String($(this).data('uploaded-by') || '').trim();
         if (!src) return;
+        $('#doc-preview-title')
+          .text(uploadedBy ? `Uploaded by:- ${uploadedBy}` : 'Document Preview')
+          .toggleClass('fw-bold', !!uploadedBy)
+          .css('color', uploadedBy ? '#0b2f6b' : '');
         if (kind === 'pdf' || src.toLowerCase().endsWith('.pdf')) {
           $('#doc-preview-image').addClass('d-none').attr('src', '');
           $('#doc-preview-pdf').removeClass('d-none').attr('src', src);
