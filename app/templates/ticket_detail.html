@@ -6,7 +6,7 @@
   .page-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.95fr);gap:16px;align-items:start}
   @media(max-width:1024px){.page-grid{grid-template-columns:1fr}}
 
-  .card{background:#fff;border-radius:14px;box-shadow:0 10px 24px rgba(15,23,42,.10);padding:10px 12px;border:1px solid #e2e8f0}
+  .card{background:#fff;border-radius:14px;box-shadow:0 10px 24px rgba(15,23,42,.10);padding:8px 10px;border:1px solid #e2e8f0}
   .card h3{margin:0 0 8px 0;font-size:16px;color:#0f172a}
   .card > :last-child{margin-bottom:0 !important}
   .card form{margin:0}
@@ -29,12 +29,12 @@
   .input, select, textarea{width:100%;padding:10px;border:1px solid #d8b4fe;border-radius:10px;background:#fff}
   .input:focus, select:focus, textarea:focus{outline:2px solid #e9d5ff;box-shadow:0 0 0 3px rgba(217,180,255,.25)}
   textarea{min-height:70px}
-  .btn{padding:10px 14px;border-radius:10px;border:0;background:#0d6efd;color:#fff;cursor:pointer}
+  .btn{padding:8px 10px;border-radius:10px;border:0;background:#0d6efd;color:#fff;cursor:pointer}
   .btn.secondary{background:#475569}
   .btn.orange{background:#c2410c;color:#fff}
   .cols-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .cols-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-  .mb8{margin-bottom:8px}.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}
+  .mb8{margin-bottom:6px}.mb12{margin-bottom:10px}.mb16{margin-bottom:12px}
   .divider{height:1px;background:#eef2f7;margin:10px 0}
   .contact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
   .contact-box{border:1px solid #e5e7eb;border-radius:10px;padding:10px;background:#f8fafc}
@@ -78,11 +78,13 @@
   .modal-body{padding:6px 2px}
   .page-title{margin:10px 2px 10px 2px}
   .page-title h2{margin:0;font-size:20px;color:#0f172a}
-  .detail-hero{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #e2e8f0}
+  .detail-hero{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin:-8px -10px 10px -10px;padding:10px 14px;border:0;border-radius:14px 14px 0 0;background:#c4d6fb;border-bottom:1px solid #aebfe6}
+  .detail-main-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
   .detail-identity{display:flex;gap:12px;align-items:flex-start;min-width:0}
   .detail-avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#dbeafe;color:#1d4ed8;font-weight:700;font-size:16px;flex:0 0 auto}
   .detail-name{font-size:24px;line-height:1.1;font-weight:700;color:#0f172a;word-break:break-word}
   .detail-subline{margin-top:4px;font-size:13px;color:#64748b;display:flex;flex-direction:column;gap:2px}
+  .detail-subline .mobile-line{color:#0f172a;font-weight:700}
   .labmate-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:#fff7ed;color:#92400e;font-size:12px;font-weight:700;border:1px solid #fed7aa;width:max-content}
   .status-stack{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto}
   .status-assignee{font-size:14px;line-height:1.3;color:#475569;text-align:right;font-weight:700}
@@ -92,12 +94,16 @@
   .category-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;background:#fff7ed;color:#b45309;font-size:12px;font-weight:700;border:1px solid #fed7aa}
   .right-stack{display:grid;gap:16px}
   .summary-text{font-size:14px;line-height:1.6;color:#0f172a}
+  .summary-copy{font-weight:600}
+  .summary-meta-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;background:#fff;border:1px solid #f3c8a5;color:#7c2d12;font-size:14px;font-weight:800;margin-top:8px}
+  .summary-inline{padding:10px 12px;border:1px solid #f3c8a5;background:#fff7f0;border-radius:14px}
   .summary-list{display:grid;gap:10px}
   .summary-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #edf2f7;font-size:13px}
   .summary-row:last-child{border-bottom:0;padding-bottom:0}
   .summary-label{color:#64748b;font-weight:600}
   .summary-value{color:#0f172a;font-weight:700;text-align:right;word-break:break-word}
   .info-highlight{color:#9a3412;font-weight:700;}
+  .kv .badge{display:inline-flex;align-items:center;white-space:nowrap;vertical-align:middle}
   .history-panel{max-height:420px;overflow:auto;padding-right:6px}
   .history-list{display:grid;gap:12px}
   .history-item{position:relative;padding-left:18px}
@@ -110,10 +116,37 @@
   .muted-card{background:#fde7d7;border-color:#efc19b}
   .action-card.is-disabled{opacity:.7}
   .view-mode .action-card{display:none !important}
+  .assign-current{padding:8px 10px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;font-size:13px;color:#475569}
+  .assign-current strong{display:block;margin-top:2px;font-size:15px;color:#0f172a}
+  .assign-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .action-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .compact-card textarea{min-height:52px}
+  #quickRemarkForm textarea{min-height:186px}
+  .compact-card .mb12{margin-bottom:8px}
+  .compact-card.quick-close textarea{min-height:136px}
+  .compact-card .action-inline{display:flex;gap:10px;flex-wrap:nowrap;align-items:stretch}
+  .compact-card .action-inline .btn{flex:1;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+  .assign-panel{background:#f8fafc;border:1px solid #dbe3ef;border-radius:14px;padding:10px 12px}
+  .assign-panel h3{display:inline-flex;align-items:center;background:#0f2b66;color:#fff;text-transform:uppercase;letter-spacing:.03em;font-size:14px;padding:4px 10px;border-radius:999px;margin-bottom:8px}
+  .assign-panel .muted{color:#64748b}
+  .assign-panel .assign-current{background:transparent;border:0;padding:0;color:#475569}
+  .assign-panel .assign-current strong{display:inline;margin:0 0 0 4px;color:#0f172a;font-size:15px}
+  .assign-panel select,.assign-panel textarea{background:#fff;color:#0f172a;border:1px solid #d1d5db}
+  .assign-panel select:focus,.assign-panel textarea:focus{outline:2px solid #e9d5ff;box-shadow:0 0 0 3px rgba(217,180,255,.25)}
+  .assign-panel textarea{min-height:78px}
+  .right-col .card{padding:8px 10px;box-shadow:inset 0 0 0 1px rgba(51,65,85,.18), inset 0 2px 8px rgba(15,23,42,.08), 0 10px 24px rgba(15,23,42,.10)}
+  .right-col .card h3{display:block;background:#0f2b66;color:#fff;padding:8px 10px;font-size:14px;margin:-8px -10px 8px -10px;border-radius:14px 14px 0 0}
+  .right-col .card form{padding-top:0}
+  .right-col #tagUpdateForm{padding-top:0}
+  .right-col .action-pair .card h3{background:#14532d}
   @media(max-width:1024px){
     .detail-hero{flex-direction:column;align-items:flex-start}
     .status-stack{align-items:flex-start}
     .history-panel{max-height:none}
+    .detail-main-grid{grid-template-columns:1fr}
+    .assign-grid{grid-template-columns:1fr}
+    .summary-inline{padding:12px 14px;border:1px solid #f3c8a5}
+    .action-pair{grid-template-columns:1fr}
   }
 
 </style>
@@ -139,7 +172,6 @@
 <div class="page-grid">
   <!-- LEFT COLUMN (compact) -->
   <div class="left-col" style="display:grid;gap:12px">
-    <!-- Box 1: Ticket Details -->
     <div class="card">
       <div class="detail-hero">
         <div class="detail-identity">
@@ -150,7 +182,7 @@
             <div class="detail-name">{{ ticket.patient_name or 'Unknown Patient' }}</div>
             <div class="detail-subline">
               {% if ticket.patient_labmate_id %}<span class="labmate-chip"><span>Labmate ID:</span><span>{{ ticket.patient_labmate_id }}</span></span>{% endif %}
-              {% if ticket.mobile_number %}<span>Mobile No: {{ ticket.country_code ~ ' ' ~ ticket.mobile_number }}</span>{% endif %}
+              {% if ticket.mobile_number %}<span class="mobile-line">Mobile No: {{ ticket.country_code ~ ' ' ~ ticket.mobile_number }}</span>{% endif %}
             </div>
           </div>
         </div>
@@ -160,70 +192,99 @@
           {% if ticket.ticket_category %}<span class="category-chip"><span>Category:</span><span>{{ ticket.ticket_category }}</span></span>{% endif %}
         </div>
       </div>
-      <h3>Ticket Details</h3>
-      <div class="kv">
-        {{ kv_row('Form Source:', ticket.source) }}
-        {{ kv_row('Client/Doctor:', ticket.client_name) }}
-        {{ kv_row('Priority:', ticket.priority) }}
-        {# WhatsApp Opt-in is meaningful even if false → force show #}
-        <div class="muted">WhatsApp Opt-in:</div><div>{{ 'Yes' if ticket.whatsapp_opt_in==1 else 'No' }}</div>
-        <div class="muted">Ticket Category:</div><div>{{ ticket.ticket_category }}</div>
-        {{ kv_row('Sample Type', ticket.sample_type) }}
-        {{ kv_row('Rejection Reason', ticket.rejection_reason) }}
-        {% if doc_pan %}
-          {{ kv_row('Doctor:', doc_pan.get('doctor', {}).get('name')) }}
-          {{ kv_row('Doctor Mobile:', doc_pan.get('doctor', {}).get('mobile')) }}
-          {{ kv_row('Panel:', doc_pan.get('panel', {}).get('name')) }}
-          {{ kv_row('Panel Mobile:', doc_pan.get('panel', {}).get('mobile')) }}
-        {% endif %}
-        {# Commitment row shows when there is either a display string or a state #}
-        {% set has_commit = commitment.display %}
-{% if has_commit %}
-  <div class="muted">Commitment At:</div>
-  <div>
-    {{ commitment.display }}
-    {# sirf OPEN tickets ke liye badge dikhao #}
-    {% if (not is_closed) and commitment.state %}
-      <span class="badge {% if commitment.state=='ok' %}badge-ok{% elif commitment.state=='near' %}badge-near{% else %}badge-overdue{% endif %}">
-        {{ commitment.text }}
-      </span>
-    {% endif %}
-  </div>
-{% endif %}
-
-        {{ kv_row('Created By:', ticket.created_by) }}
-        {{ kv_row('Created At:', ticket.created_at) }}
-        {% if ticket.additional_info %}
-          <div class="muted">Additional Info:</div><div><span class="info-highlight">{{ ticket.additional_info }}</span></div>
-        {% endif %}
-        {% if ticket.ticket_origin == 'CVT' and cv_tests %}
-          <div class="muted" style="margin-top:8px;">CV Tests</div>
-          <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;font-size:13px;margin-top:4px;">
-            <thead>
-              <tr style="background:#f3f4f6;">
-                <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Test</th>
-                <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Value</th>
-                <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Result</th>
-                <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Interpretation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for t in cv_tests %}
-              <tr>
-                <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.test_name }}</td>
-                <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.value_text or '-' }}</td>
-                <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.result_text or '-' }}</td>
-                <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.interp_text or '-' }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% endif %}
+      <div class="detail-main-grid">
+        <div>
+          <h3>Ticket Details</h3>
+          <div class="kv">
+            {{ kv_row('Form Source:', ticket.source) }}
+            {{ kv_row('Client/Doctor:', ticket.client_name) }}
+            {{ kv_row('Priority:', ticket.priority) }}
+            <div class="muted">WhatsApp Opt-in:</div><div>{{ 'Yes' if ticket.whatsapp_opt_in==1 else 'No' }}</div>
+            <div class="muted">Ticket Category:</div><div>{{ ticket.ticket_category }}</div>
+            {{ kv_row('Sample Type', ticket.sample_type) }}
+            {{ kv_row('Rejection Reason', ticket.rejection_reason) }}
+            {% if doc_pan %}
+              {{ kv_row('Doctor:', doc_pan.get('doctor', {}).get('name')) }}
+              {{ kv_row('Doctor Mobile:', doc_pan.get('doctor', {}).get('mobile')) }}
+              {{ kv_row('Panel:', doc_pan.get('panel', {}).get('name')) }}
+              {{ kv_row('Panel Mobile:', doc_pan.get('panel', {}).get('mobile')) }}
+            {% endif %}
+            {% set has_commit = commitment.display %}
+            {% if has_commit %}
+              <div class="muted">Commitment At:</div>
+              <div>
+                {{ commitment.display }}
+                {% if (not is_closed) and commitment.state %}
+                  <span class="badge {% if commitment.state=='ok' %}badge-ok{% elif commitment.state=='near' %}badge-near{% else %}badge-overdue{% endif %}">{{ commitment.text }}</span>
+                {% endif %}
+              </div>
+            {% endif %}
+            {{ kv_row('Created At:', ticket.created_at) }}
+            {% if ticket.additional_info %}
+              <div class="muted">Additional Info:</div><div><span class="info-highlight">{{ ticket.additional_info }}</span></div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="summary-inline">
+          <div class="summary-text">
+            <strong>Short Summary:</strong><br>
+            <span class="summary-copy">This ticket was created for patient {{ ticket.patient_name or 'Unknown Patient' }} for {{ ticket.ticket_category or 'Unknown Category' }}. Current status is {{ ticket.status or 'Unknown' }}.{% if ticket.additional_info %} Additional info: {{ ticket.additional_info }}.{% endif %}</span>
+            <div class="summary-meta-chip"><span>Created by:</span><span>{{ ticket.created_by or '-' }}.</span></div>
+          </div>
+        </div>
       </div>
+      {% if ticket.ticket_origin == 'CVT' and cv_tests %}
+        <div class="divider"></div>
+        <div class="muted" style="margin-top:8px;">CV Tests</div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;font-size:13px;margin-top:4px;">
+          <thead>
+            <tr style="background:#f3f4f6;">
+              <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Test</th>
+              <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Value</th>
+              <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Result</th>
+              <th style="border:1px solid #e5e7eb;padding:6px;text-align:left;">Interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in cv_tests %}
+            <tr>
+              <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.test_name }}</td>
+              <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.value_text or '-' }}</td>
+              <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.result_text or '-' }}</td>
+              <td style="border:1px solid #e5e7eb;padding:6px;">{{ t.interp_text or '-' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>Assignment History</h3>
+      {% if assign_updates|length == 0 %}
+        <div class="muted">No assignment updates yet.</div>
+      {% else %}
+        <div class="history-panel">
+          <div class="history-list">
+            {% for a in assign_updates %}
+            <div class="history-item">
+              <div class="history-line">{{ a.from_name or '-' }} → {{ a.to_name or '-' }}</div>
+              <div class="history-meta">
+                <span>{{ a.reason or '-' }}</span>
+                <span>{{ a.created_at or '-' }}</span>
+                <span>By {{ a.updated_by or '-' }}</span>
+              </div>
+              {% if a.remark and a.remark != '-' %}
+                <div class="history-note">{{ a.remark }}</div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
     </div>
 
     {% if ticket.ticket_origin not in ['CVT','RST'] %}
-    <!-- Box 2: Tagged Staff & Updates -->
     <div class="card">
       <h3>Tagged Staff (Name + Latest Remark)</h3>
       {% if tags|length == 0 %}
@@ -244,140 +305,12 @@
       </table>
       {% endif %}
     </div>
-
-    <!-- Box 3: Tag -->
-    <div class="card action-card">
-      <h3>Tag</h3>
-      <form method="post" action="{{ url_for('ticket_detail.ticket_tag_update', ticket_id=ticket.id) }}" id="addTagForm" class="mb0">
-        <div class="cols-3 mb12">
-          <div>
-            <label class="muted mb8">Add New Tag</label>
-            <div class="search-wrap">
-              <input type="text" id="new_staff_search" class="search-input" placeholder="Type staff name..." autocomplete="off">
-              <div id="new_staff_results" class="search-results" style="display:none"></div>
-              <input type="hidden" id="new_staff_id" name="new_staff_id" value="">
-            </div>
-          </div>
-
-          <div>
-            <label class="muted mb8">Reason (optional)</label>
-            <input class="input" name="new_reason" placeholder="e.g. Sample Collection"/>
-          </div>
-          <div>
-            <label class="muted mb8">Due In</label>
-            <select class="input" id="new_due" name="new_due">
-              <option value="">-- Select --</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="flex">
-          <button class="btn orange" type="submit" name="action" value="add_only">Add Tag</button>
-        </div>
-      </form>
-    </div>
-
-    <!-- Box 4: Assignment -->
-    <div class="card action-card">
-      <h3>Assignment</h3>
-      <form id="assignShiftForm" class="mb0" method="post" action="{{ url_for('ticket_detail.ticket_assign_shift', ticket_id=ticket.id) }}">
-        <div class="mb12">
-          <label class="muted mb8">Current Assignee</label>
-          <div>{{ current_assignee.name or '-' }}</div>
-        </div>
-
-        <div class="mb12">
-          <label class="muted mb8">Shift To</label>
-          <select id="shift_to_user_id" name="to_user_id" required>
-            <option value="">-- Select Customer Care --</option>
-          </select>
-        </div>
-
-        <div class="mb12">
-          <label class="muted mb8">Reason</label>
-          <select name="reason" required>
-            <option value="">-- Select Reason --</option>
-            <option>End of Shift</option>
-            <option>Knowledge Gap â€“ Seeking Guidance</option>
-            <option>Patient Request</option>
-            <option>Load Balancing</option>
-          </select>
-        </div>
-
-        <div class="mb12">
-          <label class="muted mb8">Remark (optional)</label>
-          <textarea name="remark" placeholder="Add a small note..."></textarea>
-        </div>
-
-        <div class="flex">
-          <button class="btn" type="submit">Shift Assignment</button>
-        </div>
-      </form>
-    </div>
     {% endif %}
-
-    <!-- Box 3: Assignment Updates (history) -->
-    <div class="card assignment-history-card" style="display:none">
-      <h3>Assignment Updates (History)</h3>
-      {% if assign_updates|length == 0 %}
-        <div class="muted">No assignment updates yet.</div>
-      {% else %}
-      <table class="mini-table">
-        <thead><tr><th>When</th><th>From → To</th><th>Reason</th><th>Remark</th><th>By</th></tr></thead>
-        <tbody>
-          {% for a in assign_updates %}
-          <tr>
-            <td>{{ a.created_at }}</td>
-            <td>{{ a.from_name or '-' }} → {{ a.to_name or '-' }}</td>
-            <td>{{ a.reason or '-' }}</td>
-            <td>{{ a.remark or '-' }}</td>
-            <td>{{ a.updated_by or '-' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% endif %}
-    </div>
   </div>
-
   <!-- RIGHT COLUMN (order updated) -->
   <div class="right-col">
     <div class="right-stack">
-      <div class="card muted-card">
-        <h3>Short Summary</h3>
-        <div class="summary-text">
-          This ticket was created for patient {{ ticket.patient_name or 'Unknown Patient' }} for {{ ticket.ticket_category or 'Unknown Category' }}. Current status is {{ ticket.status or 'Unknown' }}.{% if ticket.additional_info %} Additional info: {{ ticket.additional_info }}.{% endif %}<br><strong>Created by:</strong> {{ ticket.created_by or '-' }}.
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Assignment History</h3>
-        {% if assign_updates|length == 0 %}
-          <div class="muted">No assignment updates yet.</div>
-        {% else %}
-          <div class="history-panel">
-            <div class="history-list">
-              {% for a in assign_updates %}
-              <div class="history-item">
-                <div class="history-line">{{ a.from_name or '-' }} → {{ a.to_name or '-' }}</div>
-                <div class="history-meta">
-                  <span>{{ a.reason or '-' }}</span>
-                  <span>{{ a.created_at or '-' }}</span>
-                  <span>By {{ a.updated_by or '-' }}</span>
-                </div>
-                {% if a.remark and a.remark != '-' %}
-                  <div class="history-note">{{ a.remark }}</div>
-                {% endif %}
-              </div>
-              {% endfor %}
-            </div>
-          </div>
-        {% endif %}
-      </div>
-
     {% if ticket.ticket_origin not in ['CVT','RST'] %}
-    {% if false %}
-    <!-- 1) Tag: Add New (SEARCHABLE staff) -->
     <div class="card action-card">
       <h3>Tag</h3>
       <form method="post" action="{{ url_for('ticket_detail.ticket_tag_update', ticket_id=ticket.id) }}" id="addTagForm" class="mb0">
@@ -390,7 +323,6 @@
               <input type="hidden" id="new_staff_id" name="new_staff_id" value="">
             </div>
           </div>
-
           <div>
             <label class="muted mb8">Reason (optional)</label>
             <input class="input" name="new_reason" placeholder="e.g. Sample Collection"/>
@@ -402,54 +334,48 @@
             </select>
           </div>
         </div>
-
         <div class="flex">
           <button class="btn orange" type="submit" name="action" value="add_only">Add Tag</button>
         </div>
       </form>
     </div>
 
-    <!-- 2) Assign / Shift -->
-    <div class="card action-card">
-      <h3>Assignment</h3>
+    <div class="card action-card assign-panel">
+      <h3>Shift Assignment</h3>
       <form id="assignShiftForm" class="mb0" method="post" action="{{ url_for('ticket_detail.ticket_assign_shift', ticket_id=ticket.id) }}">
-        <div class="mb12">
-          <label class="muted mb8">Current Assignee</label>
-          <div>{{ current_assignee.name or '-' }}</div>
+        <div class="assign-current mb12">
+          Current assignee:<strong>{{ current_assignee.name or '-' }}</strong>
         </div>
-
-        <div class="mb12">
-          <label class="muted mb8">Shift To</label>
-          <select id="shift_to_user_id" name="to_user_id" required>
-            <option value="">-- Select Customer Care --</option>
-          </select>
+        <div class="assign-grid mb12">
+          <div>
+            <label class="muted mb8">Shift To</label>
+            <select id="shift_to_user_id" name="to_user_id" required>
+              <option value="">-- Select Customer Care --</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted mb8">Reason</label>
+            <select name="reason" required>
+              <option value="">-- Select Reason --</option>
+              <option>End of Shift</option>
+              <option>Knowledge Gap - Seeking Guidance</option>
+              <option>Patient Request</option>
+              <option>Load Balancing</option>
+            </select>
+          </div>
         </div>
-
-        <div class="mb12">
-          <label class="muted mb8">Reason</label>
-          <select name="reason" required>
-            <option value="">-- Select Reason --</option>
-            <option>End of Shift</option>
-            <option>Knowledge Gap – Seeking Guidance</option>
-            <option>Patient Request</option>
-            <option>Load Balancing</option>
-          </select>
-        </div>
-
         <div class="mb12">
           <label class="muted mb8">Remark (optional)</label>
           <textarea name="remark" placeholder="Add a small note..."></textarea>
         </div>
-
         <div class="flex">
           <button class="btn" type="submit">Shift Assignment</button>
         </div>
       </form>
     </div>
-
     {% endif %}
-    <!-- 3) Tag Update (Existing Tag) - DROPDOWN -->
-    <div class="card action-card">
+    <div class="action-pair">
+    <div class="card action-card compact-card quick-close">
       <h3>Tag Update</h3>
       <form method="post" action="{{ url_for('ticket_detail.ticket_tag_update', ticket_id=ticket.id) }}" id="tagUpdateForm" class="mb0">
         <div class="mb12">
@@ -463,25 +389,17 @@
             {% endfor %}
           </select>
         </div>
-
         <div class="mb12">
           <label class="muted mb8">Remark</label>
           <textarea name="remark" placeholder="Write your update..."></textarea>
         </div>
-
         <div class="flex">
           <button class="btn" type="submit">Submit Update</button>
         </div>
-
-        {% if (tags_for_user|length) == 0 %}
-          <div class="muted" style="margin-top:8px">No tag assigned to you for this ticket.</div>
-        {% endif %}
       </form>
     </div>
-    {% endif %}
-
     <!-- 4) Update (Quick Remark) / Close -->
-    <div class="card action-card">
+    <div class="card action-card compact-card">
       <h3>Update / Close Tickets</h3>
       <form id="quickRemarkForm" class="mb0" method="post" action="{{ url_for('ticket_detail.ticket_quick_remark', ticket_id=ticket.id) }}">
         <input type="hidden" name="closure_mood" id="closure_mood" value="">
@@ -536,13 +454,14 @@
           <textarea name="remark" placeholder="Write your update..."></textarea>
         </div>
         {% endif %}
-        <div class="flex">
+        <div class="action-inline">
           <button class="btn" type="submit">Submit Remark</button>
           <button class="btn secondary" type="submit" name="close_ticket" value="1" formaction="{{ url_for('ticket_detail.ticket_quick_remark', ticket_id=ticket.id) }}">
             Close Ticket
           </button>
         </div>
       </form>
+    </div>
     </div>
 
     </div>
