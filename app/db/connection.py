@@ -18,13 +18,6 @@ LABMATE_DB = {
     "database": os.getenv("LABMATE_NAME", "labmate_data"),
 }
 
-WHATSAPP_DB = {
-    "host": os.getenv("WA_HOST", "10.1.1.51"),
-    "user": os.getenv("WA_USER", "sahil"),
-    "password": os.getenv("WA_PASSWORD", "sahil@123"),
-    "database": os.getenv("WA_NAME", "creoianw_bhasin"),
-}
-
 WHATSAPP_PANEL_DB = {
     "host": os.getenv("WA_PANEL_HOST", "localhost"),
     "user": os.getenv("WA_PANEL_USER", "root"),
@@ -75,12 +68,6 @@ def get_db_connection():
 def get_labmate_connection():
     """Connection helper for labmate_data DB (read-only Labmate LIMS data)."""
     return pymysql.connect(**LABMATE_DB, cursorclass=pymysql.cursors.DictCursor)
-
-
-# ---------------- WhatsApp/WABA DB ----------------
-def get_whatsapp_connection():
-    """Connection helper for WhatsApp engagement DB."""
-    return pymysql.connect(**WHATSAPP_DB, cursorclass=pymysql.cursors.DictCursor)
 
 
 def get_whatsapp_panel_connection():

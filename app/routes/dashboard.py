@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, make_response, jsonify, request, session, redirect, url_for
 from pymysql.cursors import DictCursor
-from app.db.connection import get_db_connection, get_whatsapp_connection
+from app.db.connection import get_db_connection, get_whatsapp_panel_connection
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 from datetime import datetime
@@ -164,8 +164,8 @@ def fetch_all_stats(date_range="today", start_date=None, end_date=None):
             f"DATE(resolved_at) BETWEEN '{start_date}' AND '{end_date}'"
         )
         whatsapp_date_condition = f"""
-            STR_TO_DATE(wabadatetime, '%d-%m-%Y %h:%i %p') >= '{cutoff_datetime}'
-            AND DATE(STR_TO_DATE(wabadatetime, '%d-%m-%Y %h:%i %p')) BETWEEN '{start_date}' AND '{end_date}'
+            datetimess >= '{cutoff_datetime}'
+            AND DATE(datetimess) BETWEEN '{start_date}' AND '{end_date}'
         """
         hcb_date_condition = f"""
             created_at >= '{cutoff_datetime}'
@@ -176,8 +176,8 @@ def fetch_all_stats(date_range="today", start_date=None, end_date=None):
         closed_date_condition = "DATE(closed_at) = CURDATE()"
         reports_date_condition = "DATE(resolved_at) = CURDATE()"
         whatsapp_date_condition = f"""
-            (STR_TO_DATE(wabadatetime, '%d-%m-%Y %h:%i %p') >= '{cutoff_datetime}' 
-             AND DATE(STR_TO_DATE(wabadatetime, '%d-%m-%Y %h:%i %p')) = CURDATE())
+            datetimess >= '{cutoff_datetime}'
+            AND DATE(datetimess) = CURDATE()
         """
         hcb_date_condition = f"created_at >= '{cutoff_datetime}' AND DATE(created_at) = CURDATE()"
     else:
@@ -338,17 +338,17 @@ def fetch_all_stats(date_range="today", start_date=None, end_date=None):
         hcb_results = []
         whatsapp_conn = None
         try:
-            whatsapp_conn = get_whatsapp_connection()
+            whatsapp_conn = get_whatsapp_panel_connection()
             if whatsapp_conn:
                 with whatsapp_conn.cursor(DictCursor) as cur:
                     whatsapp_sql = f"""
                         SELECT 
                             UPPER(TRIM(empname)) as user_name,
                             COUNT(*) as whatsapp_reverts
-                        FROM waba 
+                        FROM ofc_waba_outgoing
                         WHERE empname IS NOT NULL 
-                            AND empname != '' 
-                            AND empname != 'Patient'
+                            AND empname != ''
+                            AND (msg != '' OR img != '' OR pdff != '' OR docid != '' OR imgid != '')
                             AND {whatsapp_date_condition}
                         GROUP BY UPPER(TRIM(empname))
                     """

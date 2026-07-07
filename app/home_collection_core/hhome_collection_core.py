@@ -2992,6 +2992,7 @@ class HHomeCollectionCore:
                 "ground_f": "Ground_F",
                 "basement": "Basement",
                 "upper_f": "Upper_F",
+                "top_floor": "Top_Floor",
                 "full_hous": "Full_hous",
             }
             mapped = special_map.get(text.lower())

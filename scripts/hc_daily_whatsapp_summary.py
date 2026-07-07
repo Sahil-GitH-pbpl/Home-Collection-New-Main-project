@@ -16,7 +16,7 @@ from app.alerts import send_whatsapp_to_number
 from app.db.connection import get_db_connection
 
 
-TARGET_PHONES = ["8057054076", "120363417280731168"]
+TARGET_PHONES = ["120363417280731168"]
 
 TBS_LABELS = {
     "1": "Test confirmed and booked",

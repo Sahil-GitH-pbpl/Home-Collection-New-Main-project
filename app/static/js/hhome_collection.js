@@ -1482,7 +1482,7 @@ function startEditAddress(addressId) {
     $('#a-type').val(a.address_type || 'Home');
     $('#a-house').val(a.house_flat_no || '');
     const floorValue = String(a.floor_display || a.floor || '').trim();
-    const specialOptions = ['Ground_F', 'Basement', 'Upper_F', 'Full_hous'];
+    const specialOptions = ['Ground_F', 'Basement', 'Upper_F', 'Top_Floor', 'Full_hous'];
     if (specialOptions.includes(floorValue)) {
       $('#a-floor-special').val(floorValue);
       $('#a-floor').val('');

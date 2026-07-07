@@ -6,6 +6,7 @@
 .table-container { margin-top:5px; background:#f8fafc; border-radius:12px; box-shadow:0 8px 18px rgba(15,23,42,.14); overflow-x:auto; padding:6px; border:1px solid #cbd5e1; }
 .tickets-table { width:100%; border-collapse:separate; border-spacing:0; font-size:13px; table-layout:auto; color:#0f172a; }
 .tickets-table th, .tickets-table td { padding:7px 8px; border-bottom:1px solid #cbd5e1; text-align:center; vertical-align:middle; }
+.tickets-table .align-left { text-align:left; }
 .tickets-table th { background:#0b5f59; font-weight:800; color:#f0fdfa; font-size:11px; text-transform:uppercase; letter-spacing:.02em; white-space:nowrap; }
 .tickets-table thead th:first-child { border-top-left-radius:8px; }
 .tickets-table thead th:last-child { border-top-right-radius:8px; }
@@ -110,12 +111,12 @@ th.actions-col, td.actions-col { width:170px; }
     <table class="tickets-table">
       <thead>
         <tr>
-          <th>Tkt No</th>
-          <th>Mobile No</th>
-          <th>Patient Name</th>
-          <th>Panel / Doctor</th>
-          <th>Tkt Category</th>
-          <th>Tkt Type</th>
+          <th class="align-left">Tkt No</th>
+          <th class="align-left">Mobile No</th>
+          <th class="align-left">Patient Name</th>
+          <th class="align-left">Panel / Doctor</th>
+          <th class="align-left">Tkt Category</th>
+          <th class="align-left">Tkt Type</th>
           <th>Commitment At</th>
           <th>Assigned To</th>
           <th class="actions-col">Actions</th> <!-- 🆕 Changed from "Pick" to "Actions" -->
@@ -124,12 +125,12 @@ th.actions-col, td.actions-col { width:170px; }
       <tbody>
         {% for r in breach_pool %}
         <tr>
-          <td>{{ r.id }}</td>
-          <td>{{ r.mobile_number }}</td>
-          <td>{{ r.patient_name or '-' }}{% if r.patient_labmate_id %}<br><small>({{ r.patient_labmate_id }})</small>{% endif %}</td>
-          <td>{{ r.panel_doctor_display or '-' }}</td>
-          <td><span class="badge badge-category">{{ r.ticket_category }}</span></td>
-          <td><span class="badge badge-type">{{ r.ticket_origin or 'CCE' }}</span></td>
+          <td class="align-left">{{ r.id }}</td>
+          <td class="align-left">{{ r.mobile_number }}</td>
+          <td class="align-left">{{ r.patient_name or '-' }}{% if r.patient_labmate_id %}<br><small>({{ r.patient_labmate_id }})</small>{% endif %}</td>
+          <td class="align-left">{{ r.panel_doctor_display or '-' }}</td>
+          <td class="align-left"><span class="badge badge-category">{{ r.ticket_category }}</span></td>
+          <td class="align-left"><span class="badge badge-type">{{ r.ticket_origin or 'CCE' }}</span></td>
           <td>
             <div class="commitment-wrap">
               <div class="commitment-dt">{{ r.commitment_at_display or '-' }}</div>
@@ -173,11 +174,11 @@ th.actions-col, td.actions-col { width:170px; }
     <table class="tickets-table">
       <thead>
         <tr>
-          <th>Tkt No</th>
-          <th>Mobile No</th>
-          <th>Patient Name</th>
-          <th>Tkt Category</th>
-          <th>Tkt Type</th>
+          <th class="align-left">Tkt No</th>
+          <th class="align-left">Mobile No</th>
+          <th class="align-left">Patient Name</th>
+          <th class="align-left">Tkt Category</th>
+          <th class="align-left">Tkt Type</th>
           <th>Commitment At</th>
           <th class="actions-col" style="width:140px;">Actions</th>
         </tr>
@@ -185,11 +186,11 @@ th.actions-col, td.actions-col { width:170px; }
       <tbody>
         {% for t in unassigned_rs_tickets %}
         <tr>
-          <td>{{ t.id }}</td>
-          <td>{{ t.mobile_number }}</td>
-          <td>{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
-          <td><span class="badge badge-category">{{ t.ticket_category }}</span></td>
-          <td><span class="badge badge-type">{{ t.ticket_origin or 'RST' }}</span></td>
+          <td class="align-left">{{ t.id }}</td>
+          <td class="align-left">{{ t.mobile_number }}</td>
+          <td class="align-left">{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
+          <td class="align-left"><span class="badge badge-category">{{ t.ticket_category }}</span></td>
+          <td class="align-left"><span class="badge badge-type">{{ t.ticket_origin or 'RST' }}</span></td>
           <td>
             <div class="commitment-wrap">
               <div class="commitment-dt">{{ t.commitment_at_display or '-' }}</div>
@@ -234,12 +235,12 @@ th.actions-col, td.actions-col { width:170px; }
     <table class="tickets-table">
       <thead>
         <tr>
-          <th>Tkt No</th>
-          <th>Mobile No</th>
-          <th>Patient Name</th>
-          <th>Panel / Doctor</th>
-          <th>Tkt Category</th>
-          <th>Tkt Type</th>
+          <th class="align-left">Tkt No</th>
+          <th class="align-left">Mobile No</th>
+          <th class="align-left">Patient Name</th>
+          <th class="align-left">Panel / Doctor</th>
+          <th class="align-left">Tkt Category</th>
+          <th class="align-left">Tkt Type</th>
           <th>Commitment At</th>
           <th>Assigned To</th>
           <th>Tag To</th>
@@ -249,12 +250,12 @@ th.actions-col, td.actions-col { width:170px; }
       <tbody>
         {% for t in unassigned_odt_tickets %}
         <tr>
-          <td>{{ t.id }}</td>
-          <td>{{ t.mobile_number }}</td>
-          <td>{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
-          <td>{{ t.panel_doctor_display or '-' }}</td>
-          <td><span class="badge badge-category">{{ t.ticket_category }}</span></td>
-          <td><span class="badge badge-type">{{ t.ticket_origin or 'ODT' }}</span></td>
+          <td class="align-left">{{ t.id }}</td>
+          <td class="align-left">{{ t.mobile_number }}</td>
+          <td class="align-left">{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
+          <td class="align-left">{{ t.panel_doctor_display or '-' }}</td>
+          <td class="align-left"><span class="badge badge-category">{{ t.ticket_category }}</span></td>
+          <td class="align-left"><span class="badge badge-type">{{ t.ticket_origin or 'ODT' }}</span></td>
           <td>
             <div class="commitment-wrap">
               <div class="commitment-dt">{{ t.commitment_at_display or '-' }}</div>
@@ -334,12 +335,12 @@ th.actions-col, td.actions-col { width:170px; }
   <table class="tickets-table">
     <thead>
       <tr>
-        <th>Tkt No</th>
-        <th>Mobile No</th>
-        <th>Patient Name</th>
-        <th>Panel / Doctor</th>
-        <th>Tkt Category</th>
-        <th>Tkt Type</th>
+        <th class="align-left">Tkt No</th>
+        <th class="align-left">Mobile No</th>
+        <th class="align-left">Patient Name</th>
+        <th class="align-left">Panel / Doctor</th>
+        <th class="align-left">Tkt Category</th>
+        <th class="align-left">Tkt Type</th>
         <th>Commitment At</th>
         <th>Assign To</th>
         <th>Tag To</th>
@@ -349,12 +350,12 @@ th.actions-col, td.actions-col { width:170px; }
     <tbody>
       {% for t in tickets %}
       <tr>
-        <td>{{ t.id }}</td>
-        <td>{{ t.mobile_number }}</td>
-        <td>{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
-        <td>{{ t.panel_doctor_display or '-' }}</td>
-        <td><span class="badge badge-category">{{ t.ticket_category }}</span></td>
-        <td><span class="badge badge-type">{{ t.ticket_origin or 'CCE' }}</span></td>
+        <td class="align-left">{{ t.id }}</td>
+        <td class="align-left">{{ t.mobile_number }}</td>
+        <td class="align-left">{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
+        <td class="align-left">{{ t.panel_doctor_display or '-' }}</td>
+        <td class="align-left"><span class="badge badge-category">{{ t.ticket_category }}</span></td>
+        <td class="align-left"><span class="badge badge-type">{{ t.ticket_origin or 'CCE' }}</span></td>
         <td>
           <div class="commitment-wrap">
             <div class="commitment-dt">{{ t.commitment_at_display or '-' }}</div>

@@ -32,7 +32,6 @@ services:
       B7001_USER: root
       B7001_PASSWORD: arpra_root_pass
       B7001_NAME: bhasin_7001_new
-      WA_HOST: 10.1.1.51
       WA_PANEL_HOST: ${WA_PANEL_HOST:-mariadb}
       WA_PANEL_USER: ${WA_PANEL_USER:-root}
       WA_PANEL_PASSWORD: ${WA_PANEL_PASSWORD:-arpra_root_pass}
