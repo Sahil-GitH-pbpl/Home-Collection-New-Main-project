@@ -5598,10 +5598,18 @@ class HHomeCollectionCore:
                                 return explicit_desc or code
 
                             all_keys = set(tests_map.keys()) | set(pending_map.keys())
-                            # Appointment detail should show appointment-selected tests for all statuses.
-                            # Pending map is only a fallback/extra source and duplicate codes are skipped below.
-                            show_pending_only = False
-                            show_selected_only = bool(appointment_id > 0 and appointment_status in (3, 4))
+                            # Auto follow-up appointments represent only pending child tests.
+                            # Parent context remains in the snapshot for audit/modify flows, not detail view.
+                            show_pending_only = bool(
+                                appointment_id > 0
+                                and snapshot_flow_type == "auto_followup_pending_child"
+                                and pending_map
+                            )
+                            show_selected_only = bool(
+                                appointment_id > 0
+                                and appointment_status in (3, 4)
+                                and not show_pending_only
+                            )
 
                             for key in all_keys:
                                 try:
@@ -5758,8 +5766,17 @@ class HHomeCollectionCore:
                         if pname not in panels_by_patient[pid]:
                             panels_by_patient[pid].append(pname)
 
+                visible_patients = []
                 for p in patients:
                     pid = int(p.get("patient_id") or 0)
+                    pctx = appointment_patient_context.get(str(pid)) if appointment_id > 0 else {}
+                    pctx = pctx if isinstance(pctx, dict) else {}
+                    try:
+                        ap_patient_status = int(pctx.get("appointment_patient_status") or 0)
+                    except Exception:
+                        ap_patient_status = 0
+                    if appointment_id > 0 and ap_patient_status == 4:
+                        continue
                     p["tests_display"] = ", ".join(tests_by_patient.get(pid, [])) if pid else ""
                     p["tests"] = test_detail_by_patient.get(pid, []) if pid else []
                     p["patient_documents"] = self._split_patient_documents(p.get("patient_documents"))
@@ -5792,8 +5809,6 @@ class HHomeCollectionCore:
                     p["selected_charge_modes"] = self._norm_code(p.get("selected_charge_modes"))
                     p["tag"] = self._norm_code(p.get("tag"))
                     p["test_booking_status"] = self._patient_tbs_code({"cce_level_tbs": p.get("cce_level_TBS")})
-                    pctx = appointment_patient_context.get(str(pid)) if appointment_id > 0 else {}
-                    pctx = pctx if isinstance(pctx, dict) else {}
                     p["appointment_patient_status"] = int(pctx.get("appointment_patient_status")) if pctx.get("appointment_patient_status") is not None else None
                     p["booking_due_amount"] = float(pctx.get("booking_due_amount") or 0) if appointment_id > 0 else float(p.get("due_amount") or 0)
                     p["booking_extra_amount"] = float(pctx.get("booking_extra_amount") or 0) if appointment_id > 0 else float(p.get("extra_amount") or 0)
@@ -5818,6 +5833,8 @@ class HHomeCollectionCore:
                     else:
                         p["patient_document_urls"] = []
                         p["prescription_urls"] = []
+                    visible_patients.append(p)
+                patients = visible_patients
 
                 if appointment_id > 0:
                     appt_subtotal = 0.0
@@ -7691,6 +7708,20 @@ class HHomeCollectionCore:
                         for r in (cur.fetchall() or [])
                         if int(r.get("patient_id") or 0) > 0
                     ]
+
+                if appointment_id > 0 and isinstance(appointment_patient_context, dict):
+                    visible_patient_ids = []
+                    for pid in selected_patient_ids:
+                        pctx = appointment_patient_context.get(str(int(pid)))
+                        pctx = pctx if isinstance(pctx, dict) else {}
+                        try:
+                            ap_patient_status = int(pctx.get("appointment_patient_status") or 0)
+                        except Exception:
+                            ap_patient_status = 0
+                        if ap_patient_status == 4:
+                            continue
+                        visible_patient_ids.append(pid)
+                    selected_patient_ids = visible_patient_ids
 
                 selected_patients = [{"patient_id": pid} for pid in selected_patient_ids]
                 tests_billing_map = {}
