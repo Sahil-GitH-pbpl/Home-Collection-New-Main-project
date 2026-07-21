@@ -2009,7 +2009,7 @@ class HHomeCollectionCore:
             comp = self._norm_code(billing.get("comp_cat_id"))
             mode = self._selected_charge_mode(billing)
             pname = self._norm_code(panel.get("pname"))
-            if not comp or comp in comp_ids:
+            if not comp:
                 continue
             comp_ids.append(comp)
             charge_modes.append(mode)
@@ -2021,57 +2021,77 @@ class HHomeCollectionCore:
         for section in self._patient_panel_sections(patient_meta):
             billing = section.get("billing") or {}
             cat_details = self._norm_code(billing.get("cat_details"))
-            if cat_details and cat_details not in details:
-                details.append(cat_details)
+            details.append(cat_details)
         return ",".join(details)
 
-    def _panel_name_from_patient_row(self, row: dict, comp_cat_id: str) -> str:
+    def _patient_panel_entries_from_row(self, row: dict) -> list[dict]:
         if not isinstance(row, dict):
-            return ""
-        comp = self._norm_code(comp_cat_id)
-        raw_comp_ids = self._norm_code(row.get("selected_comp_cat_ids"))
-        raw_panel_names = self._norm_code(row.get("selected_panel_companies"))
-        if not raw_panel_names:
-            return ""
-        comp_ids = [self._norm_code(x) for x in raw_comp_ids.split(",")] if raw_comp_ids else []
-        panel_names = [self._norm_code(x) for x in raw_panel_names.split(",")]
-        if comp and comp_ids and len(comp_ids) == len(panel_names):
-            for i, cc in enumerate(comp_ids):
-                if cc == comp:
-                    return panel_names[i]
-        return panel_names[0] if panel_names else ""
+            return []
+        comp_ids = [self._norm_code(x) for x in self._norm_code(row.get("selected_comp_cat_ids")).split(",")]
+        modes = [self._normalize_charge_mode(x) for x in self._norm_code(row.get("selected_charge_modes")).split(",")]
+        names = [self._norm_code(x) for x in self._norm_code(row.get("selected_panel_companies")).split(",")]
+        details = [self._norm_code(x) for x in self._norm_code(row.get("selected_cat_details")).split(",")]
+        max_len = max(len(comp_ids), len(modes), len(names), len(details), 0)
+        entries = []
+        for i in range(max_len):
+            comp = comp_ids[i] if i < len(comp_ids) else ""
+            if not comp:
+                continue
+            entries.append({
+                "comp_cat_id": comp,
+                "selected_charge_mode": modes[i] if i < len(modes) else "",
+                "panel_name": names[i] if i < len(names) else "",
+                "cat_details": details[i] if i < len(details) else "",
+            })
+        return entries
 
-    def _charge_mode_from_patient_row(self, row: dict, comp_cat_id: str) -> str:
+    def _panel_name_from_patient_row(self, row: dict, comp_cat_id: str, panel_name_hint: str = "") -> str:
         if not isinstance(row, dict):
             return ""
         comp = self._norm_code(comp_cat_id)
-        raw_comp_ids = self._norm_code(row.get("selected_comp_cat_ids"))
-        raw_modes = self._norm_code(row.get("selected_charge_modes"))
-        if not raw_modes:
-            return ""
-        comp_ids = [self._norm_code(x) for x in raw_comp_ids.split(",")] if raw_comp_ids else []
-        modes = [self._normalize_charge_mode(x) for x in raw_modes.split(",")]
-        if comp and comp_ids and len(comp_ids) == len(modes):
-            for i, cc in enumerate(comp_ids):
-                if cc == comp:
-                    return modes[i]
-        return modes[0] if modes else ""
+        hint = self._norm_code(panel_name_hint).lower()
+        entries = self._patient_panel_entries_from_row(row)
+        if comp and entries:
+            matches = [e for e in entries if e.get("comp_cat_id") == comp]
+            if hint:
+                for entry in matches:
+                    if self._norm_code(entry.get("panel_name")).lower() == hint:
+                        return entry.get("panel_name") or ""
+            if matches:
+                return matches[0].get("panel_name") or ""
+        return entries[0].get("panel_name") if entries else ""
 
-    def _cat_details_from_patient_row(self, row: dict, comp_cat_id: str) -> str:
+    def _charge_mode_from_patient_row(self, row: dict, comp_cat_id: str, panel_name_hint: str = "") -> str:
         if not isinstance(row, dict):
             return ""
         comp = self._norm_code(comp_cat_id)
-        raw_comp_ids = self._norm_code(row.get("selected_comp_cat_ids"))
-        raw_details = self._norm_code(row.get("selected_cat_details"))
-        if not raw_details:
+        hint = self._norm_code(panel_name_hint).lower()
+        entries = self._patient_panel_entries_from_row(row)
+        if comp and entries:
+            matches = [e for e in entries if e.get("comp_cat_id") == comp]
+            if hint:
+                for entry in matches:
+                    if self._norm_code(entry.get("panel_name")).lower() == hint:
+                        return entry.get("selected_charge_mode") or ""
+            if matches:
+                return matches[0].get("selected_charge_mode") or ""
+        return entries[0].get("selected_charge_mode") if entries else ""
+
+    def _cat_details_from_patient_row(self, row: dict, comp_cat_id: str, panel_name_hint: str = "") -> str:
+        if not isinstance(row, dict):
             return ""
-        comp_ids = [self._norm_code(x) for x in raw_comp_ids.split(",")] if raw_comp_ids else []
-        details = [self._norm_code(x) for x in raw_details.split(",")]
-        if comp and comp_ids and len(comp_ids) == len(details):
-            for i, cc in enumerate(comp_ids):
-                if cc == comp:
-                    return details[i]
-        return details[0] if details else ""
+        comp = self._norm_code(comp_cat_id)
+        hint = self._norm_code(panel_name_hint).lower()
+        entries = self._patient_panel_entries_from_row(row)
+        if comp and entries:
+            matches = [e for e in entries if e.get("comp_cat_id") == comp]
+            if hint:
+                for entry in matches:
+                    if self._norm_code(entry.get("panel_name")).lower() == hint:
+                        return entry.get("cat_details") or ""
+            if matches:
+                return matches[0].get("cat_details") or ""
+        return entries[0].get("cat_details") if entries else ""
 
     def _validate_prescription_required_for_tbs(self, cur, selected_patient_ids: list[int], tests_meta_map: dict, session_ref=None):
         for pid in selected_patient_ids:
