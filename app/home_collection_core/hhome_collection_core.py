@@ -6513,6 +6513,10 @@ class HHomeCollectionCore:
             cols.append("bkg_ref_flag")
             vals.append("%s")
             params.append(booking_id)
+        if "booking_tags" in booking_cols:
+            cols.append("booking_tags")
+            vals.append("%s")
+            params.append(source_booking.get("booking_tags"))
         cur.execute(f"INSERT INTO hhome_collection_booking ({', '.join(cols)}) VALUES ({', '.join(vals)})", tuple(params))
         new_booking_id = int(cur.lastrowid or 0)
         new_booking_code = self._booking_code_from_id(new_booking_id, proposed_visit_date)
