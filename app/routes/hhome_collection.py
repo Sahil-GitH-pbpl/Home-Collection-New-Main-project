@@ -473,10 +473,12 @@ def panel_companies():
     try:
         q = (request.args.get("q") or "").strip()
         atype = (request.args.get("atype") or "").strip()
+        limit = request.args.get("limit", default=15, type=int)
         rows = service.search_panel_companies(
             q,
-            limit=request.args.get("limit", default=15, type=int),
+            limit=limit,
             atype=atype or None,
+            master=request.args.get("master", default=0, type=int) == 1,
         )
         return jsonify({"ok": True, "items": rows})
     except Exception as exc:
@@ -487,9 +489,10 @@ def panel_companies():
 def panel_groups():
     try:
         comp_cat_id = request.args.get("comp_cat_id")
+        center_id = request.args.get("center_id")
         if not comp_cat_id:
             return jsonify({"ok": False, "message": "comp_cat_id is required"}), 400
-        return jsonify({"ok": True, "groups": service.panel_groups(comp_cat_id)})
+        return jsonify({"ok": True, "groups": service.panel_groups(comp_cat_id, center_id=center_id)})
     except Exception as exc:
         return jsonify({"ok": False, "message": str(exc)}), 500
 
@@ -498,10 +501,11 @@ def panel_groups():
 def panel_subgroups():
     try:
         comp_cat_id = request.args.get("comp_cat_id")
+        center_id = request.args.get("center_id")
         gcode = request.args.get("gcode")
         if not comp_cat_id or not gcode:
             return jsonify({"ok": False, "message": "comp_cat_id and gcode are required"}), 400
-        return jsonify({"ok": True, "subgroups": service.panel_subgroups(comp_cat_id, gcode)})
+        return jsonify({"ok": True, "subgroups": service.panel_subgroups(comp_cat_id, gcode, center_id=center_id)})
     except Exception as exc:
         return jsonify({"ok": False, "message": str(exc)}), 500
 
@@ -510,11 +514,12 @@ def panel_subgroups():
 def panel_tests():
     try:
         comp_cat_id = request.args.get("comp_cat_id")
+        center_id = request.args.get("center_id")
         gcode = request.args.get("gcode")
         scode = request.args.get("scode")
         if not comp_cat_id or not gcode or not scode:
             return jsonify({"ok": False, "message": "comp_cat_id, gcode and scode are required"}), 400
-        return jsonify({"ok": True, "tests": service.panel_tests(comp_cat_id, gcode, scode)})
+        return jsonify({"ok": True, "tests": service.panel_tests(comp_cat_id, gcode, scode, center_id=center_id)})
     except Exception as exc:
         return jsonify({"ok": False, "message": str(exc)}), 500
 
@@ -522,7 +527,11 @@ def panel_tests():
 @hhome_collection_bp.get("/hhome-collection/panel-companies-initial")
 def panel_companies_initial():
     try:
-        rows = service.panel_companies_initial(limit=request.args.get("limit", default=5, type=int))
+        limit = request.args.get("limit", default=5, type=int)
+        rows = service.panel_companies_initial(
+            limit=limit,
+            master=request.args.get("master", default=0, type=int) == 1,
+        )
         return jsonify({"ok": True, "items": rows})
     except Exception as exc:
         return jsonify({"ok": False, "message": str(exc)}), 500
@@ -536,6 +545,20 @@ def panel_company_show_mrp():
         panel_name = (data.get("panel_name") or "").strip()
         showmrp = bool(data.get("showmrp"))
         result = service.update_panel_show_mrp(comp_cat_id, panel_name, showmrp)
+        status = 200 if result.get("ok") else 400
+        return jsonify(result), status
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
+@hhome_collection_bp.post("/hhome-collection/panel-company-show-in-hc")
+def panel_company_show_in_hc():
+    try:
+        data = request.get_json(silent=True) or {}
+        comp_cat_id = (data.get("comp_cat_id") or "").strip()
+        panel_name = (data.get("panel_name") or "").strip()
+        showin_hc = bool(data.get("showinHC"))
+        result = service.update_panel_show_in_hc(comp_cat_id, panel_name, showin_hc)
         status = 200 if result.get("ok") else 400
         return jsonify(result), status
     except Exception as exc:
@@ -558,11 +581,12 @@ def panel_tests_by_company():
 def panel_test_search():
     try:
         comp_cat_id = request.args.get("comp_cat_id")
+        center_id = request.args.get("center_id")
         query = (request.args.get("q") or "").strip()
         limit = request.args.get("limit", default=50, type=int)
         if not comp_cat_id or len(query) < 2:
             return jsonify({"ok": True, "tests": []})
-        return jsonify({"ok": True, "tests": service.search_panel_tests(comp_cat_id, query, limit=limit)})
+        return jsonify({"ok": True, "tests": service.search_panel_tests(comp_cat_id, query, limit=limit, center_id=center_id)})
     except Exception as exc:
         return jsonify({"ok": False, "message": str(exc)}), 500
 

@@ -2194,14 +2194,15 @@ class HHomeCollectionCore:
                             a.category AS CompCatID,
                             cc.CatDetails,
                             a.BillingChargeMode,
+                            COALESCE(a.Active, 0) AS Active,
                             COALESCE(a.showmrp, 0) AS showmrp,
+                            COALESCE(a.showinHC, 0) AS showinHC,
                             a.Atype
                         FROM address a
                         LEFT JOIN compcategory cc ON cc.CompCatID = a.category
                         WHERE a.pname IS NOT NULL
                           AND TRIM(a.pname) <> ''
                           AND UPPER(TRIM(a.Atype)) = 'C'
-                          AND COALESCE(a.Active, 0) = 1
                         ORDER BY a.pname
                         """
                     )
@@ -2280,7 +2281,7 @@ class HHomeCollectionCore:
                     cur.execute(
                         """
                         SELECT
-                            CompCatID, GCode, SCode, TestCode, CTestCode, CTestName,
+                            CompCatID, CenterID, GCode, SCode, TestCode, CTestCode, CTestName,
                             MRP, PercentageOnStandard, MaximumpercentageAllowed
                         FROM panelrates
                         WHERE BookedFlag = 1
@@ -2309,7 +2310,9 @@ class HHomeCollectionCore:
                         "CompCatID": r.get("CompCatID"),
                         "CatDetails": self._norm_code(r.get("CatDetails")),
                         "BillingChargeMode": mode,
+                        "Active": 1 if int(r.get("Active") or 0) else 0,
                         "showmrp": 1 if int(r.get("showmrp") or 0) else 0,
+                        "showinHC": 1 if int(r.get("showinHC") or 0) else 0,
                         "_has_c": atype == "C",
                         "_has_d": atype == "D",
                         "_pname_lc": pname.lower(),
@@ -2330,6 +2333,8 @@ class HHomeCollectionCore:
                         panel_map[key]["BillingChargeMode"] = merged
                     if int(r.get("showmrp") or 0):
                         panel_map[key]["showmrp"] = 1
+                    if int(r.get("showinHC") or 0):
+                        panel_map[key]["showinHC"] = 1
 
             groups_by_comp = {}
             subgroups_by_comp_g = {}
@@ -2340,10 +2345,14 @@ class HHomeCollectionCore:
 
             for r in rate_rows:
                 cc = self._norm_code(r.get("CompCatID"))
+                center = self._norm_code(r.get("CenterID"))
                 g = self._norm_code(r.get("GCode"))
                 s = self._norm_code(r.get("SCode"))
                 if not cc or not g:
                     continue
+                rate_keys = [cc]
+                if center:
+                    rate_keys.insert(0, f"{cc}|{center}")
                 try:
                     mrp_value = float(r.get("MRP") or 0)
                 except Exception:
@@ -2361,13 +2370,13 @@ class HHomeCollectionCore:
                 calc_final_charge, calc_discount = self._normalized_paying_pricing(mrp_value, calc_discount)
 
                 gname = group_name.get(g, "")
-                groups_by_comp.setdefault(cc, {})
-                groups_by_comp[cc][g] = {"gcode": g, "description": gname}
-
-                if s:
-                    sname = subgroup_name.get((g, s), "")
-                    subgroups_by_comp_g.setdefault((cc, g), {})
-                    subgroups_by_comp_g[(cc, g)][s] = {"scode": s, "description": sname}
+                for rate_key in rate_keys:
+                    groups_by_comp.setdefault(rate_key, {})
+                    groups_by_comp[rate_key][g] = {"gcode": g, "description": gname}
+                    if s:
+                        sname = subgroup_name.get((g, s), "")
+                        subgroups_by_comp_g.setdefault((rate_key, g), {})
+                        subgroups_by_comp_g[(rate_key, g)][s] = {"scode": s, "description": sname}
 
                 panel_test_code = self._norm_code(r.get("TestCode"))
                 panel_ctest_code = self._norm_code(r.get("CTestCode"))
@@ -2383,11 +2392,6 @@ class HHomeCollectionCore:
                 booked_code = testcode1 or test_code
                 if not booked_code:
                     continue
-
-                t_key = (cc, g, s, booked_code)
-                if t_key in seen_tests:
-                    continue
-                seen_tests.add(t_key)
 
                 group_desc = self._norm_code(group_name.get(g, ""))
                 subgroup_desc = self._norm_code(subgroup_name.get((g, s), ""))
@@ -2412,25 +2416,13 @@ class HHomeCollectionCore:
                     "is_profile": bool((meta or {}).get("is_profile")),
                     "has_children": has_children,
                 }
-                tests_search_by_comp.setdefault(cc, []).append(search_item)
-
-                tests_by_comp_g_s.setdefault((cc, g, s), []).append(
-                    {
-                        "gcode": g,
-                        "scode": s,
-                        "test_code": test_code,
-                        "testcode1": testcode1,
-                        "booked_code": booked_code,
-                        "gender_rule": self._norm_code((meta or {}).get("gender_rule")),
-                        "description": description,
-                        "shortname": self._norm_code((meta or {}).get("shortname")),
-                        "charge": calc_final_charge,
-                        "mrp": mrp_value,
-                        "max_discount": calc_discount,
-                        "max_allowed_discount": max_allowed_discount,
-                        "is_profile": bool((meta or {}).get("is_profile")),
-                    }
-                )
+                for rate_key in rate_keys:
+                    t_key = (rate_key, g, s, booked_code)
+                    if t_key in seen_tests:
+                        continue
+                    seen_tests.add(t_key)
+                    tests_search_by_comp.setdefault(rate_key, []).append(dict(search_item))
+                    tests_by_comp_g_s.setdefault((rate_key, g, s), []).append(dict(search_item))
 
             for r in testprofile_rows:
                 g = self._norm_code(r.get("Gcode"))
@@ -4365,7 +4357,7 @@ class HHomeCollectionCore:
         finally:
             conn.close()
 
-    def search_panel_companies(self, query: str, limit: int = 15, atype: str | None = None):
+    def search_panel_companies(self, query: str, limit: int = 15, atype: str | None = None, master: bool = False):
         self.preload_panel_catalog()
         q = (query or "").strip()
         if len(q) < 2:
@@ -4373,6 +4365,8 @@ class HHomeCollectionCore:
         limit = max(1, min(int(limit or 15), 50))
         ql = q.lower()
         candidates = self._panel_catalog["prefix2"].get(ql[:2], [])
+        if not master:
+            candidates = [p for p in candidates if int(p.get("Active") or 0) == 1 and int(p.get("showinHC") or 0) == 1]
         atype_code = self._norm_code(atype).upper()
         if atype_code in ("C", "D"):
             if atype_code == "C":
@@ -4385,14 +4379,17 @@ class HHomeCollectionCore:
         # Hide internal lowercase key before returning
         return [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
 
-    def panel_companies_initial(self, limit: int = 5):
+    def panel_companies_initial(self, limit: int = 5, master: bool = False):
         self.preload_panel_catalog()
         try:
             safe_limit = max(1, min(int(limit or 5), 50))
         except Exception:
             safe_limit = 5
+        candidates = self._panel_catalog.get("panels", [])
+        if not master:
+            candidates = [p for p in candidates if int(p.get("Active") or 0) == 1 and int(p.get("showinHC") or 0) == 1]
         rows = sorted(
-            self._panel_catalog.get("panels", []),
+            candidates,
             key=lambda r: self._norm_code(r.get("pname")).lower(),
         )[:safe_limit]
         return [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
@@ -4409,11 +4406,11 @@ class HHomeCollectionCore:
                 cur.execute(
                     """
                     UPDATE address
-                    SET showmrp=%s
+                    SET showmrp=%s,
+                        updated_at=NOW()
                     WHERE category=%s
                       AND TRIM(pname)=%s
                       AND UPPER(TRIM(Atype)) = 'C'
-                      AND COALESCE(Active, 0) = 1
                     """,
                     (value, comp, pname),
                 )
@@ -4421,6 +4418,52 @@ class HHomeCollectionCore:
             conn.commit()
             self.refresh_panel_catalog()
             return {"ok": True, "showmrp": value, "updated_rows": affected}
+        except Exception as exc:
+            conn.rollback()
+            return {"ok": False, "message": str(exc)}
+        finally:
+            conn.close()
+
+    def update_panel_show_in_hc(self, comp_cat_id: str, panel_name: str, enabled: bool):
+        comp = self._norm_code(comp_cat_id)
+        pname = self._norm_code(panel_name)
+        if not comp or not pname:
+            return {"ok": False, "message": "Panel company and CompCatID are required"}
+        value = 1 if enabled else 0
+        conn = get_bhasin7001_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE address
+                    SET Active=%s,
+                        showinHC=%s,
+                        updated_at=NOW()
+                    WHERE category=%s
+                      AND TRIM(pname)=%s
+                      AND UPPER(TRIM(Atype)) = 'C'
+                    """,
+                    (value, value, comp, pname),
+                )
+                affected = int(cur.rowcount or 0)
+                cur.execute(
+                    """
+                    UPDATE panelrates
+                    SET Active = CASE WHEN BookedFlag = 1 THEN %s ELSE 0 END,
+                        updated_at = NOW()
+                    WHERE CompCatID = %s
+                    """,
+                    (value, comp),
+                )
+                panelrates_affected = int(cur.rowcount or 0)
+            conn.commit()
+            self.refresh_panel_catalog()
+            return {
+                "ok": True,
+                "showinHC": value,
+                "updated_rows": affected,
+                "panelrates_updated_rows": panelrates_affected,
+            }
         except Exception as exc:
             conn.rollback()
             return {"ok": False, "message": str(exc)}
@@ -4452,35 +4495,40 @@ class HHomeCollectionCore:
         out.sort(key=lambda r: self._norm_code(r.get("test_name")).lower())
         return out
 
-    def panel_groups(self, comp_cat_id: str):
+    def _panel_rate_lookup_key(self, comp_cat_id: str, center_id: str | None = None) -> str:
+        ccid = self._norm_code(comp_cat_id)
+        center = self._norm_code(center_id)
+        return f"{ccid}|{center}" if ccid and center else ccid
+
+    def panel_groups(self, comp_cat_id: str, center_id: str | None = None):
         self.preload_panel_catalog()
-        ccid = (comp_cat_id or "").strip()
+        ccid = self._panel_rate_lookup_key(comp_cat_id, center_id)
         if not ccid:
             return []
         groups = self._panel_catalog["groups_by_comp"].get(ccid, {})
         return [groups[k] for k in sorted(groups.keys())]
 
-    def panel_subgroups(self, comp_cat_id: str, gcode: str):
+    def panel_subgroups(self, comp_cat_id: str, gcode: str, center_id: str | None = None):
         self.preload_panel_catalog()
-        ccid = (comp_cat_id or "").strip()
+        ccid = self._panel_rate_lookup_key(comp_cat_id, center_id)
         gc = (gcode or "").strip()
         if not ccid or not gc:
             return []
         subgroups = self._panel_catalog["subgroups_by_comp_g"].get((ccid, gc), {})
         return [subgroups[k] for k in sorted(subgroups.keys())]
 
-    def panel_tests(self, comp_cat_id: str, gcode: str, scode: str):
+    def panel_tests(self, comp_cat_id: str, gcode: str, scode: str, center_id: str | None = None):
         self.preload_panel_catalog()
-        ccid = (comp_cat_id or "").strip()
+        ccid = self._panel_rate_lookup_key(comp_cat_id, center_id)
         gc = (gcode or "").strip()
         sc = (scode or "").strip()
         if not ccid or not gc or not sc:
             return []
         return self._panel_catalog["tests_by_comp_g_s"].get((ccid, gc, sc), [])
 
-    def search_panel_tests(self, comp_cat_id: str, query: str, limit: int = 50):
+    def search_panel_tests(self, comp_cat_id: str, query: str, limit: int = 50, center_id: str | None = None):
         self.preload_panel_catalog()
-        ccid = (comp_cat_id or "").strip()
+        ccid = self._panel_rate_lookup_key(comp_cat_id, center_id)
         q = self._norm_code(query).lower()
         if not ccid or len(q) < 2:
             return []

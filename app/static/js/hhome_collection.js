@@ -2971,6 +2971,7 @@ function legacyOpenPanelTestsModal(patientId) {
   activePanelPicker = {
     patientId: pid,
     compCatId,
+    centerId: tb.panel?.center_id || '',
     billingName: tb.billing?.cat_details || '',
     selectedGcode: '',
     selectedScode: '',
@@ -2982,7 +2983,7 @@ function legacyOpenPanelTestsModal(patientId) {
   panelTestSearchQuery = '';
 
   const patientName = $(`#tb-patient-name-${pid}`).text() || `Patient ${pid}`;
-  $('#panel-modal-meta').text(`Patient: ${patientName} | CompCatID: ${compCatId} | ${activePanelPicker.billingName}`);
+  $('#panel-modal-meta').text(`Patient: ${patientName} | CenterID: ${activePanelPicker.centerId || '-'} | CompCatID: ${compCatId} | ${activePanelPicker.billingName}`);
   $('#panel-test-search').val('');
   $('#panel-test-search-note').text('Type 2 letters to search across all tests');
 
@@ -3101,6 +3102,7 @@ function loadPanelTestsForCurrentView() {
     $('#panel-test-search-note').text(`Searching for "${query}" across all tests`);
     $.get('/hhome-collection/panel-test-search', {
       comp_cat_id: activePanelPicker.compCatId,
+      center_id: activePanelPicker.centerId,
       q: query,
       limit: 50
     }, function (res) {
@@ -3120,6 +3122,7 @@ function loadPanelTestsForCurrentView() {
   $('#panel-child-tests-list').html('<div class="text-muted p-2">Child Tests button se list khulegi</div>');
   $.get('/hhome-collection/panel-tests', {
     comp_cat_id: activePanelPicker.compCatId,
+    center_id: activePanelPicker.centerId,
     gcode: activePanelPicker.selectedGcode,
     scode: activePanelPicker.selectedScode
   }, function (res) {
@@ -3130,7 +3133,7 @@ function loadPanelTestsForCurrentView() {
 }
 
 function loadPanelGroups() {
-  $.get('/hhome-collection/panel-groups', { comp_cat_id: activePanelPicker.compCatId }, function (res) {
+  $.get('/hhome-collection/panel-groups', { comp_cat_id: activePanelPicker.compCatId, center_id: activePanelPicker.centerId }, function (res) {
     const groups = res.groups || [];
     if (!groups.length) {
       $('#panel-groups-list').html('<div class="text-muted p-2">No groups mapped</div>');
@@ -3166,6 +3169,7 @@ function loadPanelSubgroups() {
   $('#panel-child-tests-list').html('<div class="text-muted p-2">Child Tests button se list khulegi</div>');
   $.get('/hhome-collection/panel-subgroups', {
     comp_cat_id: activePanelPicker.compCatId,
+    center_id: activePanelPicker.centerId,
     gcode: activePanelPicker.selectedGcode
   }, function (res) {
     const subgroups = res.subgroups || [];
@@ -3339,6 +3343,7 @@ function openPanelTestsModal(patientId, panelIndex = 0) {
     patientId: pid,
     panelIndex: idx,
     compCatId,
+    centerId: section.panel?.center_id || '',
     billingName: section.billing?.cat_details || '',
     showMrp: panelShowMrp(section),
     selectedGcode: '',
@@ -3353,7 +3358,7 @@ function openPanelTestsModal(patientId, panelIndex = 0) {
 
   const patientName = $(`#tb-patient-name-${pid}`).text() || `Patient ${pid}`;
   const panelName = section.panel?.pname || `Panel ${idx + 1}`;
-  $('#panel-modal-meta').text(`Patient: ${patientName} | Panel: ${panelName} | CompCatID: ${compCatId} | ${activePanelPicker.billingName}`);
+  $('#panel-modal-meta').text(`Patient: ${patientName} | Panel: ${panelName} | CenterID: ${activePanelPicker.centerId || '-'} | CompCatID: ${compCatId} | ${activePanelPicker.billingName}`);
   $('#panel-test-search').val('');
   $('#panel-test-search-note').text('Type 2 letters to search across all tests');
 
