@@ -2623,6 +2623,9 @@ class HHomeCollectionCore:
             merged.append(item)
         return ",".join(merged)
 
+    def _with_rescheduled_tag(self, existing_raw) -> str:
+        return self._merge_tag_csv(existing_raw, "rescheduled")
+
     def _selected_patient_ids(self, selected_patients) -> list[int]:
         out = []
         seen = set()
@@ -4676,9 +4679,9 @@ class HHomeCollectionCore:
                     INSERT INTO hhome_collection_booking
                     (booking_code, caller_id, selected_address_id, address_snapshot_json,
                      preferred_visit_date, preferred_time_slot, booking_status,
-                     strt_time, cmplt_time, referred_by, intrnl_rfrncd_by, lead_id, remarks, assigned_phlebotomist_id,
+                     strt_time, cmplt_time, intrnl_rfrncd_by, lead_id, remarks, assigned_phlebotomist_id,
                      booking_tags, F_Apt_Am, credit_amount, paying_amount, F_dis, Ad_dis, total_amount, created_by)
-                    VALUES (%s,%s,%s,%s,%s,%s,0,NULL,NULL,%s,%s,%s,%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,0,NULL,NULL,%s,%s,%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s)
                     """,
                     (
                         tmp,
@@ -4687,7 +4690,6 @@ class HHomeCollectionCore:
                         hto_json(selected_snapshot),
                         preferred_visit_date,
                         preferred_time_slot,
-                        payload.get("referred_by") or None,
                         payload.get("intrnl_rfrncd_by") or None,
                         payload.get("lead_id") or None,
                         payload.get("remarks") or None,
@@ -4717,15 +4719,16 @@ class HHomeCollectionCore:
                     cur.execute(
                         """
                         INSERT INTO hhome_collection_booking_patient
-                        (booking_id, patient_id, cce_level_TBS, ref_by,
+                        (booking_id, patient_id, cce_level_TBS, ref_by, permanent_reference,
                          selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies, patient_final_amount, additional_discount_amount, created_by)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         """,
                         (
                             booking_id,
                             pid,
                             self._patient_tbs_value_for_save(patient_meta),
                             self._norm_code(patient_meta.get("referred_by")) or None,
+                            self._norm_code(patient_meta.get("permanent_reference")) or None,
                             comp_ids_csv or None,
                             cat_details_csv or None,
                             charge_modes_csv or None,
@@ -5566,7 +5569,7 @@ class HHomeCollectionCore:
                            p.contact_mobile,
                            hcbp.cce_level_TBS, hcbp.selected_comp_cat_ids, hcbp.selected_charge_modes, hcbp.selected_panel_companies,
                            hcbp.payment_mode, hcbp.due_amount, hcbp.extra_amount,
-                           hcbp.ref_by,
+                           hcbp.ref_by, hcbp.permanent_reference,
                            p.tag, COALESCE(hcbp.selected_panel_companies, '') AS panel_company,
                            p.patient_documents,
                            COALESCE(hcbp.prescription_files, '') AS prescription_files,
@@ -5873,6 +5876,7 @@ class HHomeCollectionCore:
                         ]
                     p["panel_company"] = self._norm_code(p.get("panel_company"))
                     p["ref_by"] = self._norm_code(p.get("ref_by"))
+                    p["permanent_reference"] = self._norm_code(p.get("permanent_reference"))
                     p["panel_companies"] = panels_by_patient.get(pid, [])
                     p["selected_charge_modes"] = self._norm_code(p.get("selected_charge_modes"))
                     p["tag"] = self._norm_code(p.get("tag"))
@@ -6564,7 +6568,7 @@ class HHomeCollectionCore:
         if "booking_tags" in booking_cols:
             cols.append("booking_tags")
             vals.append("%s")
-            params.append(source_booking.get("booking_tags"))
+            params.append(self._with_rescheduled_tag(source_booking.get("booking_tags")))
         cur.execute(f"INSERT INTO hhome_collection_booking ({', '.join(cols)}) VALUES ({', '.join(vals)})", tuple(params))
         new_booking_id = int(cur.lastrowid or 0)
         new_booking_code = self._booking_code_from_id(new_booking_id, proposed_visit_date)
@@ -6588,7 +6592,7 @@ class HHomeCollectionCore:
             bp_vals = ["%s", "%s", "%s", "%s"]
             bp_params = [new_booking_id, pid, 0, actor]
             for col in (
-                "cce_level_TBS", "ref_by", "selected_comp_cat_ids", "selected_cat_details",
+                "cce_level_TBS", "ref_by", "permanent_reference", "selected_comp_cat_ids", "selected_cat_details",
                 "selected_charge_modes", "selected_panel_companies", "patient_final_amount",
                 "additional_discount_amount",
             ):
@@ -6791,7 +6795,8 @@ class HHomeCollectionCore:
                         """
                         SELECT id, booking_code, caller_id, selected_address_id, address_snapshot_json,
                                booking_status, preferred_visit_date, preferred_time_slot,
-                               F_Apt_Am, credit_amount, paying_amount, F_dis, Ad_dis, total_amount
+                               F_Apt_Am, credit_amount, paying_amount, F_dis, Ad_dis, total_amount,
+                               booking_tags
                         FROM hhome_collection_booking
                         WHERE id=%s
                         LIMIT 1
@@ -6951,6 +6956,26 @@ class HHomeCollectionCore:
 
                     cur.execute(
                         """
+                        SELECT booking_tags
+                        FROM hhome_collection_booking
+                        WHERE id=%s
+                        LIMIT 1
+                        """,
+                        (booking_id,),
+                    )
+                    parent_booking = cur.fetchone() or {}
+                    rescheduled_tags = self._with_rescheduled_tag(parent_booking.get("booking_tags"))
+                    cur.execute(
+                        """
+                        UPDATE hhome_collection_booking
+                        SET booking_tags=%s
+                        WHERE id=%s
+                        """,
+                        (rescheduled_tags or None, booking_id),
+                    )
+
+                    cur.execute(
+                        """
                         UPDATE hhome_collection_booking_appointment
                         SET preferred_visit_date=%s,
                             preferred_time_slot=%s,
@@ -6983,6 +7008,7 @@ class HHomeCollectionCore:
                         "preferred_time_slot": new_slot,
                         "appointment_status": next_status,
                         "assigned_phlebotomist_id": int(next_assigned_user or 0),
+                        "booking_tags": rescheduled_tags,
                     }
 
                     self._insert_booking_action_audit(
@@ -7000,7 +7026,7 @@ class HHomeCollectionCore:
                 cur.execute(
                     """
                     SELECT id, booking_code, booking_status, assigned_phlebotomist_id,
-                           preferred_visit_date, preferred_time_slot
+                           preferred_visit_date, preferred_time_slot, booking_tags
                     FROM hhome_collection_booking
                     WHERE id=%s
                     LIMIT 1
@@ -7028,6 +7054,7 @@ class HHomeCollectionCore:
                 date_changed = old_date != new_date
                 next_status = 0 if date_changed else int(old_booking.get("booking_status") or 0)
                 next_assigned_user = None if date_changed else old_booking.get("assigned_phlebotomist_id")
+                rescheduled_tags = self._with_rescheduled_tag(old_booking.get("booking_tags"))
 
                 cur.execute(
                     """
@@ -7035,10 +7062,11 @@ class HHomeCollectionCore:
                     SET preferred_visit_date=%s,
                         preferred_time_slot=%s,
                         booking_status=%s,
-                        assigned_phlebotomist_id=%s
+                        assigned_phlebotomist_id=%s,
+                        booking_tags=%s
                     WHERE id=%s
                     """,
-                    (preferred_visit_date, preferred_time_slot, next_status, next_assigned_user, booking_id),
+                    (preferred_visit_date, preferred_time_slot, next_status, next_assigned_user, rescheduled_tags or None, booking_id),
                 )
 
                 if date_changed:
@@ -7062,6 +7090,7 @@ class HHomeCollectionCore:
                     "preferred_time_slot": new_slot,
                     "booking_status": next_status,
                     "assigned_phlebotomist_id": int(next_assigned_user or 0),
+                    "booking_tags": rescheduled_tags,
                 }
 
                 self._insert_booking_action_audit(
@@ -7116,7 +7145,7 @@ class HHomeCollectionCore:
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
-                    SELECT hcbp.patient_id, hcbp.cce_level_TBS, hcbp.ref_by AS referred_by,
+                    SELECT hcbp.patient_id, hcbp.cce_level_TBS, hcbp.ref_by AS referred_by, hcbp.permanent_reference,
                            hcbp.selected_comp_cat_ids, hcbp.selected_cat_details, hcbp.selected_charge_modes, hcbp.selected_panel_companies,
                            t.comp_cat_id, '' AS cat_details, '' AS selected_charge_mode, t.booked_code, t.test_name,
                            t.charge, t.mrp, t.max_discount
@@ -7149,11 +7178,13 @@ class HHomeCollectionCore:
                             selected_charge_mode,
                         ]
                     )
-                    tb = tests_billing_map.setdefault(pid, {"panels": [], "_panel_index": {}, "cce_level_tbs": tbs_code, "referred_by": self._norm_code(row.get("referred_by"))})
+                    tb = tests_billing_map.setdefault(pid, {"panels": [], "_panel_index": {}, "cce_level_tbs": tbs_code, "referred_by": self._norm_code(row.get("referred_by")), "permanent_reference": self._norm_code(row.get("permanent_reference"))})
                     if tb.get("cce_level_tbs") is None and tbs_code is not None:
                         tb["cce_level_tbs"] = tbs_code
                     if not tb.get("referred_by"):
                         tb["referred_by"] = self._norm_code(row.get("referred_by"))
+                    if not tb.get("permanent_reference"):
+                        tb["permanent_reference"] = self._norm_code(row.get("permanent_reference"))
                     panel_idx = tb["_panel_index"].get(panel_key)
                     if panel_idx is None:
                         panel_idx = len(tb["panels"])
@@ -7221,7 +7252,6 @@ class HHomeCollectionCore:
             "appointment": {
                 "preferred_visit_date": str(booking.get("preferred_visit_date") or ""),
                 "preferred_time_slot": self._norm_code(booking.get("preferred_time_slot")),
-                "referred_by": self._norm_code(booking.get("referred_by")),
                 "internal_ref": self._norm_code(booking.get("intrnl_rfrncd_by")),
                 "lead_id": self._norm_code(booking.get("lead_id")),
                 "remarks": self._norm_code(booking.get("remarks")),
@@ -7259,7 +7289,7 @@ class HHomeCollectionCore:
                 self.preload_panel_catalog()
                 cur.execute(
                     """
-                    SELECT patient_id, cce_level_TBS, ref_by AS referred_by, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies
+                    SELECT patient_id, cce_level_TBS, ref_by AS referred_by, permanent_reference, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies
                     FROM hhome_collection_booking_patient
                     WHERE booking_id=%s
                     ORDER BY id
@@ -7581,12 +7611,15 @@ class HHomeCollectionCore:
                                 "panels": [],
                                 "cce_level_tbs": tbs_code,
                                 "referred_by": self._norm_code(r.get("referred_by")),
+                                "permanent_reference": self._norm_code(r.get("permanent_reference")),
                             },
                         )
                         if tb.get("cce_level_tbs") is None and tbs_code is not None:
                             tb["cce_level_tbs"] = tbs_code
                         if not tb.get("referred_by"):
                             tb["referred_by"] = self._norm_code(r.get("referred_by"))
+                        if not tb.get("permanent_reference"):
+                            tb["permanent_reference"] = self._norm_code(r.get("permanent_reference"))
 
             for tb in tests_billing_map.values():
                 tb.pop("_panel_index", None)
@@ -7631,7 +7664,6 @@ class HHomeCollectionCore:
             "appointment": {
                 "preferred_visit_date": str(booking.get("preferred_visit_date") or ""),
                 "preferred_time_slot": self._norm_code(booking.get("preferred_time_slot")),
-                "referred_by": self._norm_code(booking.get("referred_by")),
                 "internal_ref": self._norm_code(booking.get("intrnl_rfrncd_by")),
                 "lead_id": self._norm_code(booking.get("lead_id")),
                 "remarks": self._norm_code(booking.get("remarks")),
@@ -7675,7 +7707,6 @@ class HHomeCollectionCore:
                         ap.remarks,
                         ap.reason_text,
                         hcb.caller_id,
-                        hcb.referred_by,
                         hcb.intrnl_rfrncd_by,
                         hcb.lead_id,
                         hcb.booking_tags,
@@ -7804,7 +7835,7 @@ class HHomeCollectionCore:
                     placeholders = ",".join(["%s"] * len(selected_patient_ids))
                     cur.execute(
                         f"""
-                        SELECT patient_id, cce_level_TBS, ref_by AS referred_by, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies
+                    SELECT patient_id, cce_level_TBS, ref_by AS referred_by, permanent_reference, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies
                         FROM hhome_collection_booking_patient
                         WHERE booking_id=%s
                           AND patient_id IN ({placeholders})
@@ -7860,6 +7891,7 @@ class HHomeCollectionCore:
                                 "_panel_index": {},
                                 "cce_level_tbs": patient_tbs_by_id.get(pid_i),
                                 "referred_by": self._norm_code((patient_row_by_id.get(pid_i) or {}).get("referred_by")),
+                                "permanent_reference": self._norm_code((patient_row_by_id.get(pid_i) or {}).get("permanent_reference")),
                             },
                         )
                         panel_idx = tb["_panel_index"].get(panel_key)
@@ -7907,12 +7939,15 @@ class HHomeCollectionCore:
                             "panels": [],
                             "cce_level_tbs": patient_tbs_by_id.get(int(pid)),
                             "referred_by": self._norm_code((patient_row_by_id.get(int(pid)) or {}).get("referred_by")),
+                            "permanent_reference": self._norm_code((patient_row_by_id.get(int(pid)) or {}).get("permanent_reference")),
                         },
                     )
 
                 for pid, tb in tests_billing_map.items():
                     if not tb.get("referred_by"):
                         tb["referred_by"] = self._norm_code((patient_row_by_id.get(int(pid)) or {}).get("referred_by"))
+                    if not tb.get("permanent_reference"):
+                        tb["permanent_reference"] = self._norm_code((patient_row_by_id.get(int(pid)) or {}).get("permanent_reference"))
                     tb.pop("_panel_index", None)
                     if tb.get("panels"):
                         first = tb["panels"][0]
@@ -7955,7 +7990,6 @@ class HHomeCollectionCore:
             "appointment": {
                 "preferred_visit_date": str(ap.get("preferred_visit_date") or ""),
                 "preferred_time_slot": self._norm_code(ap.get("preferred_time_slot")),
-                "referred_by": self._norm_code(ap.get("referred_by")),
                 "internal_ref": self._norm_code(ap.get("intrnl_rfrncd_by")),
                 "lead_id": self._norm_code(ap.get("lead_id")),
                 "remarks": self._norm_code(ap.get("remarks")),
@@ -8233,6 +8267,7 @@ class HHomeCollectionCore:
                         UPDATE hhome_collection_booking_patient
                         SET cce_level_TBS=%s,
                             ref_by=%s,
+                            permanent_reference=%s,
                             selected_comp_cat_ids=%s,
                             selected_cat_details=%s,
                             selected_charge_modes=%s,
@@ -8242,6 +8277,7 @@ class HHomeCollectionCore:
                         (
                             self._patient_tbs_value_for_save(patient_meta),
                             self._norm_code(patient_meta.get("referred_by")) or None,
+                            self._norm_code(patient_meta.get("permanent_reference")) or None,
                             comp_ids_csv or None,
                             cat_details_csv or None,
                             charge_modes_csv or None,
@@ -8579,6 +8615,7 @@ class HHomeCollectionCore:
                         UPDATE hhome_collection_booking_patient
                         SET cce_level_TBS=%s,
                             ref_by=%s,
+                            permanent_reference=%s,
                             selected_comp_cat_ids=%s,
                             selected_cat_details=%s,
                             selected_charge_modes=%s,
@@ -8588,6 +8625,7 @@ class HHomeCollectionCore:
                         (
                             self._patient_tbs_value_for_save(patient_meta),
                             self._norm_code(patient_meta.get("referred_by")) or None,
+                            self._norm_code(patient_meta.get("permanent_reference")) or None,
                             comp_ids_csv or None,
                             cat_details_csv or None,
                             charge_modes_csv or None,
@@ -8661,7 +8699,7 @@ class HHomeCollectionCore:
                 cur.execute(
                     """
                     SELECT id, booking_code, caller_id, selected_address_id, preferred_visit_date, preferred_time_slot,
-                           referred_by, intrnl_rfrncd_by, lead_id, remarks, booking_tags, booking_status, assigned_phlebotomist_id,
+                           intrnl_rfrncd_by, lead_id, remarks, booking_tags, booking_status, assigned_phlebotomist_id,
                            F_Apt_Am, credit_amount, paying_amount, F_dis, Ad_dis, total_amount
                     FROM hhome_collection_booking
                     WHERE id=%s
@@ -8771,7 +8809,6 @@ class HHomeCollectionCore:
                 mark_change("selected_address_id", old_booking.get("selected_address_id"), selected_address_id)
                 mark_change("preferred_visit_date", old_booking.get("preferred_visit_date"), preferred_visit_date)
                 mark_change("preferred_time_slot", old_booking.get("preferred_time_slot"), preferred_time_slot)
-                mark_change("referred_by", old_booking.get("referred_by"), payload.get("referred_by") or None)
                 mark_change("intrnl_rfrncd_by", old_booking.get("intrnl_rfrncd_by"), payload.get("intrnl_rfrncd_by") or None)
                 mark_change("lead_id", old_booking.get("lead_id"), payload.get("lead_id") or None)
                 mark_change("remarks", old_booking.get("remarks"), payload.get("remarks") or None)
@@ -8789,7 +8826,6 @@ class HHomeCollectionCore:
                             preferred_visit_date=%s,
                             preferred_time_slot=%s,
                             booking_status=%s,
-                            referred_by=%s,
                             intrnl_rfrncd_by=%s,
                             lead_id=%s,
                             remarks=%s,
@@ -8810,7 +8846,6 @@ class HHomeCollectionCore:
                             preferred_visit_date,
                             preferred_time_slot,
                             next_booking_status,
-                            payload.get("referred_by") or None,
                             payload.get("intrnl_rfrncd_by") or None,
                             payload.get("lead_id") or None,
                             payload.get("remarks") or None,
@@ -8915,8 +8950,8 @@ class HHomeCollectionCore:
                             """
                             INSERT INTO hhome_collection_booking_patient
                             (booking_id, patient_id, booking_patient_status, cce_level_TBS,
-                             ref_by, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies, patient_final_amount, additional_discount_amount, created_by)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                             ref_by, permanent_reference, selected_comp_cat_ids, selected_cat_details, selected_charge_modes, selected_panel_companies, patient_final_amount, additional_discount_amount, created_by)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                             """,
                             (
                                 booking_id,
@@ -8924,6 +8959,7 @@ class HHomeCollectionCore:
                                 next_patient_status,
                                 self._patient_tbs_value_for_save(patient_meta),
                                 self._norm_code(patient_meta.get("referred_by")) or None,
+                                self._norm_code(patient_meta.get("permanent_reference")) or None,
                                 comp_ids_csv or None,
                                 cat_details_csv or None,
                                 charge_modes_csv or None,
@@ -8942,6 +8978,7 @@ class HHomeCollectionCore:
                         UPDATE hhome_collection_booking_patient
                         SET cce_level_TBS=%s,
                             ref_by=%s,
+                            permanent_reference=%s,
                             selected_comp_cat_ids=%s,
                             selected_cat_details=%s,
                             selected_charge_modes=%s,
@@ -8953,6 +8990,7 @@ class HHomeCollectionCore:
                         (
                             self._patient_tbs_value_for_save(patient_meta),
                             self._norm_code(patient_meta.get("referred_by")) or None,
+                            self._norm_code(patient_meta.get("permanent_reference")) or None,
                             comp_ids_csv or None,
                             cat_details_csv or None,
                             charge_modes_csv or None,
@@ -9092,7 +9130,6 @@ class HHomeCollectionCore:
                     "selected_address_id",
                     "preferred_visit_date",
                     "preferred_time_slot",
-                    "referred_by",
                     "intrnl_rfrncd_by",
                     "lead_id",
                     "remarks",
@@ -9259,7 +9296,7 @@ class HHomeCollectionCore:
                         hcb.booking_status,
                         COALESCE(NULLIF(TRIM(am.route_no), ''), 'UNASSIGNED') AS route_name,
                         hcb.assigned_phlebotomist_id,
-                        MAX(TRIM(COALESCE(hcb.referred_by, ''))) AS referred_by,
+                        GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(hbp.ref_by, '')), '') ORDER BY hbp.ref_by SEPARATOR ', ') AS referred_by,
                         MAX(TRIM(COALESCE(hcb.intrnl_rfrncd_by, ''))) AS internal_referred_by,
                         MAX(COALESCE(hcb.total_amount, 0)) AS total_amount,
                         MAX(TRIM(COALESCE(hcb.booking_tags, ''))) AS booking_tags,
@@ -9302,7 +9339,7 @@ class HHomeCollectionCore:
                         ap.appointment_status AS booking_status,
                         COALESCE(NULLIF(TRIM(am.route_no), ''), 'UNASSIGNED') AS route_name,
                         ap.assigned_phlebotomist_id,
-                        MAX(TRIM(COALESCE(hcb.referred_by, ''))) AS referred_by,
+                        GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(hbp.ref_by, '')), '') ORDER BY hbp.ref_by SEPARATOR ', ') AS referred_by,
                         MAX(TRIM(COALESCE(hcb.intrnl_rfrncd_by, ''))) AS internal_referred_by,
                         MAX(COALESCE(hcb.total_amount, 0)) AS total_amount,
                         MAX(TRIM(COALESCE(hcb.booking_tags, ''))) AS booking_tags,

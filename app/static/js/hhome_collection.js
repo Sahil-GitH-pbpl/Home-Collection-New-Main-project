@@ -755,7 +755,6 @@ function bindStepEvents() {
     const today = isoToday();
     $('#b-date').attr('min', today);
     $('#slot-grid-date').attr('min', today);
-    wireAppointmentReferredSuggest();
     wireInternalRefSuggest();
     $('#btn-back-step1').off('click').on('click', () => setStep(1));
     $('#btn-go-step3').off('click').on('click', goStep3);
@@ -1556,47 +1555,6 @@ function wirePatientPanelSuggest() {
   });
 }
 
-function wireAppointmentReferredSuggest() {
-  const $input = $('#ap-referred-by');
-  const $suggest = $('#ap-referred-by-suggest');
-  if (!$input.length || !$suggest.length) return;
-
-  $input.off('input.appReferred').on('input.appReferred', function () {
-    const q = String($(this).val() || '').trim();
-    if (q.length < 2) {
-      $suggest.addClass('d-none').html('');
-      return;
-    }
-    // Referred-by should include both C and D (no atype filter).
-    $.get('/hhome-collection/panel-companies', { q, limit: 20 }, function (res) {
-      const items = res?.items || [];
-      if (!items.length) {
-        $suggest.html('<div class="tb-panel-item">No panel found</div>').removeClass('d-none');
-        return;
-      }
-      const html = items.map(x => `
-        <div class="tb-panel-item" data-pname="${escHtml(x.pname || '')}">
-          <strong>${escHtml(x.pname || '')}</strong>
-          <span class="meta">CenterID: ${escHtml(x.CenterID || '')}</span>
-        </div>
-      `).join('');
-      $suggest.html(html).removeClass('d-none');
-    });
-  });
-
-  $suggest.off('click.appReferred', '.tb-panel-item').on('click.appReferred', '.tb-panel-item', function () {
-    const pname = String($(this).data('pname') || '').trim();
-    if (pname) $input.val(pname);
-    $suggest.addClass('d-none').html('');
-  });
-
-  $(document).off('click.appReferred').on('click.appReferred', function (e) {
-    if (!$(e.target).closest('#ap-referred-by, #ap-referred-by-suggest').length) {
-      $suggest.addClass('d-none').html('');
-    }
-  });
-}
-
 function wireInternalRefSuggest() {
   const $input = $("#ap-internal-ref");
   const $suggest = $("#ap-internal-ref-suggest");
@@ -2274,7 +2232,6 @@ function hydrateStep2() {
   $('#b-date').val(wizardData.appointment.preferred_visit_date || defaultDate);
   setDatePickerValue(bookingDatePicker, wizardData.appointment.preferred_visit_date || defaultDate);
   $('#b-slot').val(wizardData.appointment.preferred_time_slot || '');
-  $('#ap-referred-by').val(wizardData.appointment.referred_by || '');
   $('#ap-internal-ref').val(wizardData.appointment.internal_ref || '');
   $('#ap-lead-id').val(wizardData.appointment.lead_id || '');
   $('#b-remarks').val(wizardData.appointment.remarks || '');
@@ -2311,12 +2268,11 @@ function syncAppointmentTagsFromTopBar() {
 
 function syncAppointmentFromStep2Inputs() {
   if (currentStep !== 2) return;
-  const hasStep2Fields = $('#b-date').length || $('#b-slot').length || $('#ap-referred-by').length || $('#ap-internal-ref').length || $('#ap-lead-id').length || $('#b-remarks').length;
+  const hasStep2Fields = $('#b-date').length || $('#b-slot').length || $('#ap-internal-ref').length || $('#ap-lead-id').length || $('#b-remarks').length;
   if (!hasStep2Fields) return;
   wizardData.appointment = wizardData.appointment || {};
   wizardData.appointment.preferred_visit_date = $('#b-date').val() || wizardData.appointment.preferred_visit_date || '';
   wizardData.appointment.preferred_time_slot = $('#b-slot').val() || wizardData.appointment.preferred_time_slot || '';
-  wizardData.appointment.referred_by = $('#ap-referred-by').val() || '';
   wizardData.appointment.internal_ref = $('#ap-internal-ref').val() || '';
   wizardData.appointment.lead_id = ($('#ap-lead-id').val() || '').trim();
   wizardData.appointment.remarks = ($('#b-remarks').val() || '').trim();
@@ -2330,7 +2286,6 @@ function goStep3() {
     ...prevAppt,
     preferred_visit_date: $('#b-date').val(),
     preferred_time_slot: $('#b-slot').val(),
-    referred_by: $('#ap-referred-by').val(),
     internal_ref: $('#ap-internal-ref').val(),
     lead_id: ($('#ap-lead-id').val() || '').trim(),
     remarks: $('#b-remarks').val().trim(),
@@ -2554,13 +2509,15 @@ function ensureTbObject(pid) {
     billing: null,
     selected_tests: [],
     cce_level_tbs: null,
-    referred_by: ''
+    referred_by: '',
+    permanent_reference: ''
   };
   if (tb.cce_level_tbs === undefined && tb.cce_level_TBS !== undefined) {
     tb.cce_level_tbs = tb.cce_level_TBS;
   }
   if (tb.cce_level_tbs === undefined) tb.cce_level_tbs = null;
   if (tb.referred_by === undefined) tb.referred_by = '';
+  if (tb.permanent_reference === undefined) tb.permanent_reference = '';
   if (!Array.isArray(tb.panels)) {
     tb.panels = [
       normalizePanelSection({
@@ -2793,8 +2750,45 @@ function bindPanelBillingEvents() {
     $(`#tb-patient-refby-suggest-${pid}`).addClass('d-none').html('');
   });
 
+  $('#tests-billing-sections').off('input', '.tb-patient-permanent-reference').on('input', '.tb-patient-permanent-reference', function () {
+    const $input = $(this);
+    const pid = String($input.data('patient-id') || '');
+    if (!pid) return;
+    const tb = ensureTbObject(pid);
+    const q = String($input.val() || '').trim();
+    tb.permanent_reference = q;
+    const $suggest = $(`#tb-patient-permanent-reference-suggest-${pid}`);
+    if (q.length < 2) {
+      $suggest.addClass('d-none').html('');
+      return;
+    }
+    $.get('/hhome-collection/internal-ref-users', { q, limit: 20 }, function (res) {
+      const items = res?.items || [];
+      if (!items.length) {
+        $suggest.html('<div class="tb-panel-item">No staff found</div>').removeClass('d-none');
+        return;
+      }
+      const rows = items.map((x) => `
+        <div class="tb-panel-item tb-permanent-reference-item" data-patient-id="${escHtml(pid)}" data-value="${escHtml(x.name || '')}">
+          <strong>${escHtml(x.name || '')}</strong>
+        </div>
+      `).join('');
+      $suggest.html(rows).removeClass('d-none');
+    });
+  });
+
+  $('#tests-billing-sections').off('click', '.tb-permanent-reference-item').on('click', '.tb-permanent-reference-item', function () {
+    const pid = String($(this).data('patient-id') || '');
+    const value = String($(this).data('value') || '').trim();
+    if (!pid) return;
+    const tb = ensureTbObject(pid);
+    tb.permanent_reference = value;
+    $(`#tb-patient-permanent-reference-${pid}`).val(value);
+    $(`#tb-patient-permanent-reference-suggest-${pid}`).addClass('d-none').html('');
+  });
+
   $(document).off('click.hcPanelClose').on('click.hcPanelClose', function (e) {
-    if (!$(e.target).closest('.tb-panel-wrap, .tb-refby-wrap').length) {
+    if (!$(e.target).closest('.tb-panel-wrap, .tb-refby-wrap, .tb-permanent-reference-wrap').length) {
       $('.tb-panel-suggest').addClass('d-none').html('');
     }
   });
@@ -3457,6 +3451,7 @@ function renderTestsBilling() {
       const existing = ensureTbObject(pid);
       const selectedTbs = normalizePatientTbs(existing.cce_level_tbs);
       const patientRefBy = String(existing.referred_by || p.referred_by || '').trim();
+      const permanentReference = String(existing.permanent_reference || p.permanent_reference || '').trim();
       const localUploadCount = getLocalPrescriptionUploadCount(pid);
       const stagedPrescriptionItems = !isModifyContextActive() ? getStagedPrescriptionItems(p) : [];
       const prescriptionChipHtml = stagedPrescriptionItems.map((item) => `
@@ -3481,16 +3476,24 @@ function renderTestsBilling() {
       return `
       <div class="card mb-2">
         <div class="card-body">
-          <div class="d-flex flex-wrap align-items-center gap-3 mb-2 tb-patient-head-row">
-            <h6 id="tb-patient-name-${pid}" class="tb-patient-head-name mb-0"><span>Name:</span> ${escHtml(p.full_name || '')}</h6>
-            <div class="d-flex align-items-center gap-2 tb-refby-wrap position-relative">
-              <label class="form-label mb-0 fw-bold text-nowrap" for="tb-patient-refby-${pid}">Ref By:</label>
-              <input id="tb-patient-refby-${pid}" class="form-control form-control-sm tb-patient-refby" data-patient-id="${escHtml(pid)}" placeholder="Type 2 letters" value="${escHtml(patientRefBy)}" style="width: 190px;">
+          <div class="d-flex flex-wrap align-items-end gap-3 mb-2 tb-patient-head-row">
+            <div class="tb-patient-head-name">
+              <div class="tb-patient-field-label">Name</div>
+              <h6 id="tb-patient-name-${pid}" class="mb-0">${escHtml(p.full_name || '')}</h6>
+            </div>
+            <div class="tb-refby-wrap tb-patient-top-field position-relative">
+              <label class="form-label tb-patient-field-label" for="tb-patient-refby-${pid}">Ref By</label>
+              <input id="tb-patient-refby-${pid}" class="form-control form-control-sm tb-patient-refby" data-patient-id="${escHtml(pid)}" placeholder="Type 2 letters" value="${escHtml(patientRefBy)}">
               <div id="tb-patient-refby-suggest-${pid}" class="tb-panel-suggest d-none"></div>
             </div>
-            <div class="d-flex align-items-center gap-2">
-              <label class="form-label mb-0 fw-bold text-nowrap" for="tb-patient-tbs-${pid}">Test_Bkg_Status <span class="text-danger">*</span></label>
-              <select id="tb-patient-tbs-${pid}" class="form-select form-select-sm tb-patient-tbs" data-patient-id="${escHtml(pid)}" style="width: 240px;">
+            <div class="tb-permanent-reference-wrap tb-patient-top-field position-relative">
+              <label class="form-label tb-patient-field-label" for="tb-patient-permanent-reference-${pid}">Permanent Reference</label>
+              <input id="tb-patient-permanent-reference-${pid}" class="form-control form-control-sm tb-patient-permanent-reference" data-patient-id="${escHtml(pid)}" placeholder="Type 2 letters" value="${escHtml(permanentReference)}">
+              <div id="tb-patient-permanent-reference-suggest-${pid}" class="tb-panel-suggest d-none"></div>
+            </div>
+            <div class="tb-patient-tbs-wrap">
+              <label class="form-label tb-patient-field-label" for="tb-patient-tbs-${pid}">Test_Bkg_Status <span class="text-danger">*</span></label>
+              <select id="tb-patient-tbs-${pid}" class="form-select form-select-sm tb-patient-tbs" data-patient-id="${escHtml(pid)}">
                 <option value="">Select status</option>
                 ${PATIENT_TBS_OPTIONS.map((opt) => `<option value="${opt.code}" ${selectedTbs === opt.code ? 'selected' : ''}>${escHtml(opt.label)}</option>`).join('')}
               </select>
@@ -3610,7 +3613,6 @@ function renderReview() {
           <div class="hc-review-meta">
             <div><strong>Caller:</strong> ${escHtml(mobile)} | <strong>Patients:</strong> ${patients.length}</div>
             <div><strong>Google Location:</strong> <span class="hc-review-linkish">${escHtml(addr.google_location || '-')}</span></div>
-            <div><strong>Referred By:</strong> ${escHtml(ap.referred_by || '-')}</div>
             <div><strong>Internal Referred By:</strong> ${escHtml(ap.internal_ref || '-')}</div>
             <div><strong>Lead ID:</strong> ${escHtml(ap.lead_id || '-')}</div>
           </div>
@@ -3909,6 +3911,7 @@ function confirmBooking() {
       testsMetaMap[p.patient_id] = {
         patient_id: Number(p.patient_id || 0),
         referred_by: String($(`#tb-patient-refby-${p.patient_id}`).val() || tb.referred_by || '').trim(),
+        permanent_reference: String($(`#tb-patient-permanent-reference-${p.patient_id}`).val() || tb.permanent_reference || '').trim(),
         cce_level_tbs: normalizePatientTbs(tb.cce_level_tbs),
         panel: tb.panel || null,
         billing: tb.billing || null,
@@ -3924,7 +3927,6 @@ function confirmBooking() {
     const payload = {
       preferred_visit_date: wizardData.appointment.preferred_visit_date,
       preferred_time_slot: wizardData.appointment.preferred_time_slot,
-      referred_by: wizardData.appointment.referred_by || '',
       intrnl_rfrncd_by: wizardData.appointment.internal_ref || '',
       lead_id: wizardData.appointment.lead_id || '',
       remarks: wizardData.appointment.remarks || '',
