@@ -239,7 +239,7 @@ def trf_patient_preview_page():
                   bp.no_of_pricks,
                   bp.sample_collection_is,
                   bp.additional_sample,
-                  p.patient_code,
+                  p.labmate_pid,
                   p.title,
                   p.full_name,
                   p.gender,
@@ -480,7 +480,7 @@ def trf_patient_preview_page():
                     "alt_mobile": row.get("alternate_mobile") or "-",
                     "internal_ref": row.get("intrnl_rfrncd_by") or "-",
                     "card_no": "-",
-                    "patient_code": row.get("patient_code") or "-",
+                    "labmate_pid": row.get("labmate_pid") or "-",
                     "lead_id": row.get("lead_id") or "-",
                     "visit_address": ", ".join([x for x in [
                         f"House No {a_snap.get('house_flat_no')}" if a_snap.get("house_flat_no") else "",

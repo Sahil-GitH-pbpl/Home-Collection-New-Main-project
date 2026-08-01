@@ -16,7 +16,12 @@ from app.alerts import send_whatsapp_to_number
 from app.db.connection import get_db_connection
 
 
-TARGET_PHONES = ["120363417280731168"]
+FULL_SUMMARY_TARGETS = ["120363417280731168"]
+NO_AMOUNT_SUMMARY_TARGETS = [
+    "120363143740492659",  # PBPL marketing
+    "120363037247387164",  # only HC
+]
+TARGET_PHONES = FULL_SUMMARY_TARGETS
 
 TBS_LABELS = {
     "1": "Test confirmed and booked",
@@ -50,6 +55,18 @@ def money(value) -> str:
     if value.is_integer():
         return str(int(value))
     return f"{value:.2f}"
+
+
+def without_amount_summary(message: str) -> str:
+    marker = "\n*Amount Summary*\n"
+    next_marker = "\n*CCE Level TBS*"
+    start = message.find(marker)
+    if start < 0:
+        return message
+    end = message.find(next_marker, start + len(marker))
+    if end < 0:
+        return message
+    return f"{message[:start].rstrip()}\n\n{message[end:].lstrip()}".strip()
 
 
 def fmt_date(d: date) -> str:
@@ -546,9 +563,20 @@ def main():
     finally:
         conn.close()
 
-    targets = args.phone or TARGET_PHONES
-    for target in targets:
+    if args.phone:
+        for target in args.phone:
+            for msg in (actual_msg, planned_msg):
+                send_whatsapp_to_number(target, msg)
+        return
+
+    for target in FULL_SUMMARY_TARGETS:
         for msg in (actual_msg, planned_msg):
+            send_whatsapp_to_number(target, msg)
+
+    no_amount_actual_msg = without_amount_summary(actual_msg)
+    no_amount_planned_msg = without_amount_summary(planned_msg)
+    for target in NO_AMOUNT_SUMMARY_TARGETS:
+        for msg in (no_amount_actual_msg, no_amount_planned_msg):
             send_whatsapp_to_number(target, msg)
 
 

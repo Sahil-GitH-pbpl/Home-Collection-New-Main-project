@@ -2050,12 +2050,17 @@ class HHomeCollectionCore:
             return ""
         comp = self._norm_code(comp_cat_id)
         hint = self._norm_code(panel_name_hint).lower()
+        mode_hint = self._normalize_charge_mode(row.get("selected_charge_mode") or row.get("charge_mode"))
         entries = self._patient_panel_entries_from_row(row)
         if comp and entries:
             matches = [e for e in entries if e.get("comp_cat_id") == comp]
             if hint:
                 for entry in matches:
                     if self._norm_code(entry.get("panel_name")).lower() == hint:
+                        return entry.get("panel_name") or ""
+            if mode_hint:
+                for entry in matches:
+                    if self._normalize_charge_mode(entry.get("selected_charge_mode")) == mode_hint:
                         return entry.get("panel_name") or ""
             if matches:
                 return matches[0].get("panel_name") or ""
@@ -2064,6 +2069,9 @@ class HHomeCollectionCore:
     def _charge_mode_from_patient_row(self, row: dict, comp_cat_id: str, panel_name_hint: str = "") -> str:
         if not isinstance(row, dict):
             return ""
+        direct_mode = self._selected_charge_mode({"selected_charge_mode": row.get("selected_charge_mode") or row.get("charge_mode")})
+        if direct_mode:
+            return direct_mode
         comp = self._norm_code(comp_cat_id)
         hint = self._norm_code(panel_name_hint).lower()
         entries = self._patient_panel_entries_from_row(row)
@@ -4762,11 +4770,12 @@ class HHomeCollectionCore:
                             cur.execute(
                                 """
                                 INSERT INTO hhome_collection_booking_patient_test
-                                (booking_id, booking_patient_id, patient_id, comp_cat_id,
+                                (booking_id, booking_patient_id, patient_id, comp_cat_id, charge_mode,
                                  booked_code, test_name, charge, mrp, max_discount, test_status, created_by)
-                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                                 ON DUPLICATE KEY UPDATE
                                 comp_cat_id=VALUES(comp_cat_id),
+                                charge_mode=VALUES(charge_mode),
                                 booked_code=VALUES(booked_code),
                                 test_name=VALUES(test_name),
                                 charge=VALUES(charge),
@@ -4779,6 +4788,7 @@ class HHomeCollectionCore:
                                     booking_patient_id,
                                     pid,
                                     self._norm_code(billing.get("comp_cat_id")),
+                                    selected_charge_mode or None,
                                     booked_code,
                                     test_name,
                                     norm_charge,
@@ -5771,7 +5781,7 @@ class HHomeCollectionCore:
                     visible_test_statuses = "0, 1, 2, 3" if include_cancelled_tests else "0, 1, 3"
                     cur.execute(
                         f"""
-                        SELECT patient_id, comp_cat_id, '' AS selected_charge_mode, booked_code, test_name, charge, mrp, max_discount
+                        SELECT patient_id, comp_cat_id, charge_mode AS selected_charge_mode, booked_code, test_name, charge, mrp, max_discount
                         FROM hhome_collection_booking_patient_test
                         WHERE booking_id=%s
                           AND {self._test_status_sql('test_status')} IN ({visible_test_statuses})
@@ -5793,8 +5803,10 @@ class HHomeCollectionCore:
                         mrp = float(row.get("mrp") or 0)
                         discount = float(row.get("max_discount") or 0)
                         pmeta = patient_row_by_id.get(pid) or {}
-                        panel_company = self._panel_name_from_patient_row(pmeta, row.get("comp_cat_id"))
-                        selected_charge_mode = self._charge_mode_from_patient_row(pmeta, row.get("comp_cat_id"))
+                        selected_charge_mode = self._selected_charge_mode({"selected_charge_mode": row.get("selected_charge_mode")}) or self._charge_mode_from_patient_row(pmeta, row.get("comp_cat_id"))
+                        pmeta_with_mode = dict(pmeta)
+                        pmeta_with_mode["selected_charge_mode"] = selected_charge_mode
+                        panel_company = self._panel_name_from_patient_row(pmeta_with_mode, row.get("comp_cat_id"))
                         final_charge = mrp - discount
                         if final_charge < 0:
                             final_charge = 0
@@ -6622,7 +6634,7 @@ class HHomeCollectionCore:
             new_bp_id = int(cur.lastrowid or 0)
             cur.execute(
                 f"""
-                SELECT comp_cat_id, booked_code, test_name, charge, mrp, max_discount
+                SELECT comp_cat_id, charge_mode, booked_code, test_name, charge, mrp, max_discount
                 FROM hhome_collection_booking_patient_test
                 WHERE booking_id=%s AND patient_id=%s AND {self._test_status_sql('test_status')}=0
                 """,
@@ -6632,14 +6644,15 @@ class HHomeCollectionCore:
                 cur.execute(
                     """
                     INSERT INTO hhome_collection_booking_patient_test
-                    (booking_id, booking_patient_id, patient_id, comp_cat_id, booked_code, test_name, charge, mrp, max_discount, test_status, created_by)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s)
+                    (booking_id, booking_patient_id, patient_id, comp_cat_id, charge_mode, booked_code, test_name, charge, mrp, max_discount, test_status, created_by)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s)
                     """,
                     (
                         new_booking_id,
                         new_bp_id,
                         pid,
                         t.get("comp_cat_id"),
+                        t.get("charge_mode"),
                         t.get("booked_code"),
                         t.get("test_name"),
                         t.get("charge") or 0,
@@ -7147,7 +7160,7 @@ class HHomeCollectionCore:
                     f"""
                     SELECT hcbp.patient_id, hcbp.cce_level_TBS, hcbp.ref_by AS referred_by, hcbp.permanent_reference,
                            hcbp.selected_comp_cat_ids, hcbp.selected_cat_details, hcbp.selected_charge_modes, hcbp.selected_panel_companies,
-                           t.comp_cat_id, '' AS cat_details, '' AS selected_charge_mode, t.booked_code, t.test_name,
+                           t.comp_cat_id, '' AS cat_details, t.charge_mode AS selected_charge_mode, t.booked_code, t.test_name,
                            t.charge, t.mrp, t.max_discount
                     FROM hhome_collection_booking_patient hcbp
                     LEFT JOIN hhome_collection_booking_patient_test t
@@ -7434,7 +7447,7 @@ class HHomeCollectionCore:
                         """
                         SELECT t.patient_id, bp.cce_level_TBS,
                                bp.selected_comp_cat_ids, bp.selected_cat_details, bp.selected_charge_modes, bp.selected_panel_companies,
-                               t.comp_cat_id, '' AS cat_details, '' AS selected_charge_mode, t.booked_code, t.test_name,
+                               t.comp_cat_id, '' AS cat_details, t.charge_mode AS selected_charge_mode, t.booked_code, t.test_name,
                                t.charge, t.mrp, t.max_discount
                         FROM hhome_collection_booking_patient_test t
                         LEFT JOIN hhome_collection_booking_patient bp
@@ -7449,7 +7462,7 @@ class HHomeCollectionCore:
                         f"""
                         SELECT t.patient_id, bp.cce_level_TBS,
                                bp.selected_comp_cat_ids, bp.selected_cat_details, bp.selected_charge_modes, bp.selected_panel_companies,
-                               t.comp_cat_id, '' AS cat_details, '' AS selected_charge_mode, t.booked_code, t.test_name,
+                               t.comp_cat_id, '' AS cat_details, t.charge_mode AS selected_charge_mode, t.booked_code, t.test_name,
                                t.charge, t.mrp, t.max_discount
                         FROM hhome_collection_booking_patient_test t
                         LEFT JOIN hhome_collection_booking_patient bp
@@ -7854,7 +7867,7 @@ class HHomeCollectionCore:
                     placeholders = ",".join(["%s"] * len(selected_patient_ids))
                     cur.execute(
                         f"""
-                        SELECT patient_id, comp_cat_id, '' AS cat_details, '' AS selected_charge_mode, booked_code, test_name,
+                        SELECT patient_id, comp_cat_id, '' AS cat_details, charge_mode AS selected_charge_mode, booked_code, test_name,
                                charge, mrp, max_discount
                         FROM hhome_collection_booking_patient_test
                         WHERE booking_id=%s
@@ -7870,13 +7883,15 @@ class HHomeCollectionCore:
                         pid = str(pid_i)
                         if not pid or pid == "0":
                             continue
-                        panel_company = self._panel_name_from_patient_row(patient_row_by_id.get(pid_i) or {}, row.get("comp_cat_id"))
                         selected_charge_mode = self._charge_mode_from_patient_row(
                             patient_row_by_id.get(pid_i) or {},
                             row.get("comp_cat_id"),
                         ) or self._selected_charge_mode(
                             {"selected_charge_mode": row.get("selected_charge_mode")}
                         )
+                        pmeta_with_mode = dict(patient_row_by_id.get(pid_i) or {})
+                        pmeta_with_mode["selected_charge_mode"] = selected_charge_mode
+                        panel_company = self._panel_name_from_patient_row(pmeta_with_mode, row.get("comp_cat_id"))
                         panel_key = "|".join(
                             [
                                 panel_company,
@@ -9064,11 +9079,12 @@ class HHomeCollectionCore:
                             cur.execute(
                                 """
                                 INSERT INTO hhome_collection_booking_patient_test
-                                (booking_id, booking_patient_id, patient_id, comp_cat_id,
+                                (booking_id, booking_patient_id, patient_id, comp_cat_id, charge_mode,
                                  booked_code, test_name, charge, mrp, max_discount, test_status, created_by)
-                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                                 ON DUPLICATE KEY UPDATE
                                 comp_cat_id=VALUES(comp_cat_id),
+                                charge_mode=VALUES(charge_mode),
                                 booked_code=VALUES(booked_code),
                                 test_name=VALUES(test_name),
                                 charge=VALUES(charge),
@@ -9083,6 +9099,7 @@ class HHomeCollectionCore:
                                     bp_id,
                                     pid,
                                     self._norm_code(billing.get("comp_cat_id")),
+                                    selected_charge_mode or None,
                                     booked_code,
                                     test_name,
                                     norm_charge,

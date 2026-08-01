@@ -145,7 +145,7 @@ def cce_matches():
             cur.execute("""
                 SELECT 
                     id,
-                    ticket_type,
+                    ticket_category AS ticket_type,
                     patient_name,
                     client_name,
                     mobile_number,
