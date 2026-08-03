@@ -5475,6 +5475,57 @@ class HHomeCollectionCore:
         finally:
             conn.close()
 
+    def is_trf_ready_for_patient(self, booking_id: int, patient_id: int, appointment_id: int = 0) -> bool:
+        booking_id = int(booking_id or 0)
+        patient_id = int(patient_id or 0)
+        appointment_id = int(appointment_id or 0)
+        if booking_id <= 0 or patient_id <= 0:
+            return False
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT patients_json
+                    FROM hhome_collection_batch
+                    WHERE booking_ids IS NOT NULL
+                      AND TRIM(booking_ids) <> ''
+                      AND booking_ids LIKE %s
+                    """,
+                    (f"%{booking_id}%",),
+                )
+                for batch_row in (cur.fetchall() or []):
+                    raw_items = batch_row.get("patients_json")
+                    try:
+                        batch_patients = json.loads(raw_items) if isinstance(raw_items, str) else (raw_items or [])
+                    except Exception:
+                        batch_patients = []
+                    if not isinstance(batch_patients, list):
+                        continue
+                    for item in batch_patients:
+                        if not isinstance(item, dict):
+                            continue
+                        try:
+                            item_booking_id = int(item.get("booking_id") or 0)
+                            item_patient_id = int(item.get("patient_id") or 0)
+                        except Exception:
+                            continue
+                        if item_booking_id != booking_id or item_patient_id != patient_id:
+                            continue
+                        item_appt_raw = item.get("appointment_id")
+                        try:
+                            item_appointment_id = int(item_appt_raw) if item_appt_raw is not None else 0
+                        except Exception:
+                            item_appointment_id = 0
+                        if appointment_id > 0:
+                            if item_appointment_id == appointment_id:
+                                return True
+                        elif item_appointment_id <= 0:
+                            return True
+                return False
+        finally:
+            conn.close()
+
     def get_booking_full(self, booking_id: int, appointment_id: int = 0):
         conn = get_db_connection()
         try:
@@ -5603,46 +5654,6 @@ class HHomeCollectionCore:
                 if appointment_id > 0 and selected_patient_ids:
                     allowed = set(int(x) for x in selected_patient_ids if int(x or 0) > 0)
                     patients = [p for p in patients if int(p.get("patient_id") or 0) in allowed]
-
-                trf_ready_patient_ids = set()
-                cur.execute(
-                    """
-                    SELECT patients_json
-                    FROM hhome_collection_batch
-                    WHERE booking_ids IS NOT NULL
-                      AND TRIM(booking_ids) <> ''
-                      AND booking_ids LIKE %s
-                    """,
-                    (f"%{int(booking_id or 0)}%",),
-                )
-                for batch_row in (cur.fetchall() or []):
-                    raw_items = batch_row.get("patients_json")
-                    try:
-                        batch_patients = json.loads(raw_items) if isinstance(raw_items, str) else (raw_items or [])
-                    except Exception:
-                        batch_patients = []
-                    if not isinstance(batch_patients, list):
-                        continue
-                    for item in batch_patients:
-                        if not isinstance(item, dict):
-                            continue
-                        try:
-                            item_booking_id = int(item.get("booking_id") or 0)
-                            item_patient_id = int(item.get("patient_id") or 0)
-                        except Exception:
-                            continue
-                        if item_booking_id != int(booking_id or 0) or item_patient_id <= 0:
-                            continue
-                        item_appt_raw = item.get("appointment_id")
-                        try:
-                            item_appointment_id = int(item_appt_raw) if item_appt_raw is not None else 0
-                        except Exception:
-                            item_appointment_id = 0
-                        if appointment_id > 0:
-                            if item_appointment_id == int(appointment_id):
-                                trf_ready_patient_ids.add(item_patient_id)
-                        elif item_appointment_id <= 0:
-                            trf_ready_patient_ids.add(item_patient_id)
 
                 tests_by_patient = {}
                 test_detail_by_patient = {}
@@ -5932,7 +5943,6 @@ class HHomeCollectionCore:
                     p["panel_companies"] = panels_by_patient.get(pid, [])
                     p["selected_charge_modes"] = self._norm_code(p.get("selected_charge_modes"))
                     p["tag"] = self._norm_code(p.get("tag"))
-                    p["trf_ready"] = bool(pid in trf_ready_patient_ids)
                     p["test_booking_status"] = self._patient_tbs_code({"cce_level_tbs": p.get("cce_level_TBS")})
                     p["appointment_patient_status"] = int(pctx.get("appointment_patient_status")) if pctx.get("appointment_patient_status") is not None else None
                     p["booking_due_amount"] = float(pctx.get("booking_due_amount") or 0) if appointment_id > 0 else float(p.get("due_amount") or 0)

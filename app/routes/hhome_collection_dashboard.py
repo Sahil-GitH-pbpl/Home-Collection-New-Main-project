@@ -101,6 +101,19 @@ def booking_detail(booking_id: int):
     return jsonify({"ok": True, "booking": booking})
 
 
+@hhome_collection_dashboard_bp.get("/hhome-collection/trf-ready")
+def trf_ready():
+    booking_id = int(request.args.get("booking_id", 0) or 0)
+    patient_id = int(request.args.get("patient_id", 0) or 0)
+    appointment_id = int(request.args.get("appointment_id", 0) or 0)
+    ready = service.is_trf_ready_for_patient(
+        booking_id=booking_id,
+        patient_id=patient_id,
+        appointment_id=appointment_id,
+    )
+    return jsonify({"ok": True, "ready": bool(ready)})
+
+
 @hhome_collection_dashboard_bp.get("/hhome-collection/phlebotomists")
 def phlebotomists():
     return jsonify({"ok": True, "phlebotomists": service.get_phlebotomists()})
