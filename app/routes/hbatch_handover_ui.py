@@ -11,6 +11,15 @@ hbatch_handover_ui_bp = Blueprint("hbatch_handover_ui", __name__)
 _WEB_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _batch_selected_date():
+    today = datetime.now().date()
+    raw_date = (request.args.get("date") or "").strip()
+    try:
+        return datetime.strptime(raw_date, "%Y-%m-%d").date() if raw_date else today
+    except Exception:
+        return today
+
+
 def _split_csv(raw) -> list[str]:
     if raw is None:
         return []
@@ -523,6 +532,7 @@ def trf_patient_preview_page():
 
 @hbatch_handover_ui_bp.get("/hhome-collection/batch-handover-ui-data")
 def batch_handover_ui_data():
+    selected_date = _batch_selected_date()
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -533,9 +543,11 @@ def batch_handover_ui_data():
                        COALESCE(NULLIF(TRIM(u.name), ''), CONCAT('User ', b.created_by)) AS phlebo_name
                 FROM hhome_collection_batch b
                 LEFT JOIN users u ON u.id = b.created_by
+                WHERE DATE(b.created_at) = %s
                 ORDER BY b.id DESC
-                LIMIT 50
-                """
+                LIMIT 500
+                """,
+                (selected_date.strftime("%Y-%m-%d"),),
             )
             batch_rows = cur.fetchall() or []
             all_booking_ids: list[int] = []
@@ -627,7 +639,13 @@ def batch_handover_ui_data():
 
             all_booking_ids = sorted(set(all_booking_ids))
             if not all_booking_ids:
-                return jsonify({"ok": True, "dateIso": datetime.now().strftime("%Y-%m-%d"), "lastSync": datetime.now().strftime("%d %b %Y %I:%M %p"), "batches": []})
+                return jsonify({
+                    "ok": True,
+                    "dateIso": datetime.now().strftime("%Y-%m-%d"),
+                    "selectedDate": selected_date.strftime("%Y-%m-%d"),
+                    "lastSync": datetime.now().strftime("%d %b %Y %I:%M %p"),
+                    "batches": [],
+                })
 
             placeholders_all = ",".join(["%s"] * len(all_booking_ids))
             cur.execute(
@@ -1031,6 +1049,7 @@ def batch_handover_ui_data():
             payload = {
                 "ok": True,
                 "dateIso": datetime.now().strftime("%Y-%m-%d"),
+                "selectedDate": selected_date.strftime("%Y-%m-%d"),
                 "lastSync": datetime.now().strftime("%d %b %Y %I:%M %p"),
                 "batches": batches,
             }

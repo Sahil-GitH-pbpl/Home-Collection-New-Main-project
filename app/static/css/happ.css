@@ -1792,6 +1792,21 @@ label,
   padding: 8px;
   margin-bottom: 0;
   text-align: center;
+  position: relative;
+}
+
+.dash-expand-patient-actions {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+}
+
+.dash-patient-trf-btn {
+  padding: 2px 8px;
+  min-height: 22px;
+  line-height: 1.1;
+  font-size: 12px;
+  border-radius: 999px;
 }
 
 .dash-expand-patient-title {

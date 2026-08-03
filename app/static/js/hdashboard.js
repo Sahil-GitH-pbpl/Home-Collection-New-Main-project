@@ -525,8 +525,13 @@ function renderExpandedDetails(b, rowStatusCode, bookingId, appointmentId, rowTy
       .filter(Boolean)
       .map((tag) => `<span class="dash-tag-chip">${tag}</span>`)
       .join(' ');
+    const patientId = Number(p.patient_id || 0);
+    const trfButton = patientId > 0
+      ? `<button type="button" class="btn btn-sm btn-outline-primary dash-patient-trf-btn" data-booking-id="${Number(bookingId || b.id || 0)}" data-patient-id="${patientId}" data-appointment-id="${Number(appointmentId || 0)}">Print TRF</button>`
+      : '';
     return `
       <div class="dash-expand-patient-card">
+        <div class="dash-expand-patient-actions">${trfButton}</div>
         <div class="dash-expand-patient-title">Patient ${idx + 1}: ${p.full_name || '-'}</div>
         <div><strong>Patient Tags:</strong> ${patientTagChips || '-'}</div>
         <div><strong>Test Booking Status:</strong> ${tbsLabel(p.test_booking_status)}</div>
@@ -558,6 +563,19 @@ function renderExpandedDetails(b, rowStatusCode, bookingId, appointmentId, rowTy
     </div>
     <div class="dash-expand-patient-grid">${patientBlocks || '<div class="text-muted">No patient details.</div>'}</div>
   `;
+}
+
+function openPatientTrfPreview(bookingId, patientId, appointmentId) {
+  const bid = Number(bookingId || 0);
+  const pid = Number(patientId || 0);
+  const aid = Number(appointmentId || 0);
+  if (!bid || !pid) {
+    alert('Invalid booking/patient for TRF print.');
+    return;
+  }
+  const url = `/hhome-collection/trf-patient-preview?booking_id=${encodeURIComponent(String(bid))}&patient_id=${encodeURIComponent(String(pid))}${aid ? `&appointment_id=${encodeURIComponent(String(aid))}` : ''}`;
+  const w = window.open(url, '_blank');
+  if (!w) alert('Please allow popups to print TRF.');
 }
 
 function bindExpandActions() {
@@ -605,6 +623,13 @@ function bindExpandActions() {
           booking_id: Number($(this).data('booking-id') || 0),
           appointment_id: Number($(this).data('appointment-id') || 0),
         });
+      });
+      $content.find('.dash-patient-trf-btn').off('click').on('click', function () {
+        openPatientTrfPreview(
+          Number($(this).data('booking-id') || 0),
+          Number($(this).data('patient-id') || 0),
+          Number($(this).data('appointment-id') || 0)
+        );
       });
       $('.js-doc-preview').off('click').on('click', function () {
         const src = String($(this).data('src') || $(this).attr('src') || '');
