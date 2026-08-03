@@ -526,8 +526,9 @@ function renderExpandedDetails(b, rowStatusCode, bookingId, appointmentId, rowTy
       .map((tag) => `<span class="dash-tag-chip">${tag}</span>`)
       .join(' ');
     const patientId = Number(p.patient_id || 0);
+    const trfReady = Number(p.trf_ready || 0) === 1 || p.trf_ready === true;
     const trfButton = patientId > 0
-      ? `<button type="button" class="btn btn-sm btn-outline-primary dash-patient-trf-btn" data-booking-id="${Number(bookingId || b.id || 0)}" data-patient-id="${patientId}" data-appointment-id="${Number(appointmentId || 0)}">Print TRF</button>`
+      ? `<button type="button" class="btn btn-sm btn-outline-primary dash-patient-trf-btn" data-booking-id="${Number(bookingId || b.id || 0)}" data-patient-id="${patientId}" data-appointment-id="${Number(appointmentId || 0)}" ${trfReady ? '' : 'disabled title="TRF available after batch"'}>Print TRF</button>`
       : '';
     return `
       <div class="dash-expand-patient-card">
