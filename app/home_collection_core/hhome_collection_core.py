@@ -1069,6 +1069,32 @@ class HHomeCollectionCore:
             return int(value) == 1
         return self._norm_code(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
+    def _audit_source_context(self, audit_context):
+        ctx = audit_context if isinstance(audit_context, dict) else {}
+        booking_id = int(ctx.get("booking_id") or 0) or None
+        appointment_id = int(ctx.get("appointment_id") or 0) or None
+        if appointment_id:
+            source_type = "APPOINTMENT_MODIFY"
+        elif booking_id:
+            source_type = "BOOKING_MODIFY"
+        else:
+            source_type = "DIRECT"
+        return source_type, booking_id, appointment_id
+
+    def _audit_changed_values(self, old_row, new_values):
+        old_changed, new_changed = {}, {}
+        old_row = old_row or {}
+        for field, new_value in (new_values or {}).items():
+            old_value = old_row.get(field)
+            if hasattr(old_value, "isoformat"):
+                old_value = old_value.isoformat()
+            old_norm = None if old_value is None else str(old_value)
+            new_norm = None if new_value is None else str(new_value)
+            if old_norm != new_norm:
+                old_changed[field] = old_value
+                new_changed[field] = new_value
+        return old_changed, new_changed
+
     def _section_show_mrp(self, section: dict | None) -> bool:
         sec = section or {}
         panel = sec.get("panel") or {}
@@ -3652,7 +3678,7 @@ class HHomeCollectionCore:
         finally:
             conn.close()
 
-    def update_patient_for_caller(self, caller_id: int, patient_id: int, payload: dict, actor_user_id=None, uploaded_documents=None):
+    def update_patient_for_caller(self, caller_id: int, patient_id: int, payload: dict, actor_user_id=None, uploaded_documents=None, audit_context=None):
         actor = self._actor(actor_user_id)
         full_name = (payload.get("full_name") or "").strip()
         gender = (payload.get("gender") or "").strip()
@@ -3685,7 +3711,9 @@ class HHomeCollectionCore:
 
                 cur.execute(
                     """
-                    SELECT p.tag
+                    SELECT p.title, p.full_name, p.labmate_pid, p.panel_company, p.card_number,
+                           p.tag, p.gender, p.date_of_birth, p.age_years,
+                           p.contact_mobile, p.alternate_mobile
                     FROM hcaller_patient_link
                     INNER JOIN hpatient_master p ON p.id = hcaller_patient_link.patient_id
                     WHERE caller_id = %s AND patient_id = %s AND is_active = 1
@@ -3698,6 +3726,19 @@ class HHomeCollectionCore:
                     return {"ok": False, "message": "Patient not linked with selected caller"}
                 existing_tag = (linked_row or {}).get("tag")
                 merged_tag = self._merge_tag_csv(existing_tag, tag)
+                new_patient_values = {
+                    "title": title,
+                    "full_name": full_name,
+                    "labmate_pid": labmate_pid,
+                    "panel_company": panel_company,
+                    "card_number": card_number,
+                    "tag": merged_tag or None,
+                    "gender": gender,
+                    "date_of_birth": dob,
+                    "age_years": age_years,
+                    "contact_mobile": contact_mobile or None,
+                    "alternate_mobile": alternate_mobile or None,
+                }
 
                 cur.execute(
                     """
@@ -3752,6 +3793,22 @@ class HHomeCollectionCore:
                 if not document_result.get("ok"):
                     conn.rollback()
                     return document_result
+                old_values, new_values = self._audit_changed_values(linked_row, new_patient_values)
+                if old_values:
+                    source_type, booking_id, appointment_id = self._audit_source_context(audit_context)
+                    self._insert_patient_address_update_audit(
+                        cur,
+                        source_type=source_type,
+                        caller_id=caller_id,
+                        booking_id=booking_id,
+                        appointment_id=appointment_id,
+                        patient_id=patient_id,
+                        address_id=None,
+                        action_type="PATIENT_UPDATE",
+                        old_values=old_values,
+                        new_values=new_values,
+                        done_by=actor,
+                    )
 
                 conn.commit()
                 return {"ok": True}
@@ -4132,7 +4189,8 @@ class HHomeCollectionCore:
         finally:
             conn.close()
 
-    def update_address_for_caller(self, caller_id: int, address_id: int, payload: dict, actor_user_id=None):
+    def update_address_for_caller(self, caller_id: int, address_id: int, payload: dict, actor_user_id=None, audit_context=None, snapshot_only: bool = False):
+        actor = self._actor(actor_user_id)
         house_flat_no = (payload.get("house_flat_no") or "").strip()
         colony_not_found = self._as_bool_flag(payload.get("colony_not_found"))
         try:
@@ -4162,9 +4220,12 @@ class HHomeCollectionCore:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT 1
+                    SELECT am.address_type, am.house_flat_no, am.floor, am.block_tower_no,
+                           am.street_line, am.landmark, am.google_location, am.colony_id,
+                           am.colony_name, am.pincode, am.route_no, am.city, am.access_notes
                     FROM hcaller_patient_link cpl
                     INNER JOIN hpatient_address_link pal ON pal.patient_id = cpl.patient_id AND pal.is_active = 1
+                    INNER JOIN haddress_master am ON am.id = pal.address_id
                     WHERE cpl.caller_id = %s
                       AND cpl.is_active = 1
                       AND pal.address_id = %s
@@ -4172,7 +4233,8 @@ class HHomeCollectionCore:
                     """,
                     (caller_id, address_id),
                 )
-                if not cur.fetchone():
+                old_address = cur.fetchone()
+                if not old_address:
                     return {"ok": False, "message": "Address not linked with selected caller"}
 
                 if colony_not_found:
@@ -4206,6 +4268,29 @@ class HHomeCollectionCore:
                     colony_name_value = colony["colony_name"]
                     pincode_value = colony["pincode"]
                     route_value = colony["route_no"]
+                new_address_values = {
+                    "address_type": payload.get("address_type") or "Home",
+                    "house_flat_no": house_flat_no,
+                    "floor": floor_value or None,
+                    "block_tower_no": block_tower_no or None,
+                    "street_line": street_line or None,
+                    "landmark": payload.get("landmark") or None,
+                    "google_location": payload.get("google_location") or None,
+                    "colony_id": colony_id,
+                    "colony_name": colony_name_value,
+                    "pincode": pincode_value,
+                    "route_no": route_value,
+                    "city": city,
+                    "access_notes": payload.get("access_notes") or None,
+                }
+                if snapshot_only:
+                    snapshot = self._enrich_address_row({
+                        "id": address_id,
+                        "address_id": address_id,
+                        **new_address_values,
+                        "is_full_house": is_full_house,
+                    })
+                    return {"ok": True, "address": {"id": address_id}, "address_snapshot": snapshot}
 
                 cur.execute(
                     """
@@ -4242,6 +4327,22 @@ class HHomeCollectionCore:
                         address_id,
                     ),
                 )
+                old_values, new_values = self._audit_changed_values(old_address, new_address_values)
+                if old_values:
+                    source_type, booking_id, appointment_id = self._audit_source_context(audit_context)
+                    self._insert_patient_address_update_audit(
+                        cur,
+                        source_type=source_type,
+                        caller_id=caller_id,
+                        booking_id=booking_id,
+                        appointment_id=appointment_id,
+                        patient_id=None,
+                        address_id=address_id,
+                        action_type="ADDRESS_UPDATE",
+                        old_values=old_values,
+                        new_values=new_values,
+                        done_by=actor,
+                    )
 
                 conn.commit()
                 snapshot = self.get_address_snapshot(address_id)
@@ -5040,6 +5141,7 @@ class HHomeCollectionCore:
                           ORDER BY p.full_name SEPARATOR ', '
                         ) AS patient_primary_mobiles,
                         NULL AS selected_patient_ids_json,
+                        NULL AS address_snapshot_json,
                         NULL AS appointment_tests_snapshot_json,
                         NULL AS payment_snapshot_json
                     FROM hhome_collection_booking hcb
@@ -5095,6 +5197,7 @@ class HHomeCollectionCore:
                               ORDER BY p.full_name SEPARATOR ', '
                             ) AS patient_primary_mobiles,
                             ap.selected_patient_ids_json,
+                            ap.address_snapshot_json,
                             ap.appointment_tests_snapshot_json,
                             ap.payment_snapshot_json
                         FROM hhome_collection_booking_appointment ap
@@ -5269,6 +5372,13 @@ class HHomeCollectionCore:
                         pay_summary = self._appointment_payment_summary(x.get("payment_snapshot_json"))
                         snap_total = self._compute_appointment_selected_tests_total(x.get("appointment_tests_snapshot_json"))
                         x["total_amount"] = float(snap_total or pay_summary.get("total_amount") or 0)
+                        try:
+                            ap_addr = json.loads(x.get("address_snapshot_json") or "{}")
+                        except Exception:
+                            ap_addr = {}
+                        if isinstance(ap_addr, dict):
+                            x["colony_name"] = self._norm_code(ap_addr.get("colony_name")) or x.get("colony_name")
+                            x["route_no"] = self._norm_code(ap_addr.get("route_no")) or x.get("route_no")
                         appt_id = int(x.get("appointment_id") or 0)
                         if appt_id in appointment_name_overrides:
                             x["patient_names"] = appointment_name_overrides[appt_id]
@@ -6520,6 +6630,27 @@ class HHomeCollectionCore:
                 (reason_text or None),
                 (hto_json(old_values) if old_values is not None else None),
                 (hto_json(new_values) if new_values is not None else None),
+                done_by,
+            ),
+        )
+
+    def _insert_patient_address_update_audit(self, cur, *, source_type: str, caller_id: int | None, booking_id: int | None, appointment_id: int | None, patient_id: int | None, address_id: int | None, action_type: str, old_values: dict, new_values: dict, done_by: int | None):
+        cur.execute(
+            """
+            INSERT INTO hpatient_address_update_audit
+            (source_type, caller_id, booking_id, appointment_id, patient_id, address_id, action_type, old_values_json, new_values_json, done_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (
+                source_type,
+                caller_id,
+                booking_id,
+                appointment_id,
+                patient_id,
+                address_id,
+                action_type,
+                hto_json(old_values),
+                hto_json(new_values),
                 done_by,
             ),
         )
@@ -7876,6 +8007,7 @@ class HHomeCollectionCore:
                         if int(r.get("patient_id") or 0) > 0
                     ]
 
+                appointment_patient_context = self._appointment_patient_context(ap.get("payment_snapshot_json"))
                 if appointment_id > 0 and isinstance(appointment_patient_context, dict):
                     visible_patient_ids = []
                     for pid in selected_patient_ids:
@@ -8150,7 +8282,7 @@ class HHomeCollectionCore:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT id, booking_id, selected_address_id, preferred_visit_date, preferred_time_slot, appointment_status,
+                    SELECT id, booking_id, selected_address_id, address_snapshot_json, preferred_visit_date, preferred_time_slot, appointment_status,
                            assigned_phlebotomist_id, selected_patient_ids_json,
                            appointment_tests_snapshot_json, payment_snapshot_json
                     FROM hhome_collection_booking_appointment
@@ -8401,6 +8533,13 @@ class HHomeCollectionCore:
                 if old_address_id != int(selected_address_id or 0):
                     old_audit_values["selected_address_id"] = old_address_id
                     new_audit_values["selected_address_id"] = int(selected_address_id or 0)
+                try:
+                    old_address_snapshot = json.loads(ap.get("address_snapshot_json") or "{}")
+                except Exception:
+                    old_address_snapshot = {}
+                if hto_json(old_address_snapshot or {}) != hto_json(selected_snapshot or {}):
+                    old_audit_values["address_snapshot"] = old_address_snapshot or {}
+                    new_audit_values["address_snapshot"] = selected_snapshot or {}
 
                 old_slot = self._norm_code(ap.get("preferred_time_slot"))
                 new_slot = self._norm_code(preferred_time_slot)
@@ -9403,6 +9542,7 @@ class HHomeCollectionCore:
                     SELECT
                         ap.id AS appointment_id,
                         ap.booking_id AS parent_booking_id,
+                        ap.address_snapshot_json,
                         ap.preferred_time_slot,
                         ap.appointment_status AS booking_status,
                         COALESCE(NULLIF(TRIM(am.route_no), ''), 'UNASSIGNED') AS route_name,
@@ -9473,7 +9613,11 @@ class HHomeCollectionCore:
                     }
                 )
             for r in ap_rows:
-                route_name = self._norm_code(r.get("route_name")) or "UNASSIGNED"
+                try:
+                    ap_addr = json.loads(r.get("address_snapshot_json") or "{}")
+                except Exception:
+                    ap_addr = {}
+                route_name = self._norm_code((ap_addr or {}).get("route_no")) or self._norm_code(r.get("route_name")) or "UNASSIGNED"
                 route_set.add(route_name)
                 slot_text = self._norm_code(r.get("preferred_time_slot"))
                 grid_rows.append(
@@ -9494,7 +9638,7 @@ class HHomeCollectionCore:
                         "patient_tags": self._norm_code(r.get("patient_tags")),
                         "panel_companies": self._norm_code(r.get("panel_companies")),
                         "test_booking_status_codes": self._norm_code(r.get("test_booking_status_codes")),
-                        "colony_name": self._norm_code(r.get("colony_name")),
+                        "colony_name": self._norm_code((ap_addr or {}).get("colony_name")) or self._norm_code(r.get("colony_name")),
                         "city": self._norm_code(r.get("city")),
                         "caller_mobile": self._norm_code(r.get("caller_mobile")),
                         "patient_count": int(r.get("patient_count") or 0),

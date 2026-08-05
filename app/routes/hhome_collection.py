@@ -7,6 +7,31 @@ hhome_collection_bp = Blueprint("hhome_collection", __name__)
 service = HHomeCollectionCore()
 
 
+def _is_modify_appointment_context():
+    ctx = session.get("hmodify_context") or {}
+    flow_type = (ctx.get("flow_type") or "").strip().lower()
+    modify_scope = (ctx.get("modify_scope") or "").strip().lower()
+    return bool(int(ctx.get("appointment_id") or 0) > 0 and (flow_type == "modify_appointment" or modify_scope == "appointment"))
+
+
+def _overlay_selected_address_snapshot(addresses):
+    snapshot = session.get("hselected_address_snapshot") or {}
+    selected_id = int(session.get("hselected_address_id") or 0)
+    if not (_is_modify_appointment_context() and selected_id and isinstance(snapshot, dict)):
+        return addresses
+    out = []
+    for row in addresses or []:
+        if int((row or {}).get("id") or 0) == selected_id:
+            merged = dict(row or {})
+            merged.update(snapshot)
+            merged["id"] = selected_id
+            merged["address_id"] = selected_id
+            out.append(merged)
+        else:
+            out.append(row)
+    return out
+
+
 @hhome_collection_bp.get("/hhome-collection")
 def wizard():
     mode = (request.args.get("mode") or "").strip().lower()
@@ -292,6 +317,7 @@ def update_patient(patient_id: int):
         payload,
         actor_user_id=session.get("user_id"),
         uploaded_documents=uploaded_documents,
+        audit_context=session.get("hmodify_context"),
     )
     if result.get("ok"):
         result.update(service.get_step1_bundle(caller_id, session))
@@ -333,9 +359,10 @@ def addresses():
     caller_id = session.get("hcaller_id")
     if not caller_id:
         return jsonify({"ok": True, "addresses": [], "selected_address_id": session.get("hselected_address_id")})
+    addresses = service.get_addresses_for_caller(caller_id)
     return jsonify({
         "ok": True,
-        "addresses": service.get_addresses_for_caller(caller_id),
+        "addresses": _overlay_selected_address_snapshot(addresses),
         "selected_address_id": session.get("hselected_address_id"),
     })
 
@@ -378,6 +405,13 @@ def address_detail(address_id: int):
     caller_id = session.get("hcaller_id")
     if not caller_id:
         return jsonify({"ok": False, "message": "Caller is required first"}), 400
+    selected_id = int(session.get("hselected_address_id") or 0)
+    snapshot = session.get("hselected_address_snapshot") or {}
+    if _is_modify_appointment_context() and selected_id == int(address_id) and isinstance(snapshot, dict):
+        address = dict(snapshot)
+        address["id"] = address_id
+        address["address_id"] = address_id
+        return jsonify({"ok": True, "address": address})
     address = service.get_address_for_caller(caller_id, address_id)
     if not address:
         return jsonify({"ok": False, "message": "Address not found"}), 404
@@ -392,7 +426,12 @@ def update_address(address_id: int):
 
     payload = request.get_json(silent=True) or {}
     result = service.update_address_for_caller(
-        caller_id, address_id, payload, actor_user_id=session.get("user_id")
+        caller_id,
+        address_id,
+        payload,
+        actor_user_id=session.get("user_id"),
+        audit_context=session.get("hmodify_context"),
+        snapshot_only=_is_modify_appointment_context(),
     )
     if result.get("ok"):
         session["hselected_address_id"] = result["address"]["id"]
