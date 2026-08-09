@@ -3,9 +3,11 @@
   let selectedPanelName = '';
   let panelFlags = {};
   let testFlags = {};
+  let currentTests = [];
   let searchTimer = null;
   let pendingShowMrp = {};
   let pendingShowInHc = {};
+  let pendingTat = {};
 
   function esc(v) {
     return String(v ?? '')
@@ -55,7 +57,7 @@
   }
 
   function updateApplyButton() {
-    const hasChanges = Object.keys(pendingShowMrp).length || Object.keys(pendingShowInHc).length;
+    const hasChanges = Object.keys(pendingShowMrp).length || Object.keys(pendingShowInHc).length || Object.keys(pendingTat).length;
     $('#ptm-apply-show-mrp').toggleClass('d-none', !hasChanges);
   }
 
@@ -72,13 +74,18 @@
     const html = rows.map((x, i) => {
       const key = testKey(selectedCompCatId, x.booked_code);
       const flags = testFlags[key] || {};
+      const tatChange = pendingTat[String(x.booked_code || '')];
+      const tatRaw = tatChange ? tatChange.tat_raw : (x.tat_raw || '');
       return `
         <tr>
           <td>${i + 1}</td>
           <td>${esc(x.test_name || '')}</td>
+          <td>
+            <span class="ptm-tat-cell"><span class="ptm-tat-text">${esc(tatRaw || '-')}</span></span>
+            <button type="button" class="btn btn-sm ms-1 ptm-edit-tat" data-test-code="${esc(x.booked_code || '')}" data-tat="${esc(tatRaw || '')}">edit</button>
+          </td>
           <td>${esc(x.mrp ?? '')}</td>
           <td>${esc(x.charge ?? '')}</td>
-          <td>${esc(x.max_discount ?? '')}</td>
           <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-test" data-key="${esc(key)}" data-flag="allowed_in_hc" ${flags.allowed_in_hc ? 'checked' : ''}></td>
           <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-test" data-key="${esc(key)}" data-flag="is_tag" ${flags.is_tag ? 'checked' : ''}></td>
           <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-test" data-key="${esc(key)}" data-flag="tat" ${flags.tat ? 'checked' : ''}></td>
@@ -86,6 +93,15 @@
       `;
     }).join('');
     $('#ptm-test-tbody').html(html);
+  }
+
+  function filterCurrentTests() {
+    const q = String($('#ptm-test-search').val() || '').trim().toLowerCase();
+    if (q.length < 2) {
+      renderTestRows(currentTests);
+      return;
+    }
+    renderTestRows(currentTests.filter((x) => String(x.test_name || '').toLowerCase().includes(q)));
   }
 
   function loadInitialPanels() {
@@ -113,10 +129,12 @@
     selectedCompCatId = String(compCatId || '');
     selectedPanelName = String(panelName || '');
     if (!selectedCompCatId) return;
-    $('#ptm-selected-label').text(`Selected: ${selectedPanelName || '-'} | CompCatID: ${selectedCompCatId}`);
+    $('#ptm-test-search').val('');
     $.get('/hhome-collection/panel-tests-by-company', { comp_cat_id: selectedCompCatId }, function (res) {
-      renderTestRows(res?.tests || []);
+      currentTests = res?.tests || [];
+      renderTestRows(currentTests);
     }).fail(function () {
+      currentTests = [];
       renderTestRows([]);
     });
   }
@@ -162,12 +180,28 @@
       testFlags[key][flag] = $(this).is(':checked');
     });
 
+    $('#ptm-test-search').on('input', filterCurrentTests);
+
+    $('#ptm-test-tbody').on('click', '.ptm-edit-tat', function (e) {
+      e.stopPropagation();
+      const testCode = String($(this).data('test-code') ?? '');
+      const current = String($(this).data('tat') ?? '');
+      const next = window.prompt('Enter TAT', current);
+      if (next === null) return;
+      pendingTat[testCode] = { test_code: testCode, tat_raw: next.trim() };
+      const row = currentTests.find((x) => String(x.booked_code || '') === testCode);
+      if (row) row.tat_raw = next.trim();
+      filterCurrentTests();
+      updateApplyButton();
+    });
+
     $('#ptm-apply-show-mrp').on('click', function () {
       const mrpChanges = Object.values(pendingShowMrp);
       const hcChanges = Object.values(pendingShowInHc);
-      const changes = mrpChanges.concat(hcChanges);
+      const tatChanges = Object.values(pendingTat);
+      const changes = mrpChanges.concat(hcChanges).concat(tatChanges);
       if (!changes.length) return;
-      if (!window.confirm('Are you sure you want to apply selected panel company changes?')) return;
+      if (!window.confirm('Are you sure you want to apply selected changes?')) return;
       const $btn = $(this).prop('disabled', true).text('Saving...');
       const mrpRequests = mrpChanges.map((payload) => $.ajax({
         url: '/hhome-collection/panel-company-show-mrp',
@@ -181,7 +215,13 @@
         contentType: 'application/json',
         data: JSON.stringify(payload)
       }));
-      const requests = mrpRequests.concat(hcRequests);
+      const tatRequests = tatChanges.length ? [$.ajax({
+        url: '/hhome-collection/test-tat',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ items: tatChanges })
+      })] : [];
+      const requests = mrpRequests.concat(hcRequests).concat(tatRequests);
       $.when.apply($, requests).done(function () {
         window.location.reload();
       }).fail(function (xhr) {

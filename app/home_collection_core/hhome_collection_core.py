@@ -2260,6 +2260,20 @@ class HHomeCollectionCore:
                     test_rows = cur.fetchall()
                     cur.execute(
                         """
+                        SELECT test_code, tat_raw, tat_normalized
+                        FROM test_tat_master
+                        """
+                    )
+                    tat_by_code = {
+                        self._norm_code(r.get("test_code")): {
+                            "tat_raw": self._norm_code(r.get("tat_raw")),
+                            "tat_normalized": self._norm_code(r.get("tat_normalized")),
+                        }
+                        for r in cur.fetchall()
+                        if self._norm_code(r.get("test_code"))
+                    }
+                    cur.execute(
+                        """
                         SELECT SpecimenID, SpName
                         FROM testspecimen
                         """
@@ -2426,6 +2440,7 @@ class HHomeCollectionCore:
                 booked_code = testcode1 or test_code
                 if not booked_code:
                     continue
+                tat_info = tat_by_code.get(booked_code) or tat_by_code.get(testcode1) or tat_by_code.get(test_code) or {}
 
                 group_desc = self._norm_code(group_name.get(g, ""))
                 subgroup_desc = self._norm_code(subgroup_name.get((g, s), ""))
@@ -2447,6 +2462,8 @@ class HHomeCollectionCore:
                     "mrp": mrp_value,
                     "max_discount": calc_discount,
                     "max_allowed_discount": max_allowed_discount,
+                    "tat_raw": tat_info.get("tat_raw", ""),
+                    "tat_normalized": tat_info.get("tat_normalized", ""),
                     "is_profile": bool((meta or {}).get("is_profile")),
                     "has_children": has_children,
                 }
@@ -4601,11 +4618,42 @@ class HHomeCollectionCore:
                     "charge": row.get("charge"),
                     "mrp": row.get("mrp"),
                     "max_discount": row.get("max_discount"),
+                    "tat_raw": self._norm_code(row.get("tat_raw")),
+                    "tat_normalized": self._norm_code(row.get("tat_normalized")),
                     "booked_code": key,
                 }
             )
         out.sort(key=lambda r: self._norm_code(r.get("test_name")).lower())
         return out
+
+    def update_test_tats(self, items):
+        rows = [
+            (self._norm_code(x.get("tat_raw")), self._norm_code(x.get("test_code")))
+            for x in (items or [])
+            if self._norm_code(x.get("test_code"))
+        ]
+        if not rows:
+            return {"ok": False, "message": "No TAT changes found"}
+        conn = get_bhasin7001_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    """
+                    UPDATE test_tat_master
+                    SET tat_raw=%s,
+                        updated_at=NOW()
+                    WHERE test_code=%s
+                    """,
+                    rows,
+                )
+            conn.commit()
+            self.refresh_panel_catalog()
+            return {"ok": True, "updated_rows": len(rows)}
+        except Exception as exc:
+            conn.rollback()
+            return {"ok": False, "message": str(exc)}
+        finally:
+            conn.close()
 
     def _panel_rate_lookup_key(self, comp_cat_id: str, center_id: str | None = None) -> str:
         ccid = self._norm_code(comp_cat_id)

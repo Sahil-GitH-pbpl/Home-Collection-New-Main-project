@@ -86,33 +86,33 @@ def create_app():
         app.logger.error(f"[hhome_collection preload] failed: {exc}")
 
     # ---------- CCE popup globals (available on every template) ----------
-    # Default to local Exotel listener port if env not set.
-    DEFAULT_EXOTEL_PORT = int(os.getenv("EXOTEL_PORT", "8002"))
+    DEFAULT_ISSABEL_PORT = int(os.getenv("ISSABEL_PORT", "2015"))
 
-    def _resolve_exotel_host():
+    def _resolve_issabel_host():
         return (
-            current_app.config.get("EXOTEL_HOST")
-            or os.getenv("EXOTEL_HOST")
+            current_app.config.get("ISSABEL_HOST")
+            or os.getenv("ISSABEL_HOST")
             or request.host.split("/")[0].split(":")[0]
         )
 
-    def _resolve_exotel_port():
-        return int(current_app.config.get("EXOTEL_PORT", DEFAULT_EXOTEL_PORT))
+    def _resolve_issabel_port():
+        return int(current_app.config.get("ISSABEL_PORT") or DEFAULT_ISSABEL_PORT)
 
     @app.context_processor
     def inject_cce_globals():
-        host = _resolve_exotel_host()
-        port = _resolve_exotel_port()
+        host = _resolve_issabel_host()
+        port = _resolve_issabel_port()
 
         ws_scheme = "wss" if request.is_secure else "ws"
-        ws_url = current_app.config.get("EXOTEL_WS_URL") or f"{ws_scheme}://{host}:{port}"
+        ws_url = current_app.config.get("ISSABEL_WS_URL") or f"{ws_scheme}://{host}:{port}"
         http_url = f"http://{host}:{port}"
 
         return {
             "GLOBAL_WS_URL": ws_url,
-            "GLOBAL_EXOTEL_HTTP": http_url,
+            "GLOBAL_ISSABEL_HTTP": http_url,
             "GLOBAL_SESSION_USER_NAME": session.get("username") or "",
             "GLOBAL_SESSION_USER_ID": session.get("user_id") or "",
         }
 
     return app
+

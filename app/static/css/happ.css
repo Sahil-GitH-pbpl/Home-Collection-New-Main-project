@@ -2191,7 +2191,8 @@ button.dash-doc-thumb {
   border: 1px solid #d8e0ea;
 }
 
-.ptm-panel-search-input {
+.ptm-panel-search-input,
+.ptm-test-search-input {
   width: 360px;
   max-width: 100%;
 }
@@ -2219,11 +2220,11 @@ button.dash-doc-thumb {
 }
 
 .ptm-table tbody tr.ptm-selected-row {
-  background: #dcecff !important;
+  background: #b8d5ff !important;
 }
 
 .ptm-table tbody tr.ptm-selected-row td {
-  background: #dcecff !important;
+  background: #b8d5ff !important;
 }
 
 .ptm-table tbody tr.ptm-pending-mrp td {
@@ -2238,6 +2239,33 @@ button.dash-doc-thumb {
 .ptm-table .form-check-input:checked {
   background-color: #0f1f46;
   border-color: #000000;
+}
+
+.ptm-tat-cell {
+  display: inline-block;
+  min-width: 82px;
+  text-align: right;
+}
+
+.ptm-edit-tat {
+  padding: 0;
+  border-radius: 10px;
+  background: #c2410c;
+  border: 1px solid #9a3412;
+  color: #ffffff;
+  min-width: 28px;
+  min-height: 18px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.ptm-edit-tat:hover,
+.ptm-edit-tat:focus,
+.ptm-edit-tat:active {
+  background: #c2410c;
+  border-color: #9a3412;
+  color: #ffffff;
+  box-shadow: none;
 }
 
 .ptm-panel-wrap {

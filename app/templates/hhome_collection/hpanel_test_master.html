@@ -33,9 +33,12 @@
   </div>
 
   <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
       <strong>Test Master</strong>
-      <span id="ptm-selected-label" class="small text-muted">Select panel company to load tests</span>
+      <div class="d-flex align-items-center gap-2">
+        <label for="ptm-test-search" class="mb-0 small text-nowrap"><strong>Search Test Name :</strong></label>
+        <input id="ptm-test-search" type="text" class="form-control form-control-sm ptm-test-search-input" placeholder="Search test name (min 2 chars)">
+      </div>
     </div>
     <div class="table-responsive ptm-test-wrap">
       <table class="table table-sm mb-0 ptm-table" id="ptm-test-table">
@@ -43,9 +46,9 @@
           <tr>
             <th>SR. NO.</th>
             <th>Test Name</th>
+            <th>TAT Raw</th>
             <th>MRP</th>
             <th>Charge</th>
-            <th>Maximum Discount</th>
             <th>Allowed In HC</th>
             <th>Is Tag</th>
             <th>TAT</th>

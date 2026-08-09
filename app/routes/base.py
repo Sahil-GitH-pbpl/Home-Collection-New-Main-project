@@ -160,10 +160,6 @@ def tickets_counters():
                         OR LOWER(i.call_type) = 'incomplete'
                     )
                     AND LOWER(i.call_type) <> 'completed'
-                    AND NOT EXISTS (
-                        SELECT 1 FROM exotel_outgoing_calls o
-                        WHERE o.call_sid = i.call_sid
-                    )
             """)
             missed_calls = cur.fetchone().get("missed_calls", 0) or 0
 

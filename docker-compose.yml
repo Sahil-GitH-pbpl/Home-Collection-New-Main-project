@@ -51,9 +51,9 @@ services:
       FAIL_HOST: 10.1.1.51
       VENE_HOST: 10.1.1.53
       WHATSAPP_API_URL: http://10.1.1.44:3004/api/messages/send
-      EXOTEL_HOST: 10.1.1.67
-      EXOTEL_PORT: 8002
-      EXOTEL_WS_URL: ws://10.1.1.67:8002
+      ISSABEL_HOST: 10.1.1.67
+      ISSABEL_PORT: 8002
+      ISSABEL_WS_URL: ws://10.1.1.67:8002
       PEPIPOST_WA_ENABLED: ${PEPIPOST_WA_ENABLED:-1}
       PEPIPOST_BOOKING_TEMPLATE: ${PEPIPOST_BOOKING_TEMPLATE:-arpra_booking}
       PEPIPOST_ASSIGNMENT_TEMPLATE: ${PEPIPOST_ASSIGNMENT_TEMPLATE:-newassignment}
@@ -82,6 +82,7 @@ services:
       - ./lead_management.sql:/docker-entrypoint-initdb.d/01-lead_management.sql:ro
       - ./docker/mariadb/init/02-bhasin_7001_new.sql:/docker-entrypoint-initdb.d/02-bhasin_7001_new.sql:ro
       - ./docker/mariadb/init/04-hc-tms-status.sql:/docker-entrypoint-initdb.d/04-hc-tms-status.sql:ro
+      - ./docker/mariadb/init/05-issabel-call-related.sql:/docker-entrypoint-initdb.d/05-issabel-call-related.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h localhost -p$$MARIADB_ROOT_PASSWORD --silent"]
       interval: 10s

@@ -1,322 +1,404 @@
 (() => {
   const ctx = window.CCE_CONTEXT || {};
   const WS_URL = ctx.WS_URL || "";
-  const EXOTEL_HTTP = ctx.EXOTEL_HTTP || "";
+  const ISSABEL_HTTP = ctx.ISSABEL_HTTP || "";
   const ME_NAME = ctx.ME_NAME || "";
   const ME_ID = ctx.ME_ID || "";
 
   const statusEl = document.getElementById("status") || document.getElementById("cce-status");
   const dotEl = document.getElementById("dot") || document.getElementById("cce-dot");
   const popwrap = document.getElementById("popwrap");
-  const missedBody = document.getElementById("missed-body");
-  const hasMissedTable = !!missedBody;
-  const LANDLINE_OPTIONS = [
-    { num: "01149989851", label: "cc ext1", type: "cc" },
-    { num: "01149989859", label: "cc ext2", type: "cc" },
-    { num: "01149989865", label: "cc ext3", type: "cc" },
-    { num: "01149989868", label: "cc ext4", type: "cc" },
-    { num: "01149989861", label: "cc ext5", type: "cc" },
-    { num: "01149989867", label: "cc ext6", type: "cc" },
-    { num: "01149989869", label: "cc ext7", type: "cc" },
-    { num: "01149989881", label: "resp ext1", type: "resp" },
-    { num: "01149989880", label: "resp ext2", type: "resp" },
-    { num: "01149989882", label: "resp ext3", type: "resp" },
-    { num: "01149989877", label: "shahana", type: "shahana" },
-  ];
 
-  if (!popwrap || (!WS_URL && !EXOTEL_HTTP)) {
-    return; // No container or no listener endpoint
-  }
-
-  const TERMINALS = new Set([
-    "completed",
-    "canceled",
-    "failed",
-    "busy",
-    "no-answer",
-    "not-answered",
-    "hangup",
-    "client-hangup",
-    "machine-hangup",
-  ]);
-
-  const safe = (v) => (v === undefined || v === null || v === "null" ? "" : String(v));
-
-  async function fetchLastClaimant(phone) {
-    if (!phone) return null;
-    try {
-      const r = await fetch(`/cce/last-claimant?phone=${encodeURIComponent(phone)}`);
-      const j = await r.json();
-      if (j.ok && j.last_claimed_by) {
-        return j.last_claimed_by;
-      }
-    } catch (e) {
-      console.log("Last claimant fetch failed:", e);
-    }
-    return null;
-  }
-
-  const fmtElapsed = (ms) => {
-    const s = Math.max(0, Math.floor(ms / 1000));
-    const mm = String(Math.floor(s / 60)).padStart(2, "0");
-    const ss = String(s % 60).padStart(2, "0");
-    return `${mm}:${ss}`;
-  };
-  const initials = (txt) => {
-    const s = safe(txt || "IN").trim();
-    const parts = s.split(/\s+/);
-    return (parts[0]?.[0] || "I") + (parts[1]?.[0] || "N");
-  };
-
-  function isTerminal(statusText, callType) {
-    const s = (statusText || "").toLowerCase();
-    const t = (callType || "").toLowerCase();
-    return TERMINALS.has(s) || TERMINALS.has(t);
-  }
+  if (!popwrap || (!WS_URL && !ISSABEL_HTTP)) return;
 
   const POP_KEY = "cce_popups_enabled";
+  const MIN_KEY = "cce_minimized_popups";
   const callIndex = new Map();
+  let socket = null;
+  let presenceOnline = false;
+  let popupSeq = 0;
+  const recentSidEvents = new Map();
+
+  const safe = (v) => (v === undefined || v === null || v === "null" ? "" : String(v));
+  const esc = (v) =>
+    safe(v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
 
   function popupsEnabled() {
     const v = localStorage.getItem(POP_KEY);
     return v === null ? true : v === "true";
   }
+
   function applyPopupContainerVisibility() {
     if (popupsEnabled()) {
       popwrap.classList.remove("hide");
     } else {
       popwrap.classList.add("hide");
+      for (const ref of callIndex.values()) {
+        if (ref?.timer) clearInterval(ref.timer);
+      }
       [...popwrap.children].forEach((ch) => ch.remove());
       callIndex.clear();
     }
   }
-  applyPopupContainerVisibility();
 
-  window.addEventListener("storage", (e) => {
-    if (e.key === POP_KEY) {
-      applyPopupContainerVisibility();
-      handleSocketByPref();
-    }
-  });
-  window.addEventListener("cce:popup-pref-changed", () => {
-    applyPopupContainerVisibility();
-    handleSocketByPref();
-  });
-
-  async function loadMissed() {
+  function minimizedKeys() {
     try {
-      const r = await fetch("/cce/missed", { cache: "no-store" });
-      const j = await r.json();
-      if (!j.ok) {
-        throw new Error(j.error || "Failed");
-      }
-      const rows = j.data || [];
-      if (hasMissedTable) {
-        renderMissed(rows);
-      }
-      try {
-        rows.forEach((rw) => {
-          const ct = (rw.call_type || "").toLowerCase();
-          const sid = String(rw.call_sid || "");
-          if (!sid) return;
-          if (ct === "client-hangup" || ct === "call-attempt" || ct === "incomplete") {
-            removePopup(sid);
-          }
-        });
-      } catch (e) {
-        /* no-op */
-      }
+      const parsed = JSON.parse(localStorage.getItem(MIN_KEY) || "[]");
+      return new Set(Array.isArray(parsed) ? parsed : []);
     } catch (e) {
-      if (hasMissedTable) {
-        renderMissed([]);
-      }
+      return new Set();
     }
   }
 
-  async function loadRecentRaw(limit = 20) {
-    try {
-      const res = await fetch(`/cce/raw?limit=${encodeURIComponent(String(limit))}`, { cache: "no-store" });
-      const j = await res.json();
-      const list = Array.isArray(j) ? j : j.data || [];
-      list.forEach((item) => upsertPopup(item));
-    } catch (e) {
-      /* no-op */
-    }
+  function setMinimizedKey(key, minimized) {
+    if (!key) return;
+    const keys = minimizedKeys();
+    if (minimized) keys.add(key);
+    else keys.delete(key);
+    localStorage.setItem(MIN_KEY, JSON.stringify([...keys]));
   }
 
-  function renderMissed(rows) {
-    if (!hasMissedTable) return;
-    missedBody.innerHTML = "";
-    if (!rows.length) {
-      const tr = document.createElement("tr");
-      tr.className = "empty";
-      tr.innerHTML = `<td colspan="5" class="muted" style="padding:14px;">No missed calls</td>`;
-      missedBody.appendChild(tr);
-      return;
-    }
-    for (const r of rows) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${safe(r.from_number || "")}</td>
-        <td>${safe(r.to_number || "")}</td>
-        <td>${safe(r.call_type || "")}</td>
-        <td>${safe(r.created_at || "")}</td>
-        <td>
-          <button class="btn primary cb"
-            data-id="${safe(r.id)}"
-            data-sid="${safe(r.call_sid || "")}"
-            data-phone="${safe(r.from_number || "")}"
-            data-to="${safe(r.to_number || "")}"
-            data-ctype="${safe((r.call_type || "").toLowerCase())}">Call Back</button>
-        </td>
-      `;
-      missedBody.appendChild(tr);
-    }
-    [...missedBody.querySelectorAll(".cb")].forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        const id = ev.currentTarget.dataset.id;
-        const sid = ev.currentTarget.dataset.sid;
-        const phone = ev.currentTarget.dataset.phone || "";
-        openLandlinePicker(phone, sid, id, ev.currentTarget.closest("tr"));
-      });
-    });
+  function isMinimizedKey(key) {
+    return !!key && minimizedKeys().has(key);
   }
 
-  function removePopup(sid) {
-    const ref = callIndex.get(sid);
-    if (ref?.timer) clearInterval(ref.timer);
-    callIndex.delete(sid);
-    if (ref?.el) ref.el.remove();
+  function popupStorageKey(info) {
+    return info?.sid ? `sid:${info.sid}` : safe(info?.key || "");
   }
 
-  function normalizeForUI(raw) {
+  function setPopupMinimized(info, minimized) {
+    setMinimizedKey(info.key, minimized);
+    setMinimizedKey(popupStorageKey(info), minimized);
+  }
+
+  function isPopupMinimized(info) {
+    return isMinimizedKey(info.key) || isMinimizedKey(popupStorageKey(info));
+  }
+
+  function fmtElapsed(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const mm = String(Math.floor(s / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
+  }
+
+  function normalizeAnswered(raw) {
     const sid = safe(raw.call_sid || raw.CallSid || "");
-    if (!sid) return null;
-    const from = safe(raw.from_number) || safe(raw.From) || safe(raw.CallFrom) || "";
-    const to = safe(raw.to_number) || safe(raw.To) || safe(raw.OutgoingPhoneNumber) || "";
-    const direction = safe(raw.direction) || safe(raw.Direction) || "incoming";
-    const createdAt =
-      safe(raw.created_at) || safe(raw.Created) || safe(raw.StartTime) || new Date().toISOString();
-    const statusText = (safe(raw.dial_call_status) || safe(raw.DialCallStatus) || "ringing").toLowerCase();
-    const callType = (safe(raw.call_type) || safe(raw.CallType) || "").toLowerCase();
-    const callerName = safe(raw.CallerName || raw.match_name);
-    const acceptedByName = safe(raw.accepted_by_name || raw.accepted_by_username || "");
-    const acceptedById = safe(raw.accepted_by || raw.accepted_by_id || "");
-    const locked = !!(acceptedByName || acceptedById);
-    return { sid, from, to, direction, createdAt, statusText, callType, callerName, acceptedByName, acceptedById, locked, raw };
+    const phone = safe(raw.phone || raw.from_number || raw.From || raw.CallFrom || "");
+    if (!sid || !phone) return null;
+    const eventTime = safe(raw.answered_at || raw.AnsweredAt || raw.created_at || raw.Created || "");
+    const suppliedKey = safe(raw.popup_key || raw.ui_key || "");
+    const durationSec = Number(raw.dial_call_duration || raw.duration || raw.duration_seconds || 0) || 0;
+    return {
+      key: suppliedKey || `sid:${sid}`,
+      sid,
+      phone,
+      extension: safe(raw.extension || ""),
+      extensionIp: safe(raw.extension_ip || raw.ip_address || ""),
+      answeredAt: eventTime || new Date().toISOString(),
+      durationSec,
+      callStatus: safe(raw.dial_call_status || raw.status || ""),
+      callType: safe(raw.call_type || ""),
+    };
   }
 
-  /* ======== Callback picker + initiator ======== */
-  function openLandlinePicker(patientNumber, incomingSid, incomingId, rowEl) {
-    if (!patientNumber) {
-      alert("Patient number missing for callback.");
-      return;
-    }
-    const existing = document.querySelector(".cb-overlay");
-    if (existing) existing.remove();
+  function isAnsweredPayload(raw) {
+    const status = safe(raw.dial_call_status || raw.DialCallStatus || raw.status || "").toLowerCase();
+    return status === "answered" || !!safe(raw.answered_at || raw.AnsweredAt || "");
+  }
 
-    const overlay = document.createElement("div");
-    overlay.className = "cb-overlay";
-    overlay.innerHTML = `
-      <div class="cb-modal">
-        <div class="cb-title">Call back ${safe(patientNumber)}</div>
-        <div class="cb-grid"></div>
-        <div class="cb-actions">
-          <button class="btn" id="cb-cancel">Cancel</button>
+  function compactDate(value) {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return safe(value).slice(0, 16);
+    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  }
+
+  function recordLink(kind, item, phone) {
+    if (kind === "hc") return "";
+    if (kind === "tickets") return item.id ? `/tickets/${encodeURIComponent(item.id)}?mode=view` : "";
+    if (kind === "leads") return item.lead_id ? `/lead/${encodeURIComponent(item.lead_id)}` : "";
+    return "";
+  }
+
+  function renderRecordItem(kind, item, phone) {
+    const href = recordLink(kind, item, phone);
+    if (kind === "hc") {
+      const patients = (item.patients || []).map((p) => p.full_name).filter(Boolean).join(", ") || "-";
+      return `
+        <div class="rel-item rel-item-hc">
+          <span class="rel-main">
+            <span class="rel-kv"><b>Bkg No</b><em>${esc(item.booking_code || item.id || "-")}</em></span>
+            <span class="rel-kv"><b>Patient</b><em>${esc(patients)}</em></span>
+            <span class="rel-kv"><b>Phlebo</b><em>${esc(item.assigned_phlebotomist || "-")}</em></span>
+          </span>
+        </div>
+      `;
+    }
+    let title = "-";
+    let meta = "";
+    let status = "";
+    if (kind === "hc") {
+      title = item.booking_code || item.id || "Booking";
+      const patients = (item.patients || []).map((p) => p.full_name).filter(Boolean).join(", ");
+      meta = patients || item.remarks || "Home collection";
+      status = item.booking_status || "";
+    } else if (kind === "tickets") {
+      title = item.id ? `#${item.id}` : "Ticket";
+      meta = item.patient_name || item.client_name || item.ticket_category || "-";
+      status = item.status || "";
+    } else {
+      title = item.lead_id || item.id || "Lead";
+      meta = item.name || item.phone || "-";
+      status = item.status || "";
+    }
+    const when = compactDate(item.preferred_visit_date || item.created_at || item.commitment_at);
+    const inner = `
+      <span class="rel-main">
+        <b>${esc(title)}</b>
+        <span>${esc(meta)}</span>
+      </span>
+      <span class="rel-side">
+        ${status ? `<em>${esc(status)}</em>` : ""}
+        ${when ? `<small>${esc(when)}</small>` : ""}
+      </span>
+    `;
+    return href
+      ? `<a class="rel-item" href="${esc(href)}" ${kind === "hc" ? 'target="_blank" rel="noopener noreferrer"' : ""}>${inner}</a>`
+      : `<div class="rel-item">${inner}</div>`;
+  }
+
+  function renderRecordSection(title, kind, rows, phone) {
+    const list = (rows || []).slice(0, 2);
+    return `
+      <div class="rel-section rel-section-${esc(kind)}">
+        <div class="rel-title"><span>${esc(title)}</span></div>
+        <div class="rel-list">
+          ${
+            list.length
+              ? list.map((item) => renderRecordItem(kind, item, phone)).join("")
+              : '<div class="rel-empty">No records</div>'
+          }
         </div>
       </div>
     `;
-    document.body.appendChild(overlay);
-    const grid = overlay.querySelector(".cb-grid");
-    LANDLINE_OPTIONS.forEach((opt) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = `cb-btn ${opt.type}`;
-      b.innerHTML = `<span class="num">${opt.num}</span><span class="lbl">${opt.label}</span>`;
-      b.addEventListener("click", () => {
-        startCallback(patientNumber, opt.num, incomingSid, incomingId, rowEl);
-        overlay.remove();
-      });
-      grid.appendChild(b);
-    });
-    overlay.querySelector("#cb-cancel").addEventListener("click", () => overlay.remove());
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) overlay.remove();
-    });
   }
 
-  function startCallback(patientNumber, landline, incomingSid, incomingId, rowEl) {
-    if (!confirm(`Call back ${patientNumber} from ${landline}?`)) return;
-    fetch("/cce/make-call", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: patientNumber,
-        cce_number: landline,
-        call_sid: incomingSid || ""
-      }),
-    })
-      .then(async (res) => {
-        let j = {};
-        try {
-          j = await res.json();
-        } catch (e) {}
-        if (res.ok && (j.status === "ok" || j.ok)) {
-          alert("Call initiated");
-          if (rowEl) {
-            rowEl.remove();
-            if (!missedBody.children.length) {
-              const trEmpty = document.createElement("tr");
-              trEmpty.className = "empty";
-              trEmpty.innerHTML = `<td colspan="5" class="muted" style="padding:14px;">No missed calls</td>`;
-              missedBody.appendChild(trEmpty);
-            }
-          }
-        } else {
-          alert(j.message || "Call initiate failed");
-        }
-      })
-      .catch(() => {
-        alert("Network error while initiating call");
-      });
+  async function loadRelatedRecords(info, el) {
+    const box = el.querySelector(".related-records");
+    if (!box || !info.phone) return;
+    try {
+      const r = await fetch(`/api/mobile-lookup?mobile=${encodeURIComponent(info.phone)}&sections=hc,leads,tickets`, { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "lookup failed");
+      box.innerHTML = [
+        renderRecordSection("Home Collection", "hc", j.home_collection_bookings, info.phone),
+        renderRecordSection("Tickets", "tickets", j.tickets, info.phone),
+        renderRecordSection("Leads", "leads", j.leads, info.phone),
+      ].join("");
+    } catch (e) {
+      box.innerHTML = '<div class="rel-empty">Unable to load related records</div>';
+    }
   }
 
-  function renderClaimControls(container, info) {
-    const block = document.createElement("div");
-    block.className = "cta-wrap";
-    block.innerHTML = `
-      <div>
-        <div class="label">Call type</div>
-        <select class="select sel-type">
-          <option value="">Select...</option>
-          <option value="Lead">Lead</option>
-          <option value="Ticket">Ticket</option>
-          <option value="Home Collection Appointment">Home Collection Appointment</option>
-          <option value="Report Query">Report Query</option>
-          <option value="Test Inquiry">Test Inquiry</option>
-          <option value="Spam Call">Spam Call</option>
-        </select>
+  function removePopup(key, opts = {}) {
+    const ref = callIndex.get(key);
+    if (ref?.timer) clearInterval(ref.timer);
+    callIndex.delete(key);
+    if (opts.clearState) {
+      setMinimizedKey(key, false);
+      if (ref?.sid) setMinimizedKey(`sid:${ref.sid}`, false);
+    }
+    if (ref?.el) ref.el.remove();
+  }
+
+  function removePopupsBySid(sid) {
+    for (const [key, ref] of callIndex.entries()) {
+      if (ref?.sid !== sid) continue;
+      if (ref?.timer) clearInterval(ref.timer);
+      if (ref?.el) ref.el.remove();
+      callIndex.delete(key);
+      setMinimizedKey(key, false);
+      setMinimizedKey(`sid:${sid}`, false);
+    }
+  }
+
+  function isStoppedCall(info) {
+    const status = safe(info.callStatus).toLowerCase();
+    return info.durationSec > 0 || ["hangup", "completed", "complete", "answered"].includes(status) && info.durationSec > 0;
+  }
+
+  function stopPopupTimerBySid(sid, durationSec) {
+    if (!sid) return;
+    for (const ref of callIndex.values()) {
+      if (ref?.sid !== sid || ref.stopped) continue;
+      if (ref.timer) clearInterval(ref.timer);
+      ref.timer = null;
+      ref.stopped = true;
+      const sinceEl = ref.el?.querySelector(".since-val");
+      const elapsedMs = durationSec > 0 ? durationSec * 1000 : Date.now() - ref.startedAt;
+      if (sinceEl) sinceEl.textContent = fmtElapsed(elapsedMs);
+    }
+  }
+
+  async function removePopupIfCallTypeSaved(sid) {
+    if (!sid) return;
+    try {
+      const r = await fetch(`/cce/call-status?call_sid=${encodeURIComponent(sid)}`, { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j?.has_call_related_to) {
+        removePopupsBySid(sid);
+      }
+    } catch (e) {
+      // Keep the popup when status cannot be verified.
+    }
+  }
+
+  async function persistAnsweredPopup(info) {
+    try {
+      await fetch("/cce/answered-popup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_sid: info.sid,
+          phone: info.phone,
+          extension: info.extension,
+          answered_at: info.answeredAt,
+        }),
+      });
+    } catch (e) {
+      // The live popup should still stay visible even if persistence fails.
+    }
+  }
+
+  async function loadPendingPopups() {
+    if (!popupsEnabled()) return;
+    try {
+      const r = await fetch("/cce/pending-popups", { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j?.status !== "ok") return;
+      (j.data || []).forEach((raw) => {
+        const info = normalizeAnswered(raw || {});
+        if (info) createAnsweredPopup(info, { persist: false });
+      });
+    } catch (e) {
+      // no-op
+    }
+  }
+
+  function createAnsweredPopup(info, opts = {}) {
+    if (!popupsEnabled()) return;
+
+    removePopup(info.key);
+    if (opts.persist !== false) {
+      persistAnsweredPopup(info);
+    }
+
+    const el = document.createElement("div");
+    el.className = "pop";
+    el.dataset.sid = info.sid;
+    el.dataset.key = info.key;
+    const answeredMs = Date.parse(info.answeredAt || "");
+    const t0 = Number.isNaN(answeredMs) ? Date.now() : answeredMs;
+
+    el.innerHTML = `
+      <div class="row">
+        <div class="badges">
+          <span class="badge inbound">ANSWERED</span>
+          ${info.extension ? `<span class="badge ringing">Ext ${info.extension}</span>` : ""}
+        </div>
+        <div class="pop-top-actions">
+          <div class="since"><span class="since-val">00:00</span></div>
+          <button class="pop-min" type="button" title="Minimize" aria-label="Minimize popup">-</button>
+        </div>
       </div>
-      <div class="cta-buttons">
-        <button class="btn btn-success btn-complete" disabled>Completed</button>
-        <button class="btn btn-warn btn-mistake">Accepted by Mistake</button>
+
+      <button class="mini-face" type="button" title="${esc(info.phone || "Call")}" aria-label="Restore popup">
+        <span>IN</span>
+      </button>
+
+      <div class="pop-content">
+      <div class="head">
+        <div class="caller">
+          <div style="width:30px;height:30px;border-radius:50%;background:#f3f4f6;display:grid;place-items:center;font-weight:800">
+            IN
+          </div>
+          <div>
+            <div class="num">${info.phone || "-"}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="related-records">
+        <div class="rel-empty">Loading related records...</div>
+      </div>
+
+      <div class="actions-ctas">
+        <div class="cta-wrap">
+          <div>
+            <div class="label">Call type</div>
+            <select class="select sel-type">
+              <option value="">Select...</option>
+              <option value="Lead">Lead</option>
+              <option value="Ticket">Ticket</option>
+              <option value="Home Collection Appointment">Home Collection Appointment</option>
+              <option value="Report Query">Report Query</option>
+              <option value="Test Inquiry">Test Inquiry</option>
+              <option value="Spam Call">Spam Call</option>
+            </select>
+          </div>
+          <div class="cta-buttons">
+            <button class="btn btn-success btn-complete" disabled>Save</button>
+          </div>
+        </div>
+      </div>
       </div>
     `;
-    container.appendChild(block);
 
-    const sel = block.querySelector(".sel-type");
-    const bComplete = block.querySelector(".btn-complete");
-    const bMistake = block.querySelector(".btn-mistake");
+    const sinceEl = el.querySelector(".since-val");
+    const stopped = isStoppedCall(info);
+    sinceEl.textContent = fmtElapsed(stopped ? info.durationSec * 1000 : Date.now() - t0);
+    const timer = stopped
+      ? null
+      : setInterval(() => {
+          sinceEl.textContent = fmtElapsed(Date.now() - t0);
+        }, 500);
+    if (isPopupMinimized(info)) {
+      el.classList.add("is-minimized");
+    }
+    callIndex.set(info.key, { el, timer, sid: info.sid, startedAt: t0, stopped });
+    loadRelatedRecords(info, el);
 
+    const sel = el.querySelector(".sel-type");
+    const saveBtn = el.querySelector(".btn-complete");
+    const minBtn = el.querySelector(".pop-min");
+    const miniFace = el.querySelector(".mini-face");
+    minBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      el.classList.add("is-minimized");
+      setPopupMinimized(info, true);
+    });
+    miniFace.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      el.classList.remove("is-minimized");
+      setPopupMinimized(info, false);
+    });
     sel.addEventListener("change", () => {
-      bComplete.disabled = !sel.value;
+      saveBtn.disabled = !sel.value;
     });
 
-    bComplete.addEventListener("click", async () => {
+    saveBtn.addEventListener("click", async () => {
       if (!sel.value) {
         alert("Please select Call Type");
         return;
       }
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
       try {
         const r = await fetch("/cce/complete", {
           method: "POST",
@@ -324,318 +406,56 @@
           body: JSON.stringify({ call_sid: info.sid, call_related_to: sel.value }),
         });
         const j = await r.json().catch(() => ({}));
-        if (r.ok && j?.status === "ok") {
-          removePopup(info.sid);
+    if (r.ok && j?.status === "ok") {
+          removePopup(info.key, { clearState: true });
         } else {
-          alert(j.message || "Complete failed");
+          saveBtn.disabled = false;
+          saveBtn.textContent = "Save";
+          alert(j.message || "Save failed");
         }
       } catch (e) {
-        alert("Complete failed");
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save";
+        alert("Save failed");
       }
     });
 
-    bMistake.addEventListener("click", async () => {
-      if (!confirm("Release this claim?")) return;
-      try {
-        const r = await fetch("/cce/release", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ call_sid: info.sid }),
-        });
-        const j = await r.json().catch(() => ({}));
-        if (r.ok && j?.status === "ok") {
-          removePopup(info.sid);
-        } else {
-          alert(j.message || "Release failed");
-        }
-      } catch (e) {
-        alert("Release failed");
-      }
-    });
-  }
-
-  function createPopup(info, preservePosition = false) {
-    if (!popupsEnabled()) return;
-    if (info.locked && info.acceptedByName && info.acceptedByName !== ME_NAME) return;
-    if (info.callType === "client-hangup") {
-      removePopup(info.sid);
-      return;
-    }
-
-    const el = document.createElement("div");
-    el.className = "pop";
-    el.dataset.sid = info.sid;
-
-    const t0 = new Date(info.createdAt).getTime();
-
-    el.innerHTML = `
-      <div class="row">
-        <div class="badges">
-          <span class="badge inbound">${info.direction.toUpperCase()}</span>
-          <span class="badge ringing">${info.statusText.charAt(0).toUpperCase() + info.statusText.slice(1)}</span>
-        </div>
-        <div class="since"><span class="since-val">00:00</span></div>
-      </div>
-
-      <div class="head">
-        <div class="caller">
-          <div style="width:30px;height:30px;border-radius:50%;background:#f3f4f6;display:grid;place-items:center;font-weight:800">
-            ${initials(info.callerName || "IN")}
-          </div>
-          <div>
-            <div class="num">${info.from || "-"}</div>
-            <div class="agentline">Agent: ${info.to || "-"}</div>
-          </div>
-        </div>
-        <button class="claim ${info.locked ? "" : "primary"}" ${info.locked ? "disabled" : ""}>
-          ${info.locked ? (info.acceptedByName === ME_NAME ? 'Claimed ƒo"' : "Already Claimed") : "Claim"}
-        </button>
-      </div>
-
-      <div class="cols">
-        <div class="box">
-          <div class="box-title">MATCHES</div>
-          <div class="match-chip">
-            <div class="match-summary">Loadingƒ?Ý</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="actions">
-        <div class="actions-ctas hide"></div>
-        <button class="pill warn dismiss">Dismiss</button>
-      </div>
-    `;
-
-    const sinceEl = el.querySelector(".since-val");
-    let timer = setInterval(() => {
-      sinceEl.textContent = fmtElapsed(Date.now() - t0);
-    }, 500);
-    callIndex.set(info.sid, { el, timer });
-
-    fetch(`/cce/matches?phone=${encodeURIComponent(info.from || "")}`)
-      .then((r) => r.json())
-      .then((j) => {
-        const box = el.querySelector(".match-chip");
-        if (!j.ok) {
-          box.innerHTML = '<div class="muted">No matches</div>';
-          return;
-        }
-
-        const tlist = j.matches?.tickets || [];
-        const llist = j.matches?.leads || [];
-        const tcount =
-          j.summary && typeof j.summary.ticket_count === "number" ? j.summary.ticket_count : tlist.length;
-        const lcount = j.summary && typeof j.summary.lead_count === "number" ? j.summary.lead_count : llist.length;
-
-        const chunks = [];
-        if (tcount > 0) {
-          const t = tlist[0] || {};
-          chunks.push(`
-            <div class="match-summary">dYZ® <b>Ticket</b><span class="chip-pill">${tcount}</span></div>
-            <div class="muted" style="font-size:12px">${t.ticket_type || "-"}</div>
-          `);
-        }
-        if (lcount > 0) {
-          const l = llist[0] || {};
-          chunks.push(`
-            <div class="match-summary">dY"< <b>Lead</b><span class="chip-pill">${lcount}</span></div>
-            <div class="muted" style="font-size:12px">${l.name || "-"}</div>
-          `);
-        }
-        box.innerHTML = chunks.length ? chunks.join("") : '<div class="muted">No open records</div>';
-      })
-      .catch(() => {
-        el.querySelector(".match-chip").innerHTML = '<div class="muted">Error fetching</div>';
-      });
-
-    fetchLastClaimant(info.from).then((claimantName) => {
-      if (claimantName) {
-        const claimantHtml = `
-          <div class="box">
-            <div class="box-title">LAST CLAIMED BY</div>
-            <div style="font-size:13px;font-weight:600;color:#111827">${claimantName}</div>
-          </div>
-        `;
-        const cols = el.querySelector(".cols");
-        cols.insertAdjacentHTML("beforeend", claimantHtml);
-      }
-    });
-
-    el.querySelector(".dismiss").addEventListener("click", () => removePopup(info.sid));
-
-    const claimBtn = el.querySelector(".claim");
-    const actionsCtas = el.querySelector(".actions-ctas");
-
-    function showClaimCTAs() {
-      if (!actionsCtas || !actionsCtas.classList.contains("hide")) return;
-      actionsCtas.classList.remove("hide");
-      renderClaimControls(actionsCtas, info);
-    }
-
-    if (claimBtn) {
-      claimBtn.addEventListener("click", async () => {
-        if (claimBtn.disabled) return;
-        claimBtn.disabled = true;
-        claimBtn.textContent = "Claimingƒ?Ý";
-        try {
-          const r = await fetch(`/cce/accept`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ call_sid: info.sid, phone: info.from }),
-          });
-          const j = await r.json().catch(() => ({}));
-          if (r.ok && j?.status === "ok") {
-            const who = j.accepted_by_name || ME_NAME || "You";
-            claimBtn.textContent = 'Claimed ƒo"';
-            claimBtn.classList.remove("primary");
-
-            const currentEl = callIndex.get(info.sid)?.el;
-            if (currentEl) {
-              currentEl.remove();
-            }
-            createPopup({ ...info, locked: true, acceptedByName: who }, true);
-            return;
-          } else {
-            claimBtn.disabled = false;
-            claimBtn.textContent = "Claim";
-            alert(j.message || "Could not claim. Maybe already claimed.");
-          }
-        } catch (e) {
-          claimBtn.disabled = false;
-          claimBtn.textContent = "Claim";
-        }
-      });
-    }
-
-    const statusTxtInit = (info.statusText || "").toLowerCase();
-    const typeTxtInit = (info.callType || "").toLowerCase();
-    if ((TERMINALS.has(statusTxtInit) || TERMINALS.has(typeTxtInit)) && !info.locked) {
-      try {
-        const ringBadge = el.querySelector(".badge.ringing");
-        if (ringBadge) ringBadge.textContent = "Ended";
-      } catch (e) {
-        /* no-op */
-      }
-    }
-
-    if (info.callType === "call-attempt") {
-      const created = new Date(info.createdAt).getTime();
-      const until15 = Math.max(0, 15 * 60 * 1000 - (Date.now() - created));
-      setTimeout(() => {
-        removePopup(info.sid);
-      }, until15);
-    }
-
-    if (preservePosition) {
-      popwrap.insertBefore(el, popwrap.firstChild);
-    } else {
-      popwrap.appendChild(el);
-    }
+    popwrap.appendChild(el);
     popwrap.scrollTop = popwrap.scrollHeight;
+  }
 
-    if (info.locked && info.acceptedByName === ME_NAME && claimBtn) {
-      claimBtn.textContent = 'Claimed ƒo"';
-      claimBtn.classList.remove("primary");
-      claimBtn.disabled = true;
-      showClaimCTAs();
+  async function setPresenceOnline() {
+    if (!ISSABEL_HTTP || !ME_NAME || presenceOnline) return;
+    try {
+      const r = await fetch(`${ISSABEL_HTTP}/presence/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_name: ME_NAME, user_id: ME_ID || null }),
+      });
+      presenceOnline = r.ok;
+    } catch (e) {
+      presenceOnline = false;
     }
   }
 
-  function upsertPopup(raw) {
-    // Ignore self-loop/incomplete events from Exotel when From == To (outbound leg webhooks)
-    const fn = safe(raw.from_number || raw.From || "");
-    const tn = safe(raw.to_number || raw.To || "");
-    const ct = safe(raw.call_type || raw.CallType || "").toLowerCase();
-    if (fn && tn && fn === tn) return;
-    if (ct === "incomplete" && fn === tn) return;
-
-    if (!popupsEnabled()) return;
-    const info = normalizeForUI(raw);
-    if (!info) return;
-
-    // Skip rendering popups for incomplete calls (they go straight to missed)
-    if (info.callType === "incomplete") {
-      return;
+  function setPresenceOffline() {
+    if (!ISSABEL_HTTP || !ME_NAME || !presenceOnline) return;
+    const payload = JSON.stringify({ user_name: ME_NAME, user_id: ME_ID || null });
+    try {
+      navigator.sendBeacon(
+        `${ISSABEL_HTTP}/presence/logout`,
+        new Blob([payload], { type: "application/json" })
+      );
+    } catch (e) {
+      /* no-op */
     }
-
-    if (info.callType === "client-hangup") {
-      removePopup(info.sid);
-      return;
-    }
-
-    const terminal = isTerminal(info.statusText, info.callType);
-
-    if (callIndex.has(info.sid)) {
-      const ref = callIndex.get(info.sid);
-      if (terminal && !info.locked) {
-        try {
-          const ringBadge = ref.el.querySelector(".badge.ringing");
-          if (ringBadge) ringBadge.textContent = "Ended";
-        } catch (e) {
-          /* no-op */
-        }
-      }
-
-      if (info.locked && info.acceptedByName === ME_NAME) {
-        const claimBtn = ref.el.querySelector(".claim");
-        if (claimBtn) {
-          claimBtn.textContent = 'Claimed ƒo"';
-          claimBtn.classList.remove("primary");
-          claimBtn.disabled = true;
-          const actionsCtas = ref.el.querySelector(".actions-ctas");
-          if (actionsCtas && actionsCtas.classList.contains("hide")) {
-            actionsCtas.classList.remove("hide");
-            renderClaimControls(actionsCtas, info);
-          }
-        }
-      }
-    } else {
-      createPopup(info);
-      if (terminal && !info.locked) {
-        try {
-          const ref = callIndex.get(info.sid);
-          if (ref?.el) {
-            const ringBadge = ref.el.querySelector(".badge.ringing");
-            if (ringBadge) ringBadge.textContent = "Ended";
-          }
-        } catch (e) {
-          /* no-op */
-        }
-      }
-    }
-  }
-
-  function debounce(fn, wait) {
-    let t;
-    return (...args) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn(...args), wait);
-    };
-  }
-  const debouncedLoadMissed = debounce(loadMissed, 300);
-
-  let socket = null;
-  let fallbackTimer = null;
-
-  function startFallback() {
-    if (fallbackTimer) return;
-    if (document.visibilityState === "visible") {
-      fallbackTimer = setInterval(() => {
-        if (hasMissedTable) loadMissed();
-        loadRecentRaw(20);
-      }, 60000);
-    }
-  }
-  function stopFallback() {
-    if (fallbackTimer) {
-      clearInterval(fallbackTimer);
-      fallbackTimer = null;
-    }
+    presenceOnline = false;
   }
 
   function connectWS() {
-    if (!WS_URL && !EXOTEL_HTTP) return;
+    if (socket && socket.connected) return;
+    if (typeof io !== "function") return;
+
     const socketOpts = {
       transports: ["websocket", "polling"],
       reconnection: true,
@@ -643,94 +463,74 @@
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 10000,
+      auth: {
+        user_name: ME_NAME,
+        user_id: ME_ID,
+      },
     };
+
     try {
-      socket = io(WS_URL || EXOTEL_HTTP, socketOpts);
+      socket = io(WS_URL || ISSABEL_HTTP, socketOpts);
     } catch (e) {
-      socket = io(EXOTEL_HTTP, socketOpts);
+      socket = io(ISSABEL_HTTP, socketOpts);
     }
 
     socket.on("connect", () => {
-      if (statusEl) statusEl.textContent = "Live connected";
+      if (statusEl) statusEl.textContent = "Issabel connected";
       if (dotEl) dotEl.style.background = "#22c55e";
-      stopFallback();
-      debouncedLoadMissed();
-      loadRecentRaw(20);
+      setPresenceOnline();
     });
 
     socket.on("disconnect", () => {
       if (statusEl) statusEl.textContent = "Disconnected retrying";
       if (dotEl) dotEl.style.background = "#ef4444";
-      startFallback();
     });
+
     socket.on("connect_error", () => {
-      startFallback();
+      if (statusEl) statusEl.textContent = "Connection retrying";
+      if (dotEl) dotEl.style.background = "#ef4444";
+    });
+
+    function handleAnsweredPayload(payload) {
+      const info = normalizeAnswered(payload || {});
+      if (!info) return;
+      const now = Date.now();
+      const last = recentSidEvents.get(info.sid) || 0;
+      if (last && now - last < 3000) return;
+      recentSidEvents.set(info.sid, now);
+      setTimeout(() => recentSidEvents.delete(info.sid), 5000);
+      if (info) createAnsweredPopup(info);
+    }
+
+    socket.on("call_answered", (payload) => {
+      handleAnsweredPayload(payload);
     });
 
     socket.on("incoming_call", (payload) => {
-      upsertPopup(payload);
+      if (!isAnsweredPayload(payload || {})) return;
+      handleAnsweredPayload(payload);
     });
+
     socket.on("popup_close", (payload) => {
-      try {
-        const sid = (payload?.call_sid || payload?.CallSid || "").toString();
-        if (!sid) return;
-        if (payload?.accepted_by_name && payload.accepted_by_name === ME_NAME) return;
-        removePopup(sid);
-      } catch (e) {
-        /* no-op */
-      }
+      const sid = safe(payload?.call_sid || payload?.CallSid || "");
+      removePopupIfCallTypeSaved(sid);
     });
 
-    socket.on("missed_update", () => {
-      debouncedLoadMissed();
+    socket.on("call_hangup", (payload) => {
+      const sid = safe(payload?.call_sid || payload?.CallSid || "");
+      const durationSec = Number(payload?.dial_call_duration || payload?.duration || 0) || 0;
+      stopPopupTimerBySid(sid, durationSec);
     });
   }
 
-  function handleSocketByPref() {
-    if (!socket || !socket.connected) {
-      tryReconnectWS();
-    }
-    applyPopupContainerVisibility();
-  }
-
-  function tryReconnectWS() {
-    connectWS();
-  }
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") stopFallback();
-    else if (!socket || !socket.connected) startFallback();
+  applyPopupContainerVisibility();
+  window.addEventListener("storage", (e) => {
+    if (e.key === POP_KEY) applyPopupContainerVisibility();
   });
+  window.addEventListener("cce:popup-pref-changed", applyPopupContainerVisibility);
+  window.addEventListener("pagehide", setPresenceOffline);
+  window.addEventListener("beforeunload", setPresenceOffline);
 
-  async function preload() {
-    if (hasMissedTable) {
-      await loadMissed();
-    } else {
-      // even if no table, ensure cache cleanups for hangups
-      try {
-        await loadMissed();
-      } catch (e) {
-        /* no-op */
-      }
-    }
-
-    try {
-      const p = await fetch(`/cce/persist?minutes=180`, { cache: "no-store" });
-      const pj = await p.json();
-      const plist = Array.isArray(pj) ? pj : pj.data || [];
-      plist.forEach((item) => upsertPopup(item));
-    } catch (e) {
-      /* no-op */
-    }
-
-    try {
-      await loadRecentRaw(20);
-    } catch (e) {
-      /* no-op */
-    }
-  }
-
-  preload();
   connectWS();
-  handleSocketByPref();
+  loadPendingPopups();
 })();

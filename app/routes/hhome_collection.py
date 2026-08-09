@@ -616,6 +616,17 @@ def panel_tests_by_company():
         return jsonify({"ok": False, "message": str(exc)}), 500
 
 
+@hhome_collection_bp.post("/hhome-collection/test-tat")
+def update_test_tat():
+    try:
+        data = request.get_json(silent=True) or {}
+        result = service.update_test_tats(data.get("items") or [])
+        status = 200 if result.get("ok") else 400
+        return jsonify(result), status
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
 @hhome_collection_bp.get("/hhome-collection/panel-test-search")
 def panel_test_search():
     try:

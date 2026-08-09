@@ -25,24 +25,7 @@ def received_calls():
     try:
         with conn.cursor(DictCursor) as cur:
             if call_type == "callback":
-                sql = """
-                    SELECT
-                        exotel_outgoing_calls.from_number,
-                        exotel_outgoing_calls.to_number,
-                        'callback' AS call_type,
-                        COALESCE(exotel_outgoing_calls.dial_call_duration, 0) AS dial_call_duration,
-                        exotel_outgoing_calls.created_at,
-                        NULL AS accepted_by_name,
-                        i.call_related_to AS call_related_to,
-                        exotel_outgoing_calls.callback_by_name,
-                        exotel_outgoing_calls.missed_reason
-                    FROM exotel_outgoing_calls
-                    LEFT JOIN exotel_incoming_calls i
-                      ON i.call_sid = exotel_outgoing_calls.call_sid
-                    WHERE DATE(exotel_outgoing_calls.created_at) BETWEEN %s AND %s
-                    ORDER BY exotel_outgoing_calls.created_at DESC
-                """
-                cur.execute(sql, (from_date_str, to_date_str))
+                rows = []
             else:
                 sql = """
                     SELECT
@@ -55,19 +38,11 @@ def received_calls():
                         call_related_to,
                         callback_by_name
                     FROM exotel_incoming_calls
-                    WHERE DATE(received_at) BETWEEN %s AND %s
+                    WHERE DATE(COALESCE(received_at, created_at)) BETWEEN %s AND %s
                 """
-                if call_type == "completed":
-                    sql += """
-                        AND NOT EXISTS (
-                            SELECT 1 FROM exotel_outgoing_calls o
-                            WHERE o.call_sid = exotel_incoming_calls.call_sid
-                        )
-                    """
-                sql += " ORDER BY received_at DESC"
+                sql += " ORDER BY COALESCE(received_at, created_at) DESC"
                 cur.execute(sql, (from_date_str, to_date_str))
-
-            rows = cur.fetchall()
+                rows = cur.fetchall()
     finally:
         conn.close()
 

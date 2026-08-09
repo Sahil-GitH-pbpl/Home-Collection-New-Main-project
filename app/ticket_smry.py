@@ -170,13 +170,13 @@ def build_daily_ticket_summary_combined(conn, date_str: str | None = None) -> st
     """
     start_ist, end_ist, pretty_date = _ist_day_window(date_str)
 
-    # Call Metrics (Exotel) - align with UI logic
+    # Call Metrics (Issabel) - align with UI logic
     total_calls = _q_scalar(
         conn,
         """
         SELECT COUNT(*)
         FROM exotel_incoming_calls
-        WHERE received_at BETWEEN %s AND %s
+        WHERE COALESCE(received_at, created_at) BETWEEN %s AND %s
         """,
         (start_ist, end_ist),
     ) or 0
@@ -186,25 +186,13 @@ def build_daily_ticket_summary_combined(conn, date_str: str | None = None) -> st
         """
         SELECT COUNT(*)
         FROM exotel_incoming_calls i
-        WHERE i.received_at BETWEEN %s AND %s
+        WHERE COALESCE(i.received_at, i.created_at) BETWEEN %s AND %s
           AND LOWER(i.call_type) = 'completed'
-          AND NOT EXISTS (
-            SELECT 1 FROM exotel_outgoing_calls o
-            WHERE o.call_sid = i.call_sid
-          )
         """,
         (start_ist, end_ist),
     ) or 0
 
-    callbacks_outgoing = _q_scalar(
-        conn,
-        """
-        SELECT COUNT(*)
-        FROM exotel_outgoing_calls
-        WHERE created_at BETWEEN %s AND %s
-        """,
-        (start_ist, end_ist),
-    ) or 0
+    callbacks_outgoing = 0
 
     # Lead Metrics
     leads_created = _q_scalar(

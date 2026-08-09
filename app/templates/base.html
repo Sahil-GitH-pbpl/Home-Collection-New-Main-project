@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Dashboard{% endblock %}</title>
   <link rel="icon" href="/static/Logoicon.png">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme_26jan.css', v='20260126-1') }}">
   <style>
     :root{
       --bg:#F5F6F8; --panel:#e1faee; --text:#0b0b0b; --muted:#6b7280;
@@ -233,24 +234,50 @@
 
     /* ---- Global CCE popup styles (scoped to #popwrap) ---- */
     #popwrap{
-      position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:10px;z-index:1100;
-      width:340px;max-width:90vw;max-height:85vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+      position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;align-items:flex-end;gap:10px;z-index:1100;
+      width:430px;max-width:94vw;max-height:92vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
     }
     #popwrap .pop{
-      background:#fff;border:1px solid #d1d5db;border-radius:14px;
-      box-shadow:0 18px 28px rgba(0,0,0,.25),0 8px 12px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.6);
-      padding:12px;
+      background:#fff;border:1px solid #d1d5db;border-radius:12px;
+      box-shadow:0 0 0 1px rgba(75,85,99,.18),0 0 18px rgba(75,85,99,.34),0 14px 30px rgba(15,23,42,.22);
+      padding:12px;transition:width .16s ease,height .16s ease,padding .16s ease,border-radius .16s ease;
     }
     #popwrap .row{display:flex;justify-content:space-between;align-items:center}
     #popwrap .badges{display:flex;gap:6px;flex-wrap:wrap}
-    #popwrap .badge{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid #eee;background:#f9fafb;display:inline-flex;align-items:center;gap:6px}
+    #popwrap .badge{font-size:10px;padding:4px 8px;border-radius:999px;border:1px solid #eee;background:#f9fafb;display:inline-flex;align-items:center;gap:6px;font-weight:800;letter-spacing:.2px}
     #popwrap .badge.inbound{background:#eef2ff;border-color:#e5e7ff}
     #popwrap .badge.ringing{text-transform:capitalize;background:#fff7ed;border-color:#ffedd5}
     #popwrap .since{font-size:12px;color:#6b7280}
+    #popwrap .pop-top-actions{display:flex;align-items:center;gap:8px}
+    #popwrap .pop-min{width:24px;height:24px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#374151;display:grid;place-items:center;cursor:pointer;font-weight:900;line-height:1}
+    #popwrap .pop-min:hover{background:#f3f4f6}
+    #popwrap .mini-face{display:none;width:30px;height:30px;border:0;border-radius:8px;background:#034a9c;color:#fff;font-weight:900;cursor:pointer;place-items:center;box-shadow:0 8px 18px rgba(15,23,42,.18)}
     #popwrap .head{margin-top:6px;display:flex;justify-content:space-between;align-items:center}
     #popwrap .caller{display:flex;align-items:center;gap:10px}
-    #popwrap .num{font-weight:800;font-size:15px}
+    #popwrap .num{font-weight:900;font-size:16px;color:#111827}
     #popwrap .agentline{font-size:12px;color:#6b7280}
+    #popwrap .related-records{margin-top:8px;display:grid;gap:5px}
+    #popwrap .rel-section{border:1px solid #d9e0ea;border-radius:8px;background:#fff;overflow:hidden}
+    #popwrap .rel-title{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-bottom:1px solid #edf2f7;font-size:12px;font-weight:800;color:#111827}
+    #popwrap .rel-section-hc .rel-title{background:#fed7aa;border-bottom-color:#fdba74;color:#7c2d12}
+    #popwrap .rel-section-tickets .rel-title{background:#bfdbfe;border-bottom-color:#93c5fd;color:#1e3a8a}
+    #popwrap .rel-section-leads .rel-title{background:#bbf7d0;border-bottom-color:#86efac;color:#14532d}
+    #popwrap .rel-title b{min-width:22px;height:20px;border-radius:999px;background:#eef2ff;color:#1d4ed8;display:inline-grid;place-items:center;font-size:11px}
+    #popwrap .rel-list{display:grid}
+    #popwrap .rel-item{display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border-top:1px solid #eef2f7;text-decoration:none;color:#111827;background:#fff}
+    #popwrap .rel-item:first-child{border-top:0}
+    #popwrap .rel-item:hover{background:#eff6ff}
+    #popwrap .rel-item-hc:hover{background:#fff}
+    #popwrap .rel-main{min-width:0;display:grid;gap:2px}
+    #popwrap .rel-main b{font-size:12px;line-height:1.2}
+    #popwrap .rel-main span{font-size:11px;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:250px}
+    #popwrap .rel-side{flex:0 0 auto;display:grid;gap:2px;text-align:right;align-content:start}
+    #popwrap .rel-side em{font-style:normal;font-size:10px;color:#047857;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:999px;padding:1px 6px}
+    #popwrap .rel-side small{font-size:10px;color:#6b7280}
+    #popwrap .rel-kv{display:grid;grid-template-columns:58px 1fr;gap:6px;align-items:start;font-size:11px;color:#4b5563}
+    #popwrap .rel-kv b{font-size:10px;text-transform:uppercase;color:#6b7280;letter-spacing:.2px}
+    #popwrap .rel-kv em{font-style:normal;font-size:11px;color:#111827;font-weight:700;white-space:normal;overflow:visible;text-overflow:clip;max-width:none}
+    #popwrap .rel-empty{padding:8px;font-size:12px;color:#6b7280;background:#fff;border-radius:10px;border:1px dashed #d1d5db}
     #popwrap .claim{padding:6px 10px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-weight:700}
     #popwrap .claim.primary{background:#034a9c;border-color:#034a9c;color:#fff}
     #popwrap .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
@@ -280,6 +307,10 @@
     #popwrap .pop .pill:hover,
     #popwrap .pop .claim:hover{background:inherit;border-color:inherit;color:inherit}
     #popwrap .pop .dismiss{background:#fee2e2;border-color:#fecaca;}
+    #popwrap .is-minimized{width:30px;height:30px;padding:0;border-radius:8px;overflow:hidden;align-self:flex-end}
+    #popwrap .is-minimized .row,
+    #popwrap .is-minimized .pop-content{display:none}
+    #popwrap .is-minimized .mini-face{display:grid}
 
     @media (max-width: 640px){
       .header{grid-template-columns: 1fr; gap:10px}
@@ -378,11 +409,11 @@
   {% set hide_header_counters = request.endpoint == 'hbatch_handover_ui.batch_handover_ui_page' %}
 
   <div class="header-wrap">
-    <header class="header">
+    <header class="header theme-26jan-header">
       <div class="logo">
         <div class="logo-box">
           <a href="{{ url_for('base.dashboard') }}">
-            <img src="{{ url_for('static', filename='Logo.png') }}" alt="Lab Logo" />
+            <img src="{{ url_for('static', filename='logo2.png') }}" alt="Lab Logo" />
           </a>
         </div>
       </div>
@@ -796,12 +827,14 @@
 <script>
   window.CCE_CONTEXT = {
     WS_URL: "{{ GLOBAL_WS_URL|e }}",
-    EXOTEL_HTTP: "{{ GLOBAL_EXOTEL_HTTP|e }}",
+    ISSABEL_HTTP: "{{ GLOBAL_ISSABEL_HTTP|e }}",
     ME_NAME: "{{ GLOBAL_SESSION_USER_NAME|e }}",
     ME_ID: "{{ GLOBAL_SESSION_USER_ID|e }}"
   };
 </script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="{{ url_for('static', filename='js/cce_popups.js') }}"></script>
+<script src="{{ url_for('static', filename='js/cce_popups.js', v='popup-shadow-colors-18') }}"></script>
+<script src="{{ url_for('static', filename='js/theme_26jan.js', v='20260126-1') }}"></script>
 </body>
 </html>
+

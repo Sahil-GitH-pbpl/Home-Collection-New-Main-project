@@ -1,3 +1,7 @@
+import json
+import os
+import urllib.request
+
 import pymysql
 from flask import Blueprint, render_template, request, redirect, url_for, session, current_app
 from app.db.connection import get_db_connection
@@ -13,6 +17,35 @@ def _safe_next_url(raw_next: str) -> str | None:
         return None
     return raw_next if raw_next.startswith("/") else "/" + raw_next
 
+
+def _client_ip() -> str:
+    forwarded_for = request.headers.get("X-Forwarded-For") or ""
+    return (forwarded_for.split(",")[0].strip() or request.remote_addr or "").strip()
+
+
+def _issabel_base_url() -> str:
+    host = current_app.config.get("ISSABEL_HOST") or os.getenv("ISSABEL_HOST") or request.host.split(":")[0]
+    port = current_app.config.get("ISSABEL_PORT") or os.getenv("ISSABEL_PORT") or "2015"
+    return (current_app.config.get("ISSABEL_HTTP_URL") or os.getenv("ISSABEL_HTTP_URL") or f"http://{host}:{port}").rstrip("/")
+
+
+def _post_issabel_presence(path: str, user_id, user_name: str) -> None:
+    payload = {
+        "user_id": user_id,
+        "user_name": user_name or "",
+        "ip_address": _client_ip(),
+    }
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        f"{_issabel_base_url()}{path}",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        urllib.request.urlopen(req, timeout=2).close()
+    except Exception as exc:
+        current_app.logger.warning(f"[issabel presence] {path} failed: {exc}")
 @auth_bp.before_app_request
 def require_login_globally():
     if session.get("user_id"):
@@ -72,6 +105,7 @@ def login():
             session["user_id"] = user["id"]
             session["username"] = user["name"]
             session["designation"] = designation  # 🆕 Overridden designation use karo
+            _post_issabel_presence("/presence/login", user["id"], user["name"])
             
             nxt = _safe_next_url(raw_next) or (url_for("dashboard.dashboard") + "#%2Flead-form")
             return redirect(nxt)
@@ -86,5 +120,10 @@ def login():
     return redirect(url_for("auth.home"))
 @auth_bp.route("/logout", methods=["POST"])
 def logout():
+    user_id = session.get("user_id")
+    user_name = session.get("username") or ""
+    if user_id or user_name:
+        _post_issabel_presence("/presence/logout", user_id, user_name)
     session.clear()
     return redirect(url_for("auth.home"))
+
