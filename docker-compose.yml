@@ -82,7 +82,6 @@ services:
       - ./lead_management.sql:/docker-entrypoint-initdb.d/01-lead_management.sql:ro
       - ./docker/mariadb/init/02-bhasin_7001_new.sql:/docker-entrypoint-initdb.d/02-bhasin_7001_new.sql:ro
       - ./docker/mariadb/init/04-hc-tms-status.sql:/docker-entrypoint-initdb.d/04-hc-tms-status.sql:ro
-      - ./docker/mariadb/init/05-issabel-call-related.sql:/docker-entrypoint-initdb.d/05-issabel-call-related.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h localhost -p$$MARIADB_ROOT_PASSWORD --silent"]
       interval: 10s

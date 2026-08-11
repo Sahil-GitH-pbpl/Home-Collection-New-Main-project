@@ -253,27 +253,12 @@
       const j = await r.json().catch(() => ({}));
       if (r.ok && j?.has_call_related_to) {
         removePopupsBySid(sid);
+        return true;
       }
     } catch (e) {
       // Keep the popup when status cannot be verified.
     }
-  }
-
-  async function persistAnsweredPopup(info) {
-    try {
-      await fetch("/cce/answered-popup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          call_sid: info.sid,
-          phone: info.phone,
-          extension: info.extension,
-          answered_at: info.answeredAt,
-        }),
-      });
-    } catch (e) {
-      // The live popup should still stay visible even if persistence fails.
-    }
+    return false;
   }
 
   async function loadPendingPopups() {
@@ -284,21 +269,17 @@
       if (!r.ok || j?.status !== "ok") return;
       (j.data || []).forEach((raw) => {
         const info = normalizeAnswered(raw || {});
-        if (info) createAnsweredPopup(info, { persist: false });
+        if (info) createAnsweredPopup(info);
       });
     } catch (e) {
       // no-op
     }
   }
 
-  function createAnsweredPopup(info, opts = {}) {
+  function createAnsweredPopup(info) {
     if (!popupsEnabled()) return;
 
-    removePopup(info.key);
-    if (opts.persist !== false) {
-      persistAnsweredPopup(info);
-    }
-
+    removePopupsBySid(info.sid);
     const el = document.createElement("div");
     el.className = "pop";
     el.dataset.sid = info.sid;
@@ -407,6 +388,7 @@
         });
         const j = await r.json().catch(() => ({}));
     if (r.ok && j?.status === "ok") {
+          removePopupsBySid(info.sid);
           removePopup(info.key, { clearState: true });
         } else {
           saveBtn.disabled = false;
@@ -491,7 +473,7 @@
       if (dotEl) dotEl.style.background = "#ef4444";
     });
 
-    function handleAnsweredPayload(payload) {
+    async function handleAnsweredPayload(payload) {
       const info = normalizeAnswered(payload || {});
       if (!info) return;
       const now = Date.now();
@@ -499,6 +481,7 @@
       if (last && now - last < 3000) return;
       recentSidEvents.set(info.sid, now);
       setTimeout(() => recentSidEvents.delete(info.sid), 5000);
+      if (await removePopupIfCallTypeSaved(info.sid)) return;
       if (info) createAnsweredPopup(info);
     }
 

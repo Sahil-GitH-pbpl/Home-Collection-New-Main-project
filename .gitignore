@@ -1,5 +1,7 @@
 .env
 __pycache__/
 *.pyc
+*.log
 certs/
 app/static/uploads/
+app/data/

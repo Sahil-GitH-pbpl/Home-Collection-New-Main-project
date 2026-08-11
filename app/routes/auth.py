@@ -44,8 +44,8 @@ def _post_issabel_presence(path: str, user_id, user_name: str) -> None:
     )
     try:
         urllib.request.urlopen(req, timeout=2).close()
-    except Exception as exc:
-        current_app.logger.warning(f"[issabel presence] {path} failed: {exc}")
+    except Exception:
+        pass
 @auth_bp.before_app_request
 def require_login_globally():
     if session.get("user_id"):

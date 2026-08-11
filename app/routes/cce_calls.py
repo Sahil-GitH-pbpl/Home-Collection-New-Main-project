@@ -25,7 +25,21 @@ def received_calls():
     try:
         with conn.cursor(DictCursor) as cur:
             if call_type == "callback":
-                rows = []
+                cur.execute("""
+                    SELECT
+                        from_number,
+                        to_number,
+                        'callback' AS call_type,
+                        COALESCE(dial_call_duration, 0) AS dial_call_duration,
+                        created_at,
+                        callback_by_name,
+                        missed_reason,
+                        COALESCE(dial_call_status, call_status, '') AS call_related_to
+                    FROM exotel_outgoing_calls
+                    WHERE DATE(created_at) BETWEEN %s AND %s
+                    ORDER BY created_at DESC
+                """, (from_date_str, to_date_str))
+                rows = cur.fetchall()
             else:
                 sql = """
                     SELECT
@@ -39,6 +53,7 @@ def received_calls():
                         callback_by_name
                     FROM exotel_incoming_calls
                     WHERE DATE(COALESCE(received_at, created_at)) BETWEEN %s AND %s
+                      AND LOWER(COALESCE(call_type, '')) = 'completed'
                 """
                 sql += " ORDER BY COALESCE(received_at, created_at) DESC"
                 cur.execute(sql, (from_date_str, to_date_str))

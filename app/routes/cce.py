@@ -10,25 +10,6 @@ cce_bp = Blueprint("cce", __name__, template_folder="../templates")
 DEFAULT_ISSABEL_PORT = int(os.getenv("ISSABEL_PORT", "2015"))
 ISSABEL_TIMEOUT = float(os.getenv("ISSABEL_HTTP_TIMEOUT", "4.0"))
 
-ISSABEL_PRELOAD_PATHS = os.getenv(
-    "ISSABEL_PRELOAD_PATHS",
-    "/calls/recent,/raw"
-).split(",")
-
-ISSABEL_ACCEPT_PATHS = os.getenv(
-    "ISSABEL_ACCEPT_PATHS",
-    "/calls/accept,/accept"
-).split(",")
-
-# Persist unclaimed completed calls for refresh survivability
-PERSIST_WINDOW_MINUTES = int(os.getenv("CCE_PERSIST_WINDOW_MINUTES", "720"))
-
-# Terminal set (must match frontend)
-TERMINAL_TYPES = {
-    "completed","canceled","failed","busy","no-answer","not-answered",
-    "hangup","client-hangup","machine-hangup"
-}
-
 # ------------------ Helpers ------------------
 def _resolve_issabel_host() -> str:
     host = (
@@ -156,15 +137,25 @@ def missed_calls_list():
                     i.created_at
                 FROM exotel_incoming_calls i
                 WHERE 
-                    (
-                        LOWER(i.call_type) = 'client-hangup'
+                    COALESCE(NULLIF(LOWER(i.direction), ''), 'incoming') IN ('incoming', 'inbound')
+                    AND NOT (CHAR_LENGTH(COALESCE(i.from_number, '')) = 4
+                         AND CHAR_LENGTH(COALESCE(i.to_number, '')) = 4)
+                    AND CHAR_LENGTH(COALESCE(i.from_number, '')) > 4
+                    AND COALESCE(i.from_number, '') NOT IN ('1149989898', '01149989898', '49989898')
+                    -- A caller who disconnects in the IVR can have no to_number;
+                    -- that is still a missed external call. Final PBX outcome,
+                    -- not extension/claim metadata, decides missed status.
+                    AND (
+                        COALESCE(TRIM(i.to_number), '') = ''
                         OR (
-                            LOWER(i.call_type) = 'call-attempt'
-                            AND i.created_at <= NOW() - INTERVAL 15 MINUTE
+                            LOWER(REPLACE(COALESCE(i.call_type, ''), '_', '-')) IN
+                                ('client-hangup', 'busy', 'failed', 'no-answer',
+                                 'call-attempt', 'abandon', 'abandoned')
+                            AND LOWER(COALESCE(i.dial_call_status, '')) NOT IN
+                                ('answered', 'completed', 'completeagent', 'completecaller')
                         )
-                        OR LOWER(i.call_type) = 'incomplete'
                     )
-                    AND LOWER(i.call_type) <> 'completed'
+                    AND i.callback_at IS NULL
                 ORDER BY i.created_at DESC
                 LIMIT 200
             """)
@@ -177,218 +168,42 @@ def missed_calls_list():
         conn.close()
 
 
-# ------------------ Persist unclaimed terminals (refresh-safe popups) ------------------
-@cce_bp.route("/cce/persist")
-def persist_unclaimed_terminals():
-    window = max(1, int(request.args.get("minutes", PERSIST_WINDOW_MINUTES)))
-    placeholders = ",".join(["%s"] * len(TERMINAL_TYPES))
-    sql = f"""
-        SELECT 
-            call_sid,
-            from_number,
-            to_number,
-            call_type,
-            accepted_by_name,
-            accepted_by_id,
-            call_related_to,
-            created_at
-        FROM exotel_incoming_calls
-        WHERE created_at >= NOW() - INTERVAL %s MINUTE
-          AND (
-            (
-              LOWER(call_type) IN ({placeholders})
-              AND (accepted_by_name IS NULL OR accepted_by_name = '')
-            )
-            OR (
-              accepted_by_name IS NOT NULL
-              AND accepted_by_name != ''
-              AND (call_related_to IS NULL OR call_related_to = '')
-            )
-          )
-        ORDER BY created_at DESC
-        LIMIT 200
-    """
-    params = (window,) + tuple(t.lower() for t in TERMINAL_TYPES)
-
-    conn = get_db_connection()
-    try:
-        with conn.cursor(DictCursor) as cur:
-            cur.execute(sql, params)
-            rows = cur.fetchall() or []
-
-        data = []
-        for r in rows:
-            data.append({
-                "call_sid": r["call_sid"],
-                "from_number": r["from_number"],
-                "to_number": r["to_number"],
-                "call_type": r["call_type"],
-                "accepted_by_name": r.get("accepted_by_name") or "",
-                "accepted_by_id": r.get("accepted_by_id") or "",
-                "created_at": r["created_at"],
-                "dial_call_status": "completed",
-                "direction": "incoming",
-            })
-        return jsonify({"ok": True, "data": data})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-    finally:
-        conn.close()
-
-# ------------------ Raw & Accept proxy (unchanged behaviour) ------------------
-@cce_bp.route("/cce/raw")
-def raw_proxy():
-    issabel_host = _resolve_issabel_host()
-    issabel_port = _resolve_issabel_port()
-    base = f"http://{issabel_host}:{issabel_port}"
-
-    last_err = None
-    for path in ISSABEL_PRELOAD_PATHS:
-        url = f"{base}{path.strip()}"
-        try:
-            limit = request.args.get("limit", "50")
-            params = {"limit": limit} if any(k in path for k in ("raw", "recent", "live")) else {}
-            resp = requests.get(url, params=params, timeout=ISSABEL_TIMEOUT)
-            if resp.status_code == 404:
-                last_err = f"404 {url}"
-                continue
-            resp.raise_for_status()
-            data = resp.json() or []
-            if isinstance(data, dict) and "data" in data:
-                data = data["data"]
-            return jsonify({"status": "ok", "data": data}), 200
-        except Exception as e:
-            last_err = e
-            continue
-
-    return jsonify({"status": "ok", "data": [], "message": "No preload endpoint found"}), 200
-
-
-@cce_bp.route("/cce/accept", methods=["POST"])
-def accept_proxy():
-    issabel_host = _resolve_issabel_host()
-    issabel_port = _resolve_issabel_port()
-    base = f"http://{issabel_host}:{issabel_port}"
-
-    user_id = session.get("user_id")
-    user_name = session.get("username")
-    if not user_name:
-        return jsonify({"status": "error", "message": "Not logged in"}), 401
-
-    payload = request.get_json(force=True, silent=True) or {}
-    call_sid = (payload.get("call_sid") or "").strip()
-    phone = (payload.get("phone") or "").strip()
-    if not call_sid:
-        return jsonify({"status": "error", "message": "call_sid required"}), 400
-
-    forward = {
-        "call_sid": call_sid,
-        "phone": phone,
-        "accepted_by_name": user_name,
-        "accepted_by_id": user_id or None,
-    }
-    headers = {"X-User-Name": user_name}
-
-    last_err = None
-    for path in ISSABEL_ACCEPT_PATHS:
-        url = f"{base}{path.strip()}"
-        try:
-            r = requests.post(url, json=forward, headers=headers, timeout=ISSABEL_TIMEOUT)
-            if r.status_code == 404:
-                last_err = f"404 at {url}"
-                continue
-            ok = 200 <= r.status_code < 300
-            j = {}
-            try:
-                j = r.json() if r.content else {}
-            except Exception:
-                j = {"message": r.text}
-
-            if ok:
-                try:
-                    conn = get_db_connection()
-                    with conn.cursor(DictCursor) as cur:
-                        cur.execute("""
-                            UPDATE exotel_incoming_calls
-                            SET accepted_by_name = %s,
-                                accepted_by_id   = %s,
-                                accepted_at      = NOW()
-                            WHERE call_sid = %s
-                            LIMIT 1
-                        """, (user_name, user_id, call_sid))
-                    conn.commit()
-                except Exception:
-                    pass
-                finally:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
-
-                j.setdefault("status", "ok")
-                j.setdefault("accepted_by_name", user_name)
-                if user_id:
-                    j.setdefault("accepted_by_id", user_id)
-                return jsonify(j), 200
-            else:
-                msg = j.get("detail") or j.get("message") or f"Accept failed at {url}"
-                return jsonify({"status": "error", "message": msg}), 409
-        except requests.exceptions.ConnectionError as ce:
-            last_err = f"Connection error {url}: {ce}"
-        except Exception as e:
-            last_err = f"Error {url}: {e}"
-
-    return jsonify({"status": "error", "message": "Accept endpoint not found on listener"}), 502
-
-
-# ------------------ Outgoing callback disabled after Issabel migration ------------------
+# ------------------ Mark missed call callback ------------------
 @cce_bp.route("/cce/callback", methods=["POST"])
 def cce_callback():
-    return jsonify({"status": "error", "message": "Outbound callback is disabled. Calls are handled by Issabel."}), 410
-
-# ------------------ NEW: Complete endpoint (with call_related_to) ------------------
-@cce_bp.route("/cce/answered-popup", methods=["POST"])
-def cce_answered_popup():
     user_id = session.get("user_id")
     user_name = session.get("username")
     if not user_name:
         return jsonify({"status": "error", "message": "Not logged in"}), 401
 
     payload = request.get_json(silent=True) or {}
-    call_sid = (payload.get("call_sid") or "").strip()
-    phone = "".join([c for c in (payload.get("phone") or "") if c.isdigit()])[-10:]
-    extension = (payload.get("extension") or "").strip()
-    if not call_sid:
-        return jsonify({"status": "error", "message": "call_sid required"}), 400
+    call_id = payload.get("id") or payload.get("call_id")
+    try:
+        call_id = int(call_id)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Invalid call id"}), 400
 
     conn = get_db_connection()
     try:
-        with conn.cursor(DictCursor) as cur:
-            cur.execute("""
-                INSERT INTO exotel_incoming_calls
-                    (call_sid, from_number, to_number, call_type, created_at,
-                     dial_call_duration, dial_call_status, direction,
-                     accepted_by_name, accepted_by_id, accepted_at, recording_file)
-                VALUES
-                    (%s, %s, %s, 'call-attempt', NOW(),
-                     0, 'answered', 'incoming',
-                     %s, %s, NOW(), '')
-                ON DUPLICATE KEY UPDATE
-                    from_number = COALESCE(NULLIF(VALUES(from_number), ''), from_number),
-                    to_number = COALESCE(NULLIF(VALUES(to_number), ''), to_number),
-                    dial_call_status = VALUES(dial_call_status),
-                    accepted_by_name = VALUES(accepted_by_name),
-                    accepted_by_id = VALUES(accepted_by_id),
-                    accepted_at = COALESCE(accepted_at, VALUES(accepted_at))
-            """, (call_sid, phone, extension, user_name, user_id))
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE exotel_incoming_calls
+                SET call_type = 'callback',
+                    callback_by_name = %s,
+                    callback_at = NOW()
+                WHERE id = %s
+                  AND callback_at IS NULL
+                """,
+                (user_name, call_id),
+            )
         conn.commit()
-        return jsonify({"status": "ok"}), 200
+        return jsonify({"status": "success", "updated": cur.rowcount})
     except Exception as e:
         conn.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         conn.close()
-
 
 @cce_bp.route("/cce/pending-popups")
 def cce_pending_popups():
@@ -451,6 +266,23 @@ def cce_complete():
     if related not in ("Lead", "Ticket", "Home Collection Appointment", "Report Query", "Test Inquiry", "Spam Call"):
         return jsonify({"status": "error", "message": "Invalid call_related_to"}), 400
 
+    # While the call is active, keep the user's selection in the listener's
+    # in-memory CallSession. It will be included in the single hangup-time insert.
+    listener_pending = False
+    try:
+        listener_response = requests.post(
+            f"http://{_resolve_issabel_host()}:{_resolve_issabel_port()}/calls/classify",
+            json={"call_sid": call_sid, "call_related_to": related},
+            timeout=ISSABEL_TIMEOUT,
+        )
+        if listener_response.ok:
+            listener_data = listener_response.json() if listener_response.content else {}
+            listener_pending = listener_data.get("pending") is True
+    except Exception:
+        # A finalized call may no longer be held by the listener; update its DB
+        # row below. If no final row exists, the normal not-found response applies.
+        pass
+
     conn = get_db_connection()
     try:
         with conn.cursor(DictCursor) as cur:
@@ -467,6 +299,8 @@ def cce_complete():
 
         conn.commit()
         if rows == 0:
+            if listener_pending:
+                return jsonify({"status": "ok", "pending": True}), 200
             return jsonify({"status": "error", "message": "Call not found"}), 404
         return jsonify({"status": "ok"}), 200
 
@@ -503,76 +337,6 @@ def cce_call_status():
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    finally:
-        conn.close()
-# ------------------ NEW: Release endpoint (Accepted by Mistake) ------------------
-@cce_bp.route("/cce/release", methods=["POST"])
-def cce_release():
-    user_id = session.get("user_id")
-    user_name = session.get("username")
-    if not user_name:
-        return jsonify({"status": "error", "message": "Not logged in"}), 401
-
-    payload = request.get_json(silent=True) or {}
-    call_sid = (payload.get("call_sid") or "").strip()
-    if not call_sid:
-        return jsonify({"status": "error", "message": "call_sid required"}), 400
-
-    conn = get_db_connection()
-    try:
-        with conn.cursor(DictCursor) as cur:
-            cur.execute("""
-                UPDATE exotel_incoming_calls
-                SET accepted_by_name = NULL,
-                    accepted_by_id   = NULL,
-                    released_by_name = %s,
-                    released_at      = NOW()
-                WHERE call_sid = %s
-                LIMIT 1
-            """, (user_name, call_sid))
-        conn.commit()
-        return jsonify({"status": "ok"}), 200
-    except Exception as e:
-        conn.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
-    finally:
-        conn.close()
-
-
-# ------------------ Call Back Endpoint disabled after Issabel migration ------------------
-@cce_bp.route("/cce/make-call", methods=["POST"])
-def make_call():
-    return jsonify({"status": "error", "message": "Outbound callback is disabled. Calls are handled by Issabel."}), 410
-
-
-# ------------------ NEW: Last Claimant Info ------------------
-@cce_bp.route("/cce/last-claimant")
-def last_claimant():
-    phone = (request.args.get("phone") or "").strip()
-    if not phone:
-        return jsonify({"ok": False, "error": "Phone required"}), 400
-
-    conn = get_db_connection()
-    try:
-        with conn.cursor(DictCursor) as cur:
-            cur.execute("""
-                SELECT accepted_by_name 
-                FROM exotel_incoming_calls 
-                WHERE from_number = %s 
-                  AND accepted_by_name IS NOT NULL 
-                  AND accepted_by_name != ''
-                  AND created_at >= NOW() - INTERVAL 72 HOUR
-                ORDER BY created_at DESC 
-                LIMIT 1
-            """, (phone,))
-            row = cur.fetchone()
-            
-        return jsonify({
-            "ok": True, 
-            "last_claimed_by": row["accepted_by_name"] if row else None
-        })
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         conn.close()
 

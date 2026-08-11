@@ -94,13 +94,14 @@ th.actions-col, td.actions-col { width:170px; }
 }
 .page-head { margin:10px 2px 6px 2px; }
 .page-head-flex { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.toggle-group { display:flex; gap:8px; }
+.toggle-group { display:flex; gap:8px; align-items:center; }
 .toggle-btn {
   display:inline-block; padding:6px 12px; border-radius:6px;
   background:#4b5563; color:#fff; text-decoration:none;
   font-size:13px;
 }
 .toggle-btn.active { background:#014c69; }
+.ticket-category-filter { min-width:210px; height:31px; border:1px solid #94a3b8; border-radius:6px; padding:4px 8px; font-size:13px; font-weight:700; color:#0f172a; background:#fff; }
 </style>
 {% if breach_pool and breach_pool|length > 0 %}
   <div class="section-head">
@@ -326,6 +327,17 @@ th.actions-col, td.actions-col { width:170px; }
 <div class="page-head page-head-flex">
   <h2 class="section-title-chip">🗂️ Open Tickets</h2>
   <div class="toggle-group">
+    <select id="open-ticket-category-filter" class="ticket-category-filter" aria-label="Ticket category filter">
+      <option value="">All Categories</option>
+      {% set seen_categories = [] %}
+      {% for t in tickets %}
+        {% set cat = (t.ticket_category or '')|trim %}
+        {% if cat and cat not in seen_categories %}
+          {% set _ = seen_categories.append(cat) %}
+          <option value="{{ cat }}">{{ cat }}</option>
+        {% endif %}
+      {% endfor %}
+    </select>
     <a href="{{ url_for('ticketlist.tickets_list', view='my') }}" class="toggle-btn {% if view_mode == 'my' %}active{% endif %}">My Tickets</a>
     <a href="{{ url_for('ticketlist.tickets_list', view='all') }}" class="toggle-btn {% if view_mode == 'all' %}active{% endif %}">All Tickets</a>
   </div>
@@ -349,7 +361,7 @@ th.actions-col, td.actions-col { width:170px; }
     </thead>
     <tbody>
       {% for t in tickets %}
-      <tr>
+      <tr data-ticket-category="{{ t.ticket_category or '' }}">
         <td class="align-left">{{ t.id }}</td>
         <td class="align-left">{{ t.mobile_number }}</td>
         <td class="align-left">{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
@@ -410,4 +422,17 @@ th.actions-col, td.actions-col { width:170px; }
     </tbody>
   </table>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const filter = document.getElementById('open-ticket-category-filter');
+  if (!filter) return;
+  filter.addEventListener('change', function () {
+    const selected = String(filter.value || '').trim().toLowerCase();
+    document.querySelectorAll('tr[data-ticket-category]').forEach(function (row) {
+      const category = String(row.getAttribute('data-ticket-category') || '').trim().toLowerCase();
+      row.style.display = (!selected || category === selected) ? '' : 'none';
+    });
+  });
+});
+</script>
 {% endblock %}

@@ -124,17 +124,14 @@
             <th>From</th>
             <th>To</th>
             <th>Type</th>
-            {% if current_call_type != 'callback' %}
             <th class="hide-sm">Duration (s)</th>
-            {% endif %}
             <th>Created At</th>
             {% if current_call_type == 'callback' %}
             <th class="hide-sm">Callback By</th>
-            <th>Missed Reason</th>
             {% else %}
             <th class="hide-sm">Accepted By</th>
             {% endif %}
-            <th>Call_Type</th>
+            <th>{% if current_call_type == 'callback' %}Status{% else %}Call Related To{% endif %}</th>
           </tr>
         </thead>
         <tbody>
@@ -145,13 +142,10 @@
                 <td class="mono">{{ r.from_number }}</td>
                 <td class="mono">{{ r.to_number }}</td>
                 <td class="badge">{{ r.call_type }}</td>
-                {% if current_call_type != 'callback' %}
                 <td class="hide-sm">{{ r.dial_call_duration or 0 }}</td>
-                {% endif %}
                 <td>{{ r.created_at }}</td>
                 {% if current_call_type == 'callback' %}
                 <td class="hide-sm">{{ r.callback_by_name or '—' }}</td>
-                <td>{{ r.missed_reason or '—' }}</td>
                 {% else %}
                 <td class="hide-sm">{{ r.accepted_by_name or '—' }}</td>
                 {% endif %}
@@ -160,7 +154,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="{% if current_call_type == 'callback' %}8{% else %}8{% endif %}" class="empty">
+              <td colspan="8" class="empty">
                 No calls found for selected dates.
               </td>
             </tr>

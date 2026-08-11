@@ -6961,6 +6961,52 @@ class HHomeCollectionCore:
         )
         return int(cur.lastrowid or 0) or None
 
+    def _create_cancel_reschedule_lead(
+        self,
+        cur,
+        *,
+        booking_id: int,
+        reason: str,
+        remark: str,
+        actor_user_id,
+        caller_mobile: str,
+        patient_names: str,
+    ) -> str | None:
+        cur.execute("SELECT name FROM users WHERE id=%s LIMIT 1", (self._actor(actor_user_id),))
+        user_row = cur.fetchone() or {}
+        created_by = self._norm_code(user_row.get("name")) or str(actor_user_id or "system")
+        remarks = "\n".join(
+            [
+                f"Cancelled HC booking needs reschedule callback.",
+                f"Booking ID: {int(booking_id)}",
+                f"Cancel Reason: {reason}",
+                f"Remark: {remark}",
+                f"Patients: {patient_names}",
+            ]
+        )
+        cur.execute(
+            """
+            INSERT INTO leads
+            (phone, wa_only, name, alt_phone, alt_wa_only, visit_window, prescription,
+             remarks, tags, num_patients, created_by, status)
+            VALUES (%s,0,%s,'',0,'','',%s,%s,%s,%s,'Open')
+            """,
+            (
+                caller_mobile or "",
+                patient_names or "",
+                remarks,
+                "HC Cancel Reschedule",
+                "1",
+                created_by,
+            ),
+        )
+        new_id = int(cur.lastrowid or 0)
+        if not new_id:
+            return None
+        lead_id = f"LD-{new_id:03d}"
+        cur.execute("UPDATE leads SET lead_id=%s WHERE id=%s", (lead_id, new_id))
+        return lead_id
+
     def cancel_booking(
         self,
         booking_id: int,
@@ -7110,7 +7156,18 @@ class HHomeCollectionCore:
                     mobile = self._norm_code(lead_meta.get("primary_mobile"))
                     patient_names = self._norm_code(lead_meta.get("patient_names"))
                     created_odt_ticket_id = None
+                    created_lead_id = None
                     if bool(reschedule_requested) and not (proposed_date_norm and proposed_slot_norm):
+                        created_lead_id = self._create_cancel_reschedule_lead(
+                            cur,
+                            booking_id=booking_id,
+                            reason=reason,
+                            remark=self._norm_code(remark),
+                            actor_user_id=actor_user_id,
+                            caller_mobile=mobile,
+                            patient_names=patient_names,
+                        )
+                    elif not bool(reschedule_requested):
                         created_odt_ticket_id = self._create_cancel_odt_ticket(
                             cur,
                             booking_id=booking_id,
@@ -7135,6 +7192,8 @@ class HHomeCollectionCore:
                             "new_slot_known": bool(new_slot_known),
                             "proposed_visit_date": self._norm_code(proposed_visit_date) or None,
                             "proposed_time_slot": self._norm_code(proposed_time_slot) or None,
+                            "lead_created": bool(created_lead_id),
+                            "lead_id": created_lead_id,
                             "rescheduled_booking_id": (created_reschedule_booking or {}).get("booking_id"),
                             "rescheduled_booking_code": (created_reschedule_booking or {}).get("booking_code"),
                             "odt_ticket_id": created_odt_ticket_id,

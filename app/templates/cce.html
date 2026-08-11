@@ -114,10 +114,11 @@
           <th>To</th>
           <th>Type</th>
           <th>Created At</th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody id="missed-body">
-        <tr class="empty"><td colspan="4" class="muted" style="padding:14px;">No missed calls</td></tr>
+      <tr class="empty"><td colspan="5" class="muted" style="padding:14px;">No missed calls</td></tr>
       </tbody>
     </table>
   </div>
@@ -129,6 +130,11 @@
   const dotEl = document.getElementById('dot');
 
   const safe = v => (v === undefined || v === null || v === "null") ? "" : String(v);
+  const cleanDialNumber = v => safe(v).replace(/[^\d+]/g, "");
+  const calltoNumber = v => {
+    const n = cleanDialNumber(v);
+    return n && !n.startsWith("0") ? `0${n}` : n;
+  };
 
   function renderMissed(rows){
     missedBody.innerHTML = "";
@@ -141,13 +147,39 @@
     }
     for(const r of rows){
       const tr = document.createElement('tr');
+      const dialNumber = cleanDialNumber(r.from_number || "");
+      const callNumber = calltoNumber(dialNumber);
+      const actionHtml = dialNumber
+        ? `<a class="btn primary js-callback" href="callto:${callNumber}" data-id="${safe(r.id || '')}" data-phone="${callNumber}">Call</a>`
+        : `-`;
       tr.innerHTML = `
         <td>${safe(r.from_number || '')}</td>
         <td>${safe(r.to_number || '')}</td>
         <td>${safe(r.call_type || '')}</td>
         <td>${safe(r.created_at || '')}</td>
+        <td>${actionHtml}</td>
       `;
       missedBody.appendChild(tr);
+    }
+  }
+
+  async function markCallback(id, btn){
+    if(!id) return;
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+    try{
+      const r = await fetch("/cce/callback", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({id})
+      });
+      const j = await r.json();
+      if(!r.ok || j.status !== "success") throw new Error(j.message || "Failed");
+      await loadMissed();
+    }catch(e){
+      alert(e.message || "Callback update failed");
+      btn.disabled = false;
+      btn.textContent = "Call";
     }
   }
 
@@ -165,6 +197,15 @@
       dotEl.style.background = "#ef4444";
     }
   }
+
+  missedBody.addEventListener("click", (e) => {
+    const btn = e.target.closest(".js-callback");
+    if(!btn) return;
+    e.preventDefault();
+    const phone = calltoNumber(btn.dataset.phone || "");
+    if(phone) window.location.href = `callto:${phone}`;
+    markCallback(btn.dataset.id, btn);
+  });
 
   document.addEventListener('DOMContentLoaded', loadMissed);
 </script>

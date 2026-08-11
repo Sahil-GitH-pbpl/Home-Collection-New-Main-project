@@ -236,11 +236,13 @@
     #popwrap{
       position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;align-items:flex-end;gap:10px;z-index:1100;
       width:430px;max-width:94vw;max-height:92vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+      pointer-events:none;
     }
     #popwrap .pop{
       background:#fff;border:1px solid #d1d5db;border-radius:12px;
       box-shadow:0 0 0 1px rgba(75,85,99,.18),0 0 18px rgba(75,85,99,.34),0 14px 30px rgba(15,23,42,.22);
       padding:12px;transition:width .16s ease,height .16s ease,padding .16s ease,border-radius .16s ease;
+      pointer-events:auto;
     }
     #popwrap .row{display:flex;justify-content:space-between;align-items:center}
     #popwrap .badges{display:flex;gap:6px;flex-wrap:wrap}
@@ -308,6 +310,10 @@
     #popwrap .pop .claim:hover{background:inherit;border-color:inherit;color:inherit}
     #popwrap .pop .dismiss{background:#fee2e2;border-color:#fecaca;}
     #popwrap .is-minimized{width:30px;height:30px;padding:0;border-radius:8px;overflow:hidden;align-self:flex-end}
+    #popwrap:has(.is-minimized):not(:has(.pop:not(.is-minimized))){
+      top:92px;bottom:auto;width:auto;max-width:none;max-height:calc(100vh - 110px);pointer-events:none;
+    }
+    #popwrap:has(.is-minimized):not(:has(.pop:not(.is-minimized))) .is-minimized{pointer-events:auto}
     #popwrap .is-minimized .row,
     #popwrap .is-minimized .pop-content{display:none}
     #popwrap .is-minimized .mini-face{display:grid}

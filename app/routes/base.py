@@ -151,15 +151,22 @@ def tickets_counters():
                 SELECT COUNT(*) AS missed_calls
                 FROM exotel_incoming_calls i
                 WHERE 
-                    (
-                        LOWER(i.call_type) = 'client-hangup'
+                    COALESCE(NULLIF(LOWER(i.direction), ''), 'incoming') IN ('incoming', 'inbound')
+                    AND NOT (CHAR_LENGTH(COALESCE(i.from_number, '')) = 4
+                         AND CHAR_LENGTH(COALESCE(i.to_number, '')) = 4)
+                    AND CHAR_LENGTH(COALESCE(i.from_number, '')) > 4
+                    AND COALESCE(i.from_number, '') NOT IN ('1149989898', '01149989898', '49989898')
+                    AND (
+                        COALESCE(TRIM(i.to_number), '') = ''
                         OR (
-                            LOWER(i.call_type) = 'call-attempt'
-                            AND i.created_at <= NOW() - INTERVAL 15 MINUTE
+                            LOWER(REPLACE(COALESCE(i.call_type, ''), '_', '-')) IN
+                                ('client-hangup', 'busy', 'failed', 'no-answer',
+                                 'call-attempt', 'abandon', 'abandoned')
+                            AND LOWER(COALESCE(i.dial_call_status, '')) NOT IN
+                                ('answered', 'completed', 'completeagent', 'completecaller')
                         )
-                        OR LOWER(i.call_type) = 'incomplete'
                     )
-                    AND LOWER(i.call_type) <> 'completed'
+                    AND i.callback_at IS NULL
             """)
             missed_calls = cur.fetchone().get("missed_calls", 0) or 0
 
