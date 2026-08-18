@@ -26,6 +26,11 @@
     flex-wrap:wrap;
   }
   .title{font-weight:800;font-size:18px;white-space:nowrap}  /* Slightly smaller font */
+  .count-chip{
+    display:inline-flex;align-items:center;justify-content:center;min-width:38px;height:30px;
+    padding:0 11px;border-radius:999px;background:#0b2f5b;color:#fff;
+    font-size:14px;font-weight:800;box-shadow:0 2px 5px rgba(11,47,91,.28);
+  }
   .toolbar{display:flex;gap:8px;flex-wrap:nowrap;align-items:flex-end}  /* Reduced gap */
   .field label{display:block;font-weight:700;margin:0 0 2px 2px;font-size:11px}  /* Smaller font */
   .field input{
@@ -64,6 +69,12 @@
   td{padding:4px 6px;vertical-align:middle;color:#111827;white-space:nowrap}  /* Reduced padding */
   .empty{padding:8px;text-align:center;color:var(--muted)}  /* Reduced padding */
   .badge{display:inline-block;background:#d1ebde;padding:1px 5px;border-radius:999px;border:1px solid #e5e7eb;font-size:11px}  /* Smaller */
+  .recording-link{
+    display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
+    padding:0;border:1px solid var(--blue);border-radius:4px;color:var(--blue);text-decoration:none;
+    font-size:14px;font-weight:800;line-height:1;
+  }
+  .recording-link:hover{background:var(--blue);color:#fff}
   .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace}
   @media (max-width:720px){
     .filter-header{flex-direction:column;align-items:stretch}
@@ -78,24 +89,17 @@
     <div class="filter-header">
       <!-- Buttons -->
       <div class="toolbar">
-        <a href="{{ url_for('cce_calls.received_calls', from=from_date_str, to=to_date_str, type='completed') }}" 
-           class="btn {% if current_call_type == 'completed' %}btn-active{% else %}btn-outline{% endif %}">
-          Completed Calls
-        </a>
-        <a href="{{ url_for('cce_calls.received_calls', from=from_date_str, to=to_date_str, type='callback') }}" 
-           class="btn {% if current_call_type == 'callback' %}btn-active{% else %}btn-outline{% endif %}">
-          Callback Calls
-        </a>
+        {% for category_id, category_label in category_labels.items() %}
+          <a href="{{ url_for('cce_calls.received_calls', from=from_date_str, to=to_date_str, type=category_id) }}"
+             class="btn {% if current_call_type == category_id %}btn-active{% else %}btn-outline{% endif %}">
+            {{ category_label }}
+          </a>
+        {% endfor %}
       </div>
 
       <!-- Title with Count -->
       <div class="title">
-        {% if current_call_type == 'completed' %}
-          📥 Completed Calls
-        {% else %}
-          📥 Callback Calls
-        {% endif %}
-        <span style="color: rgb(71, 3, 71);">({{ rows|length }} items)</span>
+        <span class="count-chip" title="Total calls">{{ rows|length }}</span>
       </div>
 
       <!-- Date Filters -->
@@ -126,12 +130,13 @@
             <th>Type</th>
             <th class="hide-sm">Duration (s)</th>
             <th>Created At</th>
-            {% if current_call_type == 'callback' %}
+            {% if current_call_type in [2, 3, 4, 5] %}
             <th class="hide-sm">Callback By</th>
             {% else %}
             <th class="hide-sm">Accepted By</th>
             {% endif %}
-            <th>{% if current_call_type == 'callback' %}Status{% else %}Call Related To{% endif %}</th>
+            <th>{% if current_call_type in [2, 3, 4, 5] %}Status{% else %}Call Related To{% endif %}</th>
+            <th>Recording</th>
           </tr>
         </thead>
         <tbody>
@@ -144,17 +149,24 @@
                 <td class="badge">{{ r.call_type }}</td>
                 <td class="hide-sm">{{ r.dial_call_duration or 0 }}</td>
                 <td>{{ r.created_at }}</td>
-                {% if current_call_type == 'callback' %}
+                {% if current_call_type in [2, 3, 4, 5] %}
                 <td class="hide-sm">{{ r.callback_by_name or '—' }}</td>
                 {% else %}
                 <td class="hide-sm">{{ r.accepted_by_name or '—' }}</td>
                 {% endif %}
                 <td>{{ r.call_related_to or '—' }}</td>
+                <td>
+                  {% if r.recording_url %}
+                    <a class="recording-link" href="{{ r.recording_url }}" target="_blank" rel="noopener noreferrer" title="Open recording in new tab" aria-label="Open recording in new tab">↗</a>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="8" class="empty">
+              <td colspan="9" class="empty">
                 No calls found for selected dates.
               </td>
             </tr>

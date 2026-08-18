@@ -119,6 +119,7 @@ def cce_matches():
     finally:
         conn.close()
 
+
 # ------------------ Missed calls (uses exotel_incoming_calls) ------------------
 @cce_bp.route("/cce/missed")
 def missed_calls_list():
@@ -127,36 +128,44 @@ def missed_calls_list():
         with conn.cursor(DictCursor) as cur:
             cur.execute("""
                 SELECT 
-                    i.id,
-                    i.call_sid,
-                    i.from_number,
-                    i.to_number,
-                    i.call_type,
-                    i.callback_by_name,
-                    i.accepted_by_name,
-                    i.created_at
+                    latest.id,
+                    latest.call_sid,
+                    latest.from_number,
+                    latest.to_number,
+                    latest.call_type,
+                    latest.dial_call_status,
+                    grouped.cl_bk_atmpt,
+                    grouped.missed_count,
+                    latest.callback_by_name,
+                    latest.accepted_by_name,
+                    latest.created_at
                 FROM exotel_incoming_calls i
+                JOIN (
+                    SELECT RIGHT(from_number, 10) AS phone_key,
+                           MAX(id) AS latest_id,
+                           COUNT(*) AS missed_count,
+                           MAX(cl_bk_atmpt) AS cl_bk_atmpt
+                    FROM exotel_incoming_calls
+                    WHERE COALESCE(NULLIF(LOWER(direction), ''), 'incoming') IN ('incoming', 'inbound')
+                      AND CHAR_LENGTH(COALESCE(from_number, '')) > 4
+                      AND COALESCE(from_number, '') NOT IN ('1149989898', '01149989898', '49989898')
+                      AND callback_at IS NULL
+                      AND (
+                            COALESCE(TRIM(to_number), '') = ''
+                            OR (
+                                LOWER(REPLACE(COALESCE(call_type, ''), '_', '-')) IN
+                                    ('client-hangup', 'busy', 'failed', 'no-answer',
+                                     'call-attempt', 'abandon', 'abandoned')
+                                AND LOWER(COALESCE(dial_call_status, '')) NOT IN
+                                    ('answered', 'completed', 'completeagent', 'completecaller')
+                            )
+                      )
+                    GROUP BY RIGHT(from_number, 10)
+                ) grouped ON grouped.latest_id = i.id
+                JOIN exotel_incoming_calls latest ON latest.id = grouped.latest_id
                 WHERE 
-                    COALESCE(NULLIF(LOWER(i.direction), ''), 'incoming') IN ('incoming', 'inbound')
-                    AND NOT (CHAR_LENGTH(COALESCE(i.from_number, '')) = 4
-                         AND CHAR_LENGTH(COALESCE(i.to_number, '')) = 4)
-                    AND CHAR_LENGTH(COALESCE(i.from_number, '')) > 4
-                    AND COALESCE(i.from_number, '') NOT IN ('1149989898', '01149989898', '49989898')
-                    -- A caller who disconnects in the IVR can have no to_number;
-                    -- that is still a missed external call. Final PBX outcome,
-                    -- not extension/claim metadata, decides missed status.
-                    AND (
-                        COALESCE(TRIM(i.to_number), '') = ''
-                        OR (
-                            LOWER(REPLACE(COALESCE(i.call_type, ''), '_', '-')) IN
-                                ('client-hangup', 'busy', 'failed', 'no-answer',
-                                 'call-attempt', 'abandon', 'abandoned')
-                            AND LOWER(COALESCE(i.dial_call_status, '')) NOT IN
-                                ('answered', 'completed', 'completeagent', 'completecaller')
-                        )
-                    )
-                    AND i.callback_at IS NULL
-                ORDER BY i.created_at DESC
+                    grouped.phone_key <> ''
+                ORDER BY latest.created_at DESC
                 LIMIT 200
             """)
             rows = cur.fetchall() or []
@@ -168,20 +177,17 @@ def missed_calls_list():
         conn.close()
 
 
-# ------------------ Mark missed call callback ------------------
-@cce_bp.route("/cce/callback", methods=["POST"])
-def cce_callback():
-    user_id = session.get("user_id")
+# ------------------ Force-remove after two failed callback attempts ------------------
+@cce_bp.route("/cce/force-remove", methods=["POST"])
+def cce_force_remove():
     user_name = session.get("username")
     if not user_name:
         return jsonify({"status": "error", "message": "Not logged in"}), 401
 
     payload = request.get_json(silent=True) or {}
-    call_id = payload.get("id") or payload.get("call_id")
-    try:
-        call_id = int(call_id)
-    except (TypeError, ValueError):
-        return jsonify({"status": "error", "message": "Invalid call id"}), 400
+    phone = "".join(c for c in str(payload.get("phone") or "") if c.isdigit())[-10:]
+    if len(phone) < 6:
+        return jsonify({"status": "error", "message": "Invalid phone"}), 400
 
     conn = get_db_connection()
     try:
@@ -189,15 +195,25 @@ def cce_callback():
             cur.execute(
                 """
                 UPDATE exotel_incoming_calls
-                SET call_type = 'callback',
+                SET call_type = 'force-removed',
+                    call_category = 5,
                     callback_by_name = %s,
                     callback_at = NOW()
-                WHERE id = %s
+                WHERE RIGHT(from_number, 10) = %s
                   AND callback_at IS NULL
+                  AND cl_bk_atmpt >= 2
+                  AND (
+                        COALESCE(TRIM(to_number), '') = ''
+                        OR LOWER(REPLACE(COALESCE(call_type, ''), '_', '-')) IN
+                           ('client-hangup', 'busy', 'failed', 'no-answer',
+                            'call-attempt', 'abandon', 'abandoned')
+                      )
                 """,
-                (user_name, call_id),
+                (user_name, phone),
             )
         conn.commit()
+        if cur.rowcount < 1:
+            return jsonify({"status": "error", "message": "Two callback attempts are required"}), 400
         return jsonify({"status": "success", "updated": cur.rowcount})
     except Exception as e:
         conn.rollback()
@@ -339,4 +355,3 @@ def cce_call_status():
         return jsonify({"status": "error", "message": str(e)}), 500
     finally:
         conn.close()
-

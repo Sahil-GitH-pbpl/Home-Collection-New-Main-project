@@ -39,6 +39,7 @@
   .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
   .btn-success{background:#10b981;border-color:#10b981;color:#fff}
   .btn-warn{background:#f59e0b;border-color:#f59e0b;color:#111}
+  .missed-count-chip{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;margin-left:4px;border-radius:999px;background:#dc2626;color:#fff;font-size:11px;font-weight:800}
 
   /* === Popup styles (kept for backwards compatibility, now driven globally) === */
   .popwrap{
@@ -113,12 +114,14 @@
           <th>From</th>
           <th>To</th>
           <th>Type</th>
+          <th>Final Event</th>
+          <th>Attempts</th>
           <th>Created At</th>
           <th>Action</th>
         </tr>
       </thead>
       <tbody id="missed-body">
-      <tr class="empty"><td colspan="5" class="muted" style="padding:14px;">No missed calls</td></tr>
+      <tr class="empty"><td colspan="7" class="muted" style="padding:14px;">No missed calls</td></tr>
       </tbody>
     </table>
   </div>
@@ -141,7 +144,7 @@
     if(!rows.length){
       const tr = document.createElement('tr');
       tr.className = 'empty';
-      tr.innerHTML = `<td colspan="4" class="muted" style="padding:14px;">No missed calls</td>`;
+      tr.innerHTML = `<td colspan="7" class="muted" style="padding:14px;">No missed calls</td>`;
       missedBody.appendChild(tr);
       return;
     }
@@ -149,13 +152,21 @@
       const tr = document.createElement('tr');
       const dialNumber = cleanDialNumber(r.from_number || "");
       const callNumber = calltoNumber(dialNumber);
-      const actionHtml = dialNumber
-        ? `<a class="btn primary js-callback" href="callto:${callNumber}" data-id="${safe(r.id || '')}" data-phone="${callNumber}">Call</a>`
+      const attempts = Number(r.cl_bk_atmpt || 0);
+      const callAction = dialNumber
+        ? `<a class="btn primary js-callback" href="callto:${callNumber}" data-phone="${callNumber}">Call</a>`
         : `-`;
+      const missedCount = Number(r.missed_count || 0);
+      const removeAction = attempts >= 2
+        ? ` <button class="btn js-force-remove" data-phone="${dialNumber}">Remove</button>`
+        : ``;
+      const actionHtml = `${callAction}${removeAction}`;
       tr.innerHTML = `
-        <td>${safe(r.from_number || '')}</td>
+        <td>${safe(r.from_number || '')} <span class="missed-count-chip">${missedCount}</span></td>
         <td>${safe(r.to_number || '')}</td>
         <td>${safe(r.call_type || '')}</td>
+        <td>${safe(r.dial_call_status || '')}</td>
+        <td>${attempts}</td>
         <td>${safe(r.created_at || '')}</td>
         <td>${actionHtml}</td>
       `;
@@ -163,23 +174,23 @@
     }
   }
 
-  async function markCallback(id, btn){
-    if(!id) return;
+  async function forceRemove(phone, btn){
+    if(!phone) return;
     btn.disabled = true;
     btn.textContent = "Saving...";
     try{
-      const r = await fetch("/cce/callback", {
+      const r = await fetch("/cce/force-remove", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({id})
+        body: JSON.stringify({phone})
       });
       const j = await r.json();
       if(!r.ok || j.status !== "success") throw new Error(j.message || "Failed");
       await loadMissed();
     }catch(e){
-      alert(e.message || "Callback update failed");
+      alert(e.message || "Remove failed");
       btn.disabled = false;
-      btn.textContent = "Call";
+      btn.textContent = "Remove";
     }
   }
 
@@ -200,11 +211,16 @@
 
   missedBody.addEventListener("click", (e) => {
     const btn = e.target.closest(".js-callback");
-    if(!btn) return;
-    e.preventDefault();
-    const phone = calltoNumber(btn.dataset.phone || "");
-    if(phone) window.location.href = `callto:${phone}`;
-    markCallback(btn.dataset.id, btn);
+    if(btn){
+      e.preventDefault();
+      const phone = calltoNumber(btn.dataset.phone || "");
+      if(phone) window.location.href = `callto:${phone}`;
+      return;
+    }
+    const removeBtn = e.target.closest(".js-force-remove");
+    if(!removeBtn) return;
+    if(!confirm("Remove this missed call after failed callback attempts?")) return;
+    forceRemove(removeBtn.dataset.phone, removeBtn);
   });
 
   document.addEventListener('DOMContentLoaded', loadMissed);

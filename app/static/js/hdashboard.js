@@ -211,7 +211,6 @@ function renderBookingReviewModalContent(booking) {
           <td class="text-end">${esc(fmtMoney(t.mrp))}</td>
           <td class="text-end">${esc(fmtMoney(t.discount))}</td>
           <td class="text-end"><strong>${esc(fmtMoney(t.final_charge))}</strong></td>
-          <td class="text-center">-</td>
         </tr>
       `).join('');
       const sectionTotal = (sec.tests || []).reduce((acc, t) => acc + Number(t.final_charge || 0), 0);
@@ -231,10 +230,9 @@ function renderBookingReviewModalContent(booking) {
                 <th class="text-end" style="width:120px;">Standard Charge</th>
                 <th class="text-end" style="width:100px;">Discount</th>
                 <th class="text-end" style="width:120px;">Final Charge</th>
-                <th class="text-center" style="width:80px;">TAT</th>
               </tr>
             </thead>
-            <tbody>${testsRows || '<tr><td colspan="5" class="text-muted">No tests.</td></tr>'}</tbody>
+            <tbody>${testsRows || '<tr><td colspan="4" class="text-muted">No tests.</td></tr>'}</tbody>
           </table>
         </div>
         <div class="d-flex flex-wrap align-items-center justify-content-between mt-2 hc-review-bottom-strip">

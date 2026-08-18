@@ -271,7 +271,6 @@ th{background:#0b1f4d;color:#fff}
           <td style="text-align:right">${esc(fmtMoney(t.mrp))}</td>
           <td style="text-align:right">${esc(fmtMoney(t.discount))}</td>
           <td style="text-align:right"><strong>${esc(fmtMoney(t.final_charge))}</strong></td>
-          <td style="text-align:center">-</td>
         </tr>
       `).join('');
       const patientTotal = tests.reduce((acc, t) => acc + Number(t.final_charge || 0), 0);
@@ -282,9 +281,9 @@ th{background:#0b1f4d;color:#fff}
         <div style="margin-top:6px"><strong>Tests (${tests.length})</strong></div>
         <table style="margin-top:4px">
           <thead>
-            <tr><th>Test Name</th><th>Standard Charge</th><th>Discount</th><th>Final Charge</th><th>TAT</th></tr>
+            <tr><th>Test Name</th><th>Standard Charge</th><th>Discount</th><th>Final Charge</th></tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="5">No tests.</td></tr>'}</tbody>
+          <tbody>${rows || '<tr><td colspan="4">No tests.</td></tr>'}</tbody>
         </table>
         <div style="margin-top:4px;text-align:right"><strong>Charges: ${esc(fmtMoney(patientTotal))}</strong></div>
       </div>`;
@@ -506,4 +505,3 @@ th{background:#0b1f4d;color:#fff}
   loadData();
 </script>
 {% endblock %}
-

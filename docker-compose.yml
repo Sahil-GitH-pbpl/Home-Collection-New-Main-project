@@ -20,6 +20,8 @@ services:
     environment:
       TZ: Asia/Kolkata
       FLASK_SECRET_KEY: arpra-neo-dev-secret
+      LEAD_API_KEY: ${LEAD_API_KEY:-}
+      LEAD_API_CREATED_BY: ${LEAD_API_CREATED_BY:-Website API}
       DB_HOST: mariadb
       DB_USER: root
       DB_PASSWORD: arpra_root_pass

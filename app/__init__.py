@@ -23,6 +23,7 @@ def create_app():
     from app.routes.suggest import suggest_bp
     from app.routes.dashboard import dashboard_bp
     from app.routes.lead_form import lead_form_bp
+    from app.routes.lead_api import lead_api_bp
     from app.routes.leads_list import leads_list_bp
     from app.routes.lead_detail import lead_detail_bp
     from app.routes.lead_update import lead_update_bp
@@ -53,6 +54,7 @@ def create_app():
     app.register_blueprint(suggest_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(lead_form_bp)
+    app.register_blueprint(lead_api_bp)
     app.register_blueprint(leads_list_bp)
     app.register_blueprint(lead_detail_bp)
     app.register_blueprint(lead_update_bp)
@@ -115,4 +117,3 @@ def create_app():
         }
 
     return app
-

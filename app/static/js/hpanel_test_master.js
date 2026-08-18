@@ -7,7 +7,6 @@
   let searchTimer = null;
   let pendingShowMrp = {};
   let pendingShowInHc = {};
-  let pendingTat = {};
 
   function esc(v) {
     return String(v ?? '')
@@ -57,7 +56,7 @@
   }
 
   function updateApplyButton() {
-    const hasChanges = Object.keys(pendingShowMrp).length || Object.keys(pendingShowInHc).length || Object.keys(pendingTat).length;
+    const hasChanges = Object.keys(pendingShowMrp).length || Object.keys(pendingShowInHc).length;
     $('#ptm-apply-show-mrp').toggleClass('d-none', !hasChanges);
   }
 
@@ -68,27 +67,20 @@
   function renderTestRows(items) {
     const rows = Array.isArray(items) ? items : [];
     if (!rows.length) {
-      $('#ptm-test-tbody').html('<tr><td colspan="8" class="text-muted text-center py-3">No tests found for selected panel company.</td></tr>');
+      $('#ptm-test-tbody').html('<tr><td colspan="6" class="text-muted text-center py-3">No tests found for selected panel company.</td></tr>');
       return;
     }
     const html = rows.map((x, i) => {
       const key = testKey(selectedCompCatId, x.booked_code);
       const flags = testFlags[key] || {};
-      const tatChange = pendingTat[String(x.booked_code || '')];
-      const tatRaw = tatChange ? tatChange.tat_raw : (x.tat_raw || '');
       return `
         <tr>
           <td>${i + 1}</td>
           <td>${esc(x.test_name || '')}</td>
-          <td>
-            <span class="ptm-tat-cell"><span class="ptm-tat-text">${esc(tatRaw || '-')}</span></span>
-            <button type="button" class="btn btn-sm ms-1 ptm-edit-tat" data-test-code="${esc(x.booked_code || '')}" data-tat="${esc(tatRaw || '')}">edit</button>
-          </td>
           <td>${esc(x.mrp ?? '')}</td>
           <td>${esc(x.charge ?? '')}</td>
           <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-test" data-key="${esc(key)}" data-flag="allowed_in_hc" ${flags.allowed_in_hc ? 'checked' : ''}></td>
           <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-test" data-key="${esc(key)}" data-flag="is_tag" ${flags.is_tag ? 'checked' : ''}></td>
-          <td class="text-center"><input type="checkbox" class="form-check-input ptm-flag-test" data-key="${esc(key)}" data-flag="tat" ${flags.tat ? 'checked' : ''}></td>
         </tr>
       `;
     }).join('');
@@ -182,24 +174,10 @@
 
     $('#ptm-test-search').on('input', filterCurrentTests);
 
-    $('#ptm-test-tbody').on('click', '.ptm-edit-tat', function (e) {
-      e.stopPropagation();
-      const testCode = String($(this).data('test-code') ?? '');
-      const current = String($(this).data('tat') ?? '');
-      const next = window.prompt('Enter TAT', current);
-      if (next === null) return;
-      pendingTat[testCode] = { test_code: testCode, tat_raw: next.trim() };
-      const row = currentTests.find((x) => String(x.booked_code || '') === testCode);
-      if (row) row.tat_raw = next.trim();
-      filterCurrentTests();
-      updateApplyButton();
-    });
-
     $('#ptm-apply-show-mrp').on('click', function () {
       const mrpChanges = Object.values(pendingShowMrp);
       const hcChanges = Object.values(pendingShowInHc);
-      const tatChanges = Object.values(pendingTat);
-      const changes = mrpChanges.concat(hcChanges).concat(tatChanges);
+      const changes = mrpChanges.concat(hcChanges);
       if (!changes.length) return;
       if (!window.confirm('Are you sure you want to apply selected changes?')) return;
       const $btn = $(this).prop('disabled', true).text('Saving...');
@@ -215,13 +193,7 @@
         contentType: 'application/json',
         data: JSON.stringify(payload)
       }));
-      const tatRequests = tatChanges.length ? [$.ajax({
-        url: '/hhome-collection/test-tat',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ items: tatChanges })
-      })] : [];
-      const requests = mrpRequests.concat(hcRequests).concat(tatRequests);
+      const requests = mrpRequests.concat(hcRequests);
       $.when.apply($, requests).done(function () {
         window.location.reload();
       }).fail(function (xhr) {

@@ -1613,6 +1613,7 @@ function savePatient() {
     searched_mobile: wizardData.searchedMobile
   };
 
+  if (!data.title) return alert('Title is required.');
   if (!data.full_name) return alert('Patient Full Name is required.');
   if (!data.gender) return alert('Gender is required.');
   if (!data.contact_mobile) return alert('Contact No is required.');
@@ -2023,7 +2024,6 @@ function renderReviewTestsHtml(selectedTests, catalog, chargeMode = 'P', showMrp
         <td class="text-end">${escHtml(formatCharge(mrp))}</td>
         <td class="text-end">${escHtml(formatCharge(discount))}</td>
         <td class="text-end"><strong>${escHtml(formatCharge(finalCharge))}</strong></td>
-        <td class="text-center">-</td>
       </tr>
     `;
   }).join('');
@@ -2037,7 +2037,6 @@ function renderReviewTestsHtml(selectedTests, catalog, chargeMode = 'P', showMrp
             <th class="text-end" style="width:120px;">Standard Charge</th>
             <th class="text-end" style="width:100px;">Discount</th>
             <th class="text-end" style="width:120px;">Final Charge</th>
-            <th class="text-center" style="width:80px;">TAT</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>

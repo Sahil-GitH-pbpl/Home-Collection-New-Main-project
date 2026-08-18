@@ -2241,33 +2241,6 @@ button.dash-doc-thumb {
   border-color: #000000;
 }
 
-.ptm-tat-cell {
-  display: inline-block;
-  min-width: 82px;
-  text-align: right;
-}
-
-.ptm-edit-tat {
-  padding: 0;
-  border-radius: 10px;
-  background: #c2410c;
-  border: 1px solid #9a3412;
-  color: #ffffff;
-  min-width: 28px;
-  min-height: 18px;
-  font-size: 10px;
-  line-height: 1;
-}
-
-.ptm-edit-tat:hover,
-.ptm-edit-tat:focus,
-.ptm-edit-tat:active {
-  background: #c2410c;
-  border-color: #9a3412;
-  color: #ffffff;
-  box-shadow: none;
-}
-
 .ptm-panel-wrap {
   max-height: 255px;
   overflow-y: auto;

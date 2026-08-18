@@ -51,7 +51,7 @@ def require_login_globally():
     if session.get("user_id"):
         return
     path = (request.path or "/").strip()
-    PUBLIC_ENDPOINTS = {"auth.home","auth.login","auth.logout"}
+    PUBLIC_ENDPOINTS = {"auth.home", "auth.login", "auth.logout", "lead_api.create_lead"}
     PUBLIC_PATH_PREFIXES = ("/static/","/suggest_names","/CGHS","/webhook/","/uploads/")
     PUBLIC_PATH_EXACT = {"/favicon.ico","/health"}
     if request.endpoint in PUBLIC_ENDPOINTS:
@@ -126,4 +126,3 @@ def logout():
         _post_issabel_presence("/presence/logout", user_id, user_name)
     session.clear()
     return redirect(url_for("auth.home"))
-
