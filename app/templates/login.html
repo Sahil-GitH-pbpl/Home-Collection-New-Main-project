@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme_26jan.css', v='20260126-1') }}" />
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -192,12 +191,8 @@
     }
   </style>
 </head>
-<body class="theme-26jan-login">
+<body>
   <div class="auth-container">
-    <div class="jan26-login-decor" aria-hidden="true">
-      <span class="jan26-float-flag jan26-flag-a"><span class="jan26-stick"></span></span>
-      <span class="jan26-float-flag jan26-flag-b"><span class="jan26-stick"></span></span>
-    </div>
     <img src="/static/assets/Logo1.png" alt="Logo" class="logo" />
     <h3>Patient Being First</h3>
     <h3>Empathy</h3>
@@ -304,6 +299,5 @@
     nextField.value = new URLSearchParams(location.search).get('next') || '';
   }
 </script>
-<script src="{{ url_for('static', filename='js/theme_26jan.js', v='20260126-1') }}"></script>
 </body>
 </html>

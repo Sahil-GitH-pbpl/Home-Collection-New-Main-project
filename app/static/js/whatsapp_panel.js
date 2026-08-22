@@ -97,7 +97,7 @@ const attachmentTypes = [
 const drawerForms = {
   Link: [],
   Create: [],
-  "New Conversation": ["Mobile Number", "Message"],
+  "New Conversation": ["Mobile Number"],
   "Add Tag": ["Tag Name"],
   Reassign: ["New Owner", "Reason"],
 };
@@ -1184,7 +1184,7 @@ function cleanConversationMobile(value) {
   if (digits.length === 10) return `91${digits}`;
   if (digits.length === 11 && digits.startsWith("0")) return `91${digits.slice(-10)}`;
   if (digits.length > 10 && digits.startsWith("91")) return `91${digits.slice(-10)}`;
-  if (digits.length > 10) return `91${digits.slice(-10)}`;
+  if (digits.length > 10) return digits;
   return digits;
 }
 
@@ -1261,6 +1261,7 @@ function openDrawer(title) {
         <p>Ownership will be locked to you before sending the first message.</p>
       </section>
     `;
+    fields = [];
   }
   if (title === "Close Conversation") {
     const savedType = conversationType(selected);
@@ -1278,6 +1279,18 @@ function openDrawer(title) {
   }
   els.drawerQuestion.innerHTML = question;
   els.drawerFields.innerHTML = drawerFieldsHtml(fields);
+  if (title === "New Conversation") {
+    els.drawerFields.innerHTML = `
+      <div class="newConversationMobile">
+        <label class="modalField">Country Code
+          <input data-field="Country Code" value="91" inputmode="numeric" autocomplete="off" />
+        </label>
+        <label class="modalField">Mobile Number
+          <input data-field="Mobile Number" inputmode="numeric" autocomplete="off" />
+        </label>
+      </div>
+    `;
+  }
   els.drawerSave.textContent = title === "Close Conversation" ? "Close Conversation" : title === "New Conversation" ? "Start Conversation" : "Save";
   els.drawerBackdrop.classList.remove("hidden");
   if (title === "Reassign") loadUsers().catch((error) => showToast(error.message));
@@ -1487,6 +1500,8 @@ document.querySelectorAll("[data-drawer]").forEach((button) => {
   button.addEventListener("click", () => openDrawer(button.dataset.drawer));
 });
 
+els.newConversationBtn?.addEventListener("click", () => openDrawer("New Conversation"));
+
 els.contextTabs.forEach((button) => {
   button.addEventListener("click", () => {
     const tab = button.dataset.contextTab;
@@ -1523,14 +1538,11 @@ els.drawerFields.addEventListener("input", (event) => {
 els.drawerSave.addEventListener("click", async () => {
   try {
   if (state.drawerMode === "New Conversation") {
-    const mobile = cleanConversationMobile(fieldValue("Mobile Number"));
-    const message = fieldValue("Message");
-    if (mobile.length !== 12 || !mobile.startsWith("91")) {
-      showToast("Enter a valid mobile number", "error");
-      return;
-    }
-    if (!message) {
-      showToast("Enter message text", "error");
+    const countryCode = String(fieldValue("Country Code") || "91").replace(/\D/g, "");
+    const localMobile = String(fieldValue("Mobile Number") || "").replace(/\D/g, "");
+    const mobile = cleanConversationMobile(`${countryCode}${localMobile}`);
+    if (mobile.length < 11 || mobile.length > 15) {
+      showToast("Enter mobile number with country code", "error");
       return;
     }
     els.drawerSave.disabled = true;
@@ -1542,7 +1554,7 @@ els.drawerSave.addEventListener("click", async () => {
     await fetchJson(`/api/conversations/${encodeURIComponent(mobile)}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ msg: message, empname: currentUser }),
+      body: JSON.stringify({ template_name: "arpra_whatsapp_2" }),
     });
     invalidateConversationCache(mobile);
     state.activeMobile = mobile;

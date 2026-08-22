@@ -232,7 +232,20 @@ def log_panel_event(message, **data):
     current_app.logger.info("[whatsapp panel] %s %s", message, json.dumps(data, ensure_ascii=False, default=str))
 
 
-def netcore_message_payload(mobile, msg, media, patient_name="Patient"):
+def netcore_message_payload(mobile, msg, media, patient_name="Patient", template_name="", template_attributes=None):
+    if template_name:
+        return {
+            "recipient_whatsapp": mobile,
+            "message_type": "template",
+            "recipient_type": "individual",
+            "type_template": [
+                {
+                    "name": template_name,
+                    "attributes": [str(x or "").strip() for x in (template_attributes or [])],
+                    "language": {"locale": "en", "policy": "deterministic"},
+                }
+            ],
+        }
     base = {
         "recipient_whatsapp": mobile,
         "recipient_type": "individual",
@@ -264,7 +277,7 @@ def netcore_message_payload(mobile, msg, media, patient_name="Patient"):
     }
 
 
-def send_via_provider(mobile, msg, media=None):
+def send_via_provider(mobile, msg, media=None, template_name="", template_attributes=None):
     provider = WHATSAPP_PROVIDER
     recipient_mobile = outbound_whatsapp_mobile(mobile)
     log_panel_event(
@@ -274,20 +287,26 @@ def send_via_provider(mobile, msg, media=None):
         recipient=mask_mobile(recipient_mobile),
         messageLength=len(msg or ""),
         mediaKind=(media or {}).get("kind", ""),
+        template=template_name,
     )
     if provider == "disabled":
+        if template_name:
+            raise ValueError("WhatsApp template provider is disabled")
         return {"skipped": True, "provider": "disabled"}
     if provider != "netcore":
         raise ValueError(f"Unknown WHATSAPP_PROVIDER: {provider}")
-    if not NETCORE_TOKEN or not NETCORE_SOURCE:
+    token = NETCORE_TOKEN or (os.getenv("PEPIPOST_WA_TOKEN") or "").strip()
+    if template_name and not token:
+        raise ValueError("PEPIPOST_WA_TOKEN or NETCORE_TOKEN is required")
+    if not template_name and (not token or not NETCORE_SOURCE):
         raise ValueError("NETCORE_TOKEN and NETCORE_SOURCE are required")
 
     session_obj = requests.Session()
     session_obj.trust_env = False
     response = session_obj.post(
         NETCORE_URL,
-        headers={"Authorization": f"Bearer {NETCORE_TOKEN}", "Content-Type": "application/json"},
-        json={"message": [netcore_message_payload(recipient_mobile, msg, media)]},
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={"message": [netcore_message_payload(recipient_mobile, msg, media, template_name=template_name, template_attributes=template_attributes)]},
         timeout=30,
     )
     text = response.text or ""
@@ -1446,13 +1465,16 @@ def whatsapp_create_message(mobile):
     normalized = normalize_mobile(mobile)
     data = request.get_json(silent=True) or {}
     msg = str(data.get("msg") or data.get("message") or "").strip()
+    template_name = str(data.get("template_name") or "").strip()
     media = normalize_media(data)
     if not normalized:
         return jsonify(ok=False, error="Mobile missing"), 400
-    if not msg and not media["url"]:
+    if not msg and not media["url"] and not template_name:
         return jsonify(ok=False, error="Message or attachment missing"), 400
     if media["url"] and not media["kind"]:
         return jsonify(ok=False, error="Unsupported attachment type"), 400
+    if template_name:
+        msg = "Chat Initiated"
     conn = get_whatsapp_panel_connection()
     try:
         with conn.cursor() as cur:
@@ -1464,7 +1486,13 @@ def whatsapp_create_message(mobile):
         conn.close()
 
     try:
-        provider_result = send_via_provider(normalized, msg, media if media["url"] else None)
+        provider_result = send_via_provider(
+            normalized,
+            msg,
+            media if media["url"] else None,
+            template_name=template_name,
+            template_attributes=[user["display_name"], user["display_name"]] if template_name else None,
+        )
     except Exception as exc:
         log_panel_event("send_failed", mobile=mask_mobile(normalized), error=str(exc))
         return jsonify(ok=False, error=str(exc)), 500
@@ -1515,13 +1543,8 @@ def whatsapp_create_message(mobile):
                 "send_message",
                 user,
                 old_state=state_row,
-                new_value="attachment" if media["url"] else "text",
-                payload={
-                    "message_row_id": row_id,
-                    "has_media": bool(media["url"]),
-                    "provider": provider_result.get("provider"),
-                    "providerMessageId": provider_message_id or "",
-                },
+                new_value=template_name or ("attachment" if media["url"] else "text"),
+                payload=template_name or f"message_row_id:{row_id}",
             )
         conn.commit()
     finally:

@@ -1424,6 +1424,12 @@ h1 {
   font-weight: 800;
 }
 
+.newConversationMobile {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+}
+
 .drawerHint {
   display: flex;
   align-items: center;

@@ -3,7 +3,7 @@
 {% block title %}Whtsap Pnl{% endblock %}
 
 {% block content %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/whatsapp_panel.css') }}?v=22" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/whatsapp_panel.css') }}?v=23" />
     <main class="appShell" data-provider="{{ provider }}" data-current-user-id="{{ current_user.id }}" data-current-user-name="{{ current_user.display_name }}">
       <div class="toast hidden" id="toast"></div>
       <section class="titleRow titleActionsOnly">
@@ -18,7 +18,7 @@
             <button type="button" data-queue="Archived" title="Archived"><span>Archive</span><strong>0</strong></button>
           </nav>
           <button class="layoutToggle active" id="toggleChatList" type="button">Hide Chat List</button>
-          <button class="outlineBtn" id="newConversationBtn" type="button" disabled>+ New Conversation</button>
+          <button class="outlineBtn" id="newConversationBtn" type="button">+ New Conversation</button>
         </div>
       </section>
       <section class="hubGrid" id="hubGrid">
@@ -174,5 +174,5 @@
       </div>
     </main>
     <script src="{{ url_for('static', filename='js/socket.io.min.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/whatsapp_panel.js') }}?v=19"></script>
+    <script src="{{ url_for('static', filename='js/whatsapp_panel.js') }}?v=21"></script>
 {% endblock %}
