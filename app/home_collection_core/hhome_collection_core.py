@@ -5735,7 +5735,7 @@ class HHomeCollectionCore:
                 cur.execute(
                     f"""
                     SELECT p.id AS patient_id, p.patient_code, CONCAT_WS(' ', p.title, p.full_name) AS full_name,
-                           p.contact_mobile,
+                           p.contact_mobile, p.age_years, p.date_of_birth,
                            hcbp.cce_level_TBS, hcbp.selected_comp_cat_ids, hcbp.selected_charge_modes, hcbp.selected_panel_companies,
                            hcbp.payment_mode, hcbp.due_amount, hcbp.extra_amount,
                            hcbp.ref_by, hcbp.permanent_reference,
@@ -6046,6 +6046,7 @@ class HHomeCollectionCore:
                             if str(name or "").lower().startswith(prefix)
                         ]
                     p["panel_company"] = self._norm_code(p.get("panel_company"))
+                    p["age"] = hage_label(p.get("age_years"), p.get("date_of_birth"))
                     p["ref_by"] = self._norm_code(p.get("ref_by"))
                     p["permanent_reference"] = self._norm_code(p.get("permanent_reference"))
                     p["panel_companies"] = panels_by_patient.get(pid, [])

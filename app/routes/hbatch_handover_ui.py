@@ -798,6 +798,7 @@ def batch_handover_ui_data():
                       p.age_years,
                       p.gender,
                       COALESCE(NULLIF(TRIM(p.contact_mobile), ''), '') AS contact_mobile,
+                      bp.report_schedule,
                       COALESCE(bp.prescription_files, '') AS prescription_files,
                       COALESCE(p.patient_documents, '') AS patient_documents
                     FROM hhome_collection_booking_patient bp
@@ -837,6 +838,7 @@ def batch_handover_ui_data():
                             "age": row.get("age_years"),
                             "gender": row.get("gender"),
                             "mobile": row.get("contact_mobile"),
+                            "reportSchedule": str(row.get("report_schedule") or "Routine").strip().title(),
                             "tests": [],
                             "tubes": [],
                             "pending_tube_names": [],
@@ -1026,6 +1028,11 @@ def batch_handover_ui_data():
                     )
                 if not booking_list:
                     continue
+                has_urgent = any(
+                    str(p.get("reportSchedule") or "").strip().lower() == "urgent"
+                    for a in booking_list
+                    for p in (a.get("patients") or [])
+                )
                 batches.append(
                     {
                         "batchId": str(
@@ -1042,6 +1049,7 @@ def batch_handover_ui_data():
                         "deviceId": created_date_txt,
                         "dateIso": created_date_iso,
                         "routeSummary": "Batch",
+                        "hasUrgent": has_urgent,
                         "appointments": booking_list,
                     }
                 )

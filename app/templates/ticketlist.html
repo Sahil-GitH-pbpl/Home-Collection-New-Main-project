@@ -2,6 +2,21 @@
 {% block title %}Open Tickets{% endblock %}
 
 {% block content %}
+{% macro ticket_expand_detail(t, colspan) -%}
+<tr class="ticket-expand-row" hidden>
+  <td colspan="{{ colspan }}">
+    <div class="ticket-expand-box">
+      <div><strong class="ticket-expand-label">Ticket Category:</strong> <span class="ticket-expand-value">{{ t.ticket_category or '-' }}</span></div>
+      <div><strong class="ticket-expand-label">Commitment At:</strong> <span class="ticket-expand-value">{{ t.commitment_at_display or '-' }}</span></div>
+      <div><strong class="ticket-expand-label">Created By:</strong> <span class="ticket-expand-value">{{ t.created_by or '-' }}</span></div>
+      <div class="ticket-expand-info">
+        <strong class="ticket-expand-label">Additional Info:</strong>
+        <span class="ticket-info-chip">{{ t.additional_info or '-' }}</span>
+      </div>
+    </div>
+  </td>
+</tr>
+{%- endmacro %}
 <style>
 .table-container { margin-top:5px; background:#f8fafc; border-radius:12px; box-shadow:0 8px 18px rgba(15,23,42,.14); overflow-x:auto; padding:6px; border:1px solid #cbd5e1; }
 .tickets-table { width:100%; border-collapse:separate; border-spacing:0; font-size:13px; table-layout:auto; color:#0f172a; }
@@ -102,6 +117,15 @@ th.actions-col, td.actions-col { width:170px; }
 }
 .toggle-btn.active { background:#014c69; }
 .ticket-category-filter { min-width:210px; height:31px; border:1px solid #94a3b8; border-radius:6px; padding:4px 8px; font-size:13px; font-weight:700; color:#0f172a; background:#fff; }
+.ticket-expand-toggle { border:0; background:transparent; color:#0f172a; font-size:11px; font-weight:900; padding:0 4px 0 0; cursor:pointer; }
+.ticket-expand-toggle[aria-expanded="true"] { transform:rotate(90deg); }
+.ticket-expand-row td { padding:10px 14px 14px !important; background:#d8e4f5; border-bottom:1px solid #cbd5e1; }
+.ticket-expand-box { width:min(460px,100%); min-height:118px; margin:0 auto; border:1px solid #f59e0b; border-radius:7px; background:#fff7d6; padding:14px 16px; text-align:left; display:flex; flex-direction:column; gap:8px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.55); }
+.ticket-expand-box > div:not(.ticket-expand-info) { font-size:13px; color:#0f172a; }
+.ticket-expand-info { font-weight:800; color:#111827; overflow-wrap:anywhere; word-break:break-word; }
+.ticket-expand-label { color:#7c2d12; }
+.ticket-expand-value { color:#0f172a; font-weight:800; }
+.ticket-info-chip { display:block; margin:5px 0 0; max-width:100%; padding:6px 9px; border-radius:999px; background:#ffffff; border:1px solid #f59e0b; color:#111827; white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
 </style>
 {% if breach_pool and breach_pool|length > 0 %}
   <div class="section-head">
@@ -126,7 +150,7 @@ th.actions-col, td.actions-col { width:170px; }
       <tbody>
         {% for r in breach_pool %}
         <tr>
-          <td class="align-left">{{ r.id }}</td>
+          <td class="align-left"><button type="button" class="ticket-expand-toggle" aria-expanded="false">&#9656;</button>{{ r.id }}</td>
           <td class="align-left">{{ r.mobile_number }}</td>
           <td class="align-left">{{ r.patient_name or '-' }}{% if r.patient_labmate_id %}<br><small>({{ r.patient_labmate_id }})</small>{% endif %}</td>
           <td class="align-left">{{ r.panel_doctor_display or '-' }}</td>
@@ -160,6 +184,7 @@ th.actions-col, td.actions-col { width:170px; }
             </div>
           </td>
         </tr>
+        {{ ticket_expand_detail(r, 9) }}
         {% endfor %}
       </tbody>
     </table>
@@ -187,7 +212,7 @@ th.actions-col, td.actions-col { width:170px; }
       <tbody>
         {% for t in unassigned_rs_tickets %}
         <tr>
-          <td class="align-left">{{ t.id }}</td>
+          <td class="align-left"><button type="button" class="ticket-expand-toggle" aria-expanded="false">&#9656;</button>{{ t.id }}</td>
           <td class="align-left">{{ t.mobile_number }}</td>
           <td class="align-left">{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
           <td class="align-left"><span class="badge badge-category">{{ t.ticket_category }}</span></td>
@@ -221,6 +246,7 @@ th.actions-col, td.actions-col { width:170px; }
             </table>
           </td>
         </tr>
+        {{ ticket_expand_detail(t, 7) }}
         {% endfor %}
       </tbody>
     </table>
@@ -251,7 +277,7 @@ th.actions-col, td.actions-col { width:170px; }
       <tbody>
         {% for t in unassigned_odt_tickets %}
         <tr>
-          <td class="align-left">{{ t.id }}</td>
+          <td class="align-left"><button type="button" class="ticket-expand-toggle" aria-expanded="false">&#9656;</button>{{ t.id }}</td>
           <td class="align-left">{{ t.mobile_number }}</td>
           <td class="align-left">{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
           <td class="align-left">{{ t.panel_doctor_display or '-' }}</td>
@@ -318,6 +344,7 @@ th.actions-col, td.actions-col { width:170px; }
             </div>
           </td>
         </tr>
+        {{ ticket_expand_detail(t, 10) }}
         {% endfor %}
       </tbody>
     </table>
@@ -362,7 +389,7 @@ th.actions-col, td.actions-col { width:170px; }
     <tbody>
       {% for t in tickets %}
       <tr data-ticket-category="{{ t.ticket_category or '' }}">
-        <td class="align-left">{{ t.id }}</td>
+        <td class="align-left"><button type="button" class="ticket-expand-toggle" aria-expanded="false">&#9656;</button>{{ t.id }}</td>
         <td class="align-left">{{ t.mobile_number }}</td>
         <td class="align-left">{{ t.patient_name or '-' }}{% if t.patient_labmate_id %}<br><small>({{ t.patient_labmate_id }})</small>{% endif %}</td>
         <td class="align-left">{{ t.panel_doctor_display or '-' }}</td>
@@ -418,19 +445,40 @@ th.actions-col, td.actions-col { width:170px; }
           {% endif %}
         </td>
       </tr>
+      {{ ticket_expand_detail(t, 10) }}
       {% endfor %}
     </tbody>
   </table>
 </div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.ticket-expand-toggle').forEach(function (btn) {
+    btn.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const row = btn.closest('tr');
+      const detail = row ? row.nextElementSibling : null;
+      if (!detail || !detail.classList.contains('ticket-expand-row')) return;
+      const open = detail.hasAttribute('hidden');
+      detail.toggleAttribute('hidden', !open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
+
   const filter = document.getElementById('open-ticket-category-filter');
   if (!filter) return;
   filter.addEventListener('change', function () {
     const selected = String(filter.value || '').trim().toLowerCase();
     document.querySelectorAll('tr[data-ticket-category]').forEach(function (row) {
       const category = String(row.getAttribute('data-ticket-category') || '').trim().toLowerCase();
-      row.style.display = (!selected || category === selected) ? '' : 'none';
+      const visible = !selected || category === selected;
+      row.style.display = visible ? '' : 'none';
+      const detail = row.nextElementSibling;
+      if (!visible && detail && detail.classList.contains('ticket-expand-row')) {
+        detail.hidden = true;
+        const btn = row.querySelector('.ticket-expand-toggle');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      }
     });
   });
 });

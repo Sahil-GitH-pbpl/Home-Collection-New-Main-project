@@ -172,7 +172,7 @@ def _enrich_ticket_data(ticket, active_claim, now_ist):
     if dt:
         try:
             dt_aware = dt.replace(tzinfo=IST) if dt.tzinfo is None else dt.astimezone(IST)
-            ticket["commitment_at_display"] = dt_aware.strftime("%Y-%m-%d %H:%M")
+            ticket["commitment_at_display"] = dt_aware.strftime("%d %b %Y, %I:%M %p").lstrip("0")
             ctxt, cstate = _countdown_for_target(dt_aware, now_ist)
             ticket["commitment_countdown_text"] = ctxt
             ticket["commitment_countdown_state"] = cstate
@@ -192,7 +192,7 @@ def _enrich_ticket_data(ticket, active_claim, now_ist):
         try:
             exp_aware = exp.replace(tzinfo=IST) if exp and exp.tzinfo is None else (exp.astimezone(IST) if exp else None)
             if exp_aware:
-                ticket["commitment_at_display"] = exp_aware.strftime("%Y-%m-%d %H:%M")
+                ticket["commitment_at_display"] = exp_aware.strftime("%d %b %Y, %I:%M %p").lstrip("0")
                 ctxt, cstate = _countdown_for_target(exp_aware, now_ist)
                 ticket["commitment_countdown_text"] = ctxt
                 ticket["commitment_countdown_state"] = cstate
@@ -293,6 +293,7 @@ def tickets_list():
                     SELECT
                       t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
+                      t.additional_info, t.created_by,
                       t.assign_to_user_id, u.name AS assign_to_name
                     FROM tickets t
                     LEFT JOIN users u ON u.id = t.assign_to_user_id
@@ -319,7 +320,7 @@ def tickets_list():
                     SELECT
                       t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
-                      t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
+                      t.additional_info, t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
                       t.created_at, t.created_by
                     FROM tickets t
                     LEFT JOIN users u ON t.assign_to_user_id = u.id
@@ -335,7 +336,7 @@ def tickets_list():
                     SELECT
                       t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
-                      t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
+                      t.additional_info, t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
                       t.created_at, t.created_by
                     FROM tickets t
                     LEFT JOIN users u ON t.assign_to_user_id = u.id
@@ -356,7 +357,7 @@ def tickets_list():
                     SELECT
                       t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
-                      t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
+                      t.additional_info, t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
                       t.created_at, t.created_by
                     FROM tickets t
                     LEFT JOIN users u ON t.assign_to_user_id = u.id
@@ -377,7 +378,7 @@ def tickets_list():
                     SELECT
                       t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
-                      t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
+                      t.additional_info, t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
                       t.created_at, t.created_by
                     FROM tickets t
                     LEFT JOIN users u ON t.assign_to_user_id = u.id
@@ -389,7 +390,7 @@ def tickets_list():
                     SELECT
                       t.id, t.mobile_number, t.patient_name, t.patient_labmate_id, t.panel_name, t.client_name,
                       t.ticket_category, t.ticket_origin, t.commitment_at,
-                      t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
+                      t.additional_info, t.tags_json, t.assign_to_user_id, u.name AS assign_to_name,
                       t.created_at, t.created_by
                     FROM tickets t
                     LEFT JOIN users u ON t.assign_to_user_id = u.id
@@ -475,7 +476,7 @@ def tickets_list():
             if dt:
                 try:
                     dt_aware = dt.replace(tzinfo=IST) if dt.tzinfo is None else dt.astimezone(IST)
-                    ticket["commitment_at_display"] = dt_aware.strftime("%Y-%m-%d %H:%M")
+                    ticket["commitment_at_display"] = dt_aware.strftime("%d %b %Y, %I:%M %p").lstrip("0")
                     overdue_text, _ = _countdown_for_target(dt_aware, now_ist)
                     ticket["overdue_text"] = overdue_text
                 except Exception:

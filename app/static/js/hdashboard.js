@@ -247,7 +247,8 @@ function renderBookingReviewModalContent(booking) {
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 hc-patient-name-red mb-2">
           <div>
             <h6 class="mb-0"><span>Patient Name:</span> ${esc(p.full_name || '-')}</h6>
-            <div><strong>Patient Mobile:</strong> ${esc(p.contact_mobile || '-')}</div>
+            <div class="hc-patient-subline"><strong>Patient Age:</strong> ${esc(p.age || '-')}</div>
+            <div class="hc-patient-subline"><strong>Patient Mobile:</strong> ${esc(p.contact_mobile || '-')}</div>
           </div>
           <h6 class="mb-0 text-end"><span>Referred By:</span> ${esc(p.ref_by || '-')}</h6>
         </div>

@@ -810,8 +810,18 @@ label,
 
 .hc-patient-name-red {
   color: #8b0000;
+}
+
+.hc-patient-name-red h6,
+.hc-patient-name-red .hc-patient-subline {
+  color: #8b0000;
+  font-size: 16px;
   font-weight: 700;
-  font-size: 18px;
+  line-height: 1.35;
+}
+
+.hc-patient-name-red .hc-patient-subline strong {
+  font-weight: 700;
 }
 
 @media (max-width: 900px) {
