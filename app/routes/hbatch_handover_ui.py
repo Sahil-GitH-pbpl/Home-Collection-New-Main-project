@@ -3,7 +3,7 @@ from collections import OrderedDict
 from pathlib import Path
 from datetime import datetime
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request, session
 
 from app.db.connection import get_db_connection
 
@@ -539,10 +539,12 @@ def batch_handover_ui_data():
             cur.execute(
                 """
                 SELECT b.id, b.batch_code, b.batch_json, b.booking_ids, b.patients_json, b.tubes_json,
-                       b.created_at, b.created_by,
-                       COALESCE(NULLIF(TRIM(u.name), ''), CONCAT('User ', b.created_by)) AS phlebo_name
+                       b.created_at, b.created_by, b.validated_by, b.validated_at,
+                       COALESCE(NULLIF(TRIM(u.name), ''), CONCAT('User ', b.created_by)) AS phlebo_name,
+                       COALESCE(NULLIF(TRIM(vu.name), ''), CONCAT('User ', b.validated_by)) AS validated_by_name
                 FROM hhome_collection_batch b
                 LEFT JOIN users u ON u.id = b.created_by
+                LEFT JOIN users vu ON vu.id = b.validated_by
                 WHERE DATE(b.created_at) = %s
                 ORDER BY b.id DESC
                 LIMIT 500
@@ -633,6 +635,9 @@ def batch_handover_ui_data():
                     "created_at": br.get("created_at"),
                     "created_by": br.get("created_by"),
                     "phlebo_name": br.get("phlebo_name"),
+                    "validated_by": br.get("validated_by"),
+                    "validated_at": br.get("validated_at"),
+                    "validated_by_name": br.get("validated_by_name"),
                 }
                 batch_tubes_map[batch_id] = _build_tubes_map_from_batch_json(br.get("tubes_json"))
                 all_booking_ids.extend(booking_ids)
@@ -1035,6 +1040,7 @@ def batch_handover_ui_data():
                 )
                 batches.append(
                     {
+                        "id": batch_id,
                         "batchId": str(
                             binfo.get("batch_code")
                             or meta.get("batch_id")
@@ -1050,6 +1056,8 @@ def batch_handover_ui_data():
                         "dateIso": created_date_iso,
                         "routeSummary": "Batch",
                         "hasUrgent": has_urgent,
+                        "validatedBy": str(binfo.get("validated_by_name") or "").strip() if binfo.get("validated_by") else "",
+                        "validatedAt": binfo.get("validated_at").strftime("%d %b %Y %I:%M %p") if binfo.get("validated_at") else "",
                         "appointments": booking_list,
                     }
                 )
@@ -1062,5 +1070,35 @@ def batch_handover_ui_data():
                 "batches": batches,
             }
             return jsonify(payload)
+    finally:
+        conn.close()
+
+
+@hbatch_handover_ui_bp.post("/hhome-collection/batch-handover-ui/<int:batch_id>/validate")
+def validate_batch_handover(batch_id: int):
+    user_id = int(session.get("user_id") or 0)
+    user_name = (session.get("username") or "").strip()
+    if user_id <= 0:
+        return jsonify({"ok": False, "message": "Login required"}), 401
+
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE hhome_collection_batch
+                SET validated_by=%s, validated_at=NOW()
+                WHERE id=%s
+                """,
+                (user_id, batch_id),
+            )
+            if cur.rowcount <= 0:
+                conn.rollback()
+                return jsonify({"ok": False, "message": "Batch not found"}), 404
+        conn.commit()
+        return jsonify({"ok": True, "validatedBy": user_name})
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "message": str(exc)}), 500
     finally:
         conn.close()

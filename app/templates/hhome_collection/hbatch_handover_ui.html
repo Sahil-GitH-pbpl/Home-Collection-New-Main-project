@@ -18,7 +18,7 @@
   .metric-patients{background:#def7e8}
   .metric-docs{background:#ffe4e6}
   .cardx{background:#e9effa;border:1px solid #bccbe2;border-radius:10px;box-shadow:0 1px 4px rgba(15,23,42,.08)}
-  .batch-head{display:grid;grid-template-columns:28px 180px 1fr 120px;gap:8px;align-items:center;padding:10px;background:#d7e4f7}
+  .batch-head{display:grid;grid-template-columns:28px 180px 1fr 230px;gap:8px;align-items:center;padding:10px;background:#d7e4f7}
   .appt-head{display:grid;grid-template-columns:28px 160px 1fr 100px;gap:8px;align-items:center;padding:8px 10px 8px 36px;border-top:1px solid #cbd8ea;background:#f6f9ff}
   .code{font-weight:800;color:#0b1f4d}.muted{color:#64748b}
   .urgent-batch-chip{display:inline-flex;align-items:center;gap:4px;margin-left:7px;color:#b91c1c;font-weight:900;font-size:12px}
@@ -37,7 +37,9 @@
   .doc-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .doc-actions{display:flex;gap:4px;flex-shrink:0}
   .btn-ico{width:28px;height:28px;padding:0}
-  .batch-print-btn{padding:2px 8px !important;min-height:24px !important;line-height:1.1;font-size:12px}
+  .batch-print-btn{padding:2px 8px !important;min-height:24px !important;height:24px !important;line-height:1 !important;font-size:12px;display:inline-flex;align-items:center;gap:3px}
+  .batch-actions{display:flex;justify-content:flex-end;align-items:center;gap:6px}
+  .batch-validate-btn{padding:2px 8px !important;min-height:24px !important;line-height:1.1;font-size:12px;font-weight:600;white-space:nowrap}
   @media (max-width:1200px){.docs{grid-template-columns:repeat(3,minmax(0,1fr));}}
   @media (max-width:768px){.docs{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media (max-width:1180px){.filter-grid{grid-template-columns:repeat(2,minmax(180px,1fr));}}
@@ -83,7 +85,7 @@
       </div>
       <div>
         <label class="filter-label" for="f-status">Batch Status</label>
-        <select id="f-status" class="form-select form-select-sm"><option value="">All</option></select>
+        <select id="f-status" class="form-select form-select-sm"><option value="">All</option><option value="pending">Pending Batch</option><option value="completed">Completed Batch</option></select>
       </div>
       <div>
         <label class="filter-label" for="f-search">Search</label>
@@ -136,19 +138,19 @@ function initFilters(preserveInputs=false){
   const prevPh=preserveInputs?String(sPh?.value||''):'';
   const prevSt=preserveInputs?String(sSt?.value||''):'';
   if(sPh)sPh.replaceChildren(new Option('All Phlebos',''));
-  if(sSt)sSt.replaceChildren(new Option('All',''));
+  if(sSt)sSt.replaceChildren(new Option('All',''),new Option('Pending Batch','pending'),new Option('Completed Batch','completed'));
   const phs=[...new Set((data.batches||[]).map(b=>String(b.phleboName||'').trim()).filter(Boolean))];
   phs.forEach(v=>sPh.add(new Option(v,v)));
-  const sts=[...new Set((data.batches||[]).map(b=>String(b.status||'').trim()).filter(Boolean))];
-  sts.forEach(v=>sSt.add(new Option(v,v)));
   if(sPh&&prevPh&&phs.includes(prevPh))sPh.value=prevPh;
-  if(sSt&&prevSt&&sts.includes(prevSt))sSt.value=prevSt;
+  if(sSt&&['pending','completed'].includes(prevSt))sSt.value=prevSt;
   appliedFilters.phlebo=String(sPh?.value||'').trim();
   appliedFilters.status=String(sSt?.value||'').trim();
   appliedFilters.search=String(document.getElementById('f-search')?.value||'').trim();
 }
 function syncHeaderOffset(){const hw=document.querySelector('.header-wrap');const off=hw?Math.max(0,Math.round(hw.getBoundingClientRect().bottom)):0;document.documentElement.style.setProperty('--hc-header-offset',off+'px');}
-function render(){flat=[];const el=document.getElementById('list');el.innerHTML='';const q=String(appliedFilters.search||'').trim().toLowerCase();const ph=String(appliedFilters.phlebo||'').trim();const st=String(appliedFilters.status||'').trim();visibleBatches=(data.batches||[]).filter(b=>{if(ph && String(b.phleboName||'').trim()!==ph) return false;if(st && String(b.status||'').trim()!==st) return false;if(!q) return true;const blob=[b.riderName,b.phleboName,b.handoverTo,...(b.appointments||[]).flatMap(a=>[...(a.patients||[]).flatMap(p=>[p.name,p.mobile||''])])].join(' ').toLowerCase();return blob.includes(q);});visibleBatches.forEach((b,bi)=>{const sec=document.createElement('section');sec.className='cardx';const aps=(b.appointments||[]);const rider=String(b.riderName||'').trim();const handover=String(b.handoverTo||'').trim().toLowerCase()==='rider'?(rider?`${rider} Rider`:'Rider'):'Lab';const phlebo=String(b.phleboName||'').trim()||'-';const urgent=b.hasUrgent?'<span class="urgent-batch-chip">Urgent</span>':'';sec.innerHTML=`<div class="batch-head" data-bs-toggle="collapse" data-bs-target="#b-${bi}"><div><i class="bi bi-chevron-right"></i></div><div><div class="code">${esc(b.batchId)}${urgent}</div><div class="muted">${esc(b.deviceId||'')} | ${esc(b.createdAt||'')}</div></div><div><strong>Handover To:</strong> ${esc(handover)} &nbsp; | &nbsp; <strong>Phlebo:</strong> ${esc(phlebo)}</div><div class="text-end"><button class="btn btn-outline-primary btn-sm batch-print-btn" onclick="event.stopPropagation();printBatch(${bi})"><i class="bi bi-printer"></i> Print</button></div></div><div id="b-${bi}" class="collapse">${aps.map((a,ai)=>apptHtml(a,b,bi,ai)).join('')}</div>`;el.appendChild(sec);});updateMetrics();}
+function render(){flat=[];const el=document.getElementById('list');el.innerHTML='';const q=String(appliedFilters.search||'').trim().toLowerCase();const ph=String(appliedFilters.phlebo||'').trim();const st=String(appliedFilters.status||'').trim();visibleBatches=(data.batches||[]).filter(b=>{if(ph && String(b.phleboName||'').trim()!==ph) return false;if(st==='pending' && b.validatedBy) return false;if(st==='completed' && !b.validatedBy) return false;if(!q) return true;const blob=[b.riderName,b.phleboName,b.handoverTo,...(b.appointments||[]).flatMap(a=>[...(a.patients||[]).flatMap(p=>[p.name,p.mobile||''])])].join(' ').toLowerCase();return blob.includes(q);});visibleBatches.forEach((b,bi)=>{const sec=document.createElement('section');sec.className='cardx';const aps=(b.appointments||[]);const rider=String(b.riderName||'').trim();const handover=String(b.handoverTo||'').trim().toLowerCase()==='rider'?(rider?`${rider} Rider`:'Rider'):'Lab';const phlebo=String(b.phleboName||'').trim()||'-';const urgent=b.hasUrgent?'<span class="urgent-batch-chip">Urgent</span>':'';const vbtn=b.validatedBy?`<button class="btn btn-success btn-sm batch-validate-btn" onclick="event.stopPropagation()">Verified by :- ${esc(b.validatedBy)}</button>`:`<button class="btn btn-warning btn-sm batch-validate-btn" onclick="validateBatch(event,${Number(b.id||0)})">Verification Pending</button>`;sec.innerHTML=`<div class="batch-head" onclick="toggleBatch(event,'b-${bi}')"><div><i class="bi bi-chevron-right"></i></div><div><div class="code">${esc(b.batchId)}${urgent}</div><div class="muted">${esc(b.deviceId||'')} | ${esc(b.createdAt||'')}</div></div><div><strong>Handover To:</strong> ${esc(handover)} &nbsp; | &nbsp; <strong>Phlebo:</strong> ${esc(phlebo)}</div><div class="batch-actions">${vbtn}<button class="btn btn-outline-primary btn-sm batch-print-btn" onclick="event.stopPropagation();printBatch(${bi})"><i class="bi bi-printer"></i> Print</button></div></div><div id="b-${bi}" class="collapse">${aps.map((a,ai)=>apptHtml(a,b,bi,ai)).join('')}</div>`;el.appendChild(sec);});updateMetrics();}
+function toggleBatch(ev,id){if(ev.target.closest('.batch-actions'))return;const el=document.getElementById(id);if(el)bootstrap.Collapse.getOrCreateInstance(el,{toggle:false}).toggle();}
+function validateBatch(ev,batchId){ev.preventDefault();ev.stopPropagation();if(ev.stopImmediatePropagation)ev.stopImmediatePropagation();if(!batchId||!confirm('Are you sure to verify this batch?'))return;fetch(`/hhome-collection/batch-handover-ui/${batchId}/validate`,{method:'POST'}).then(r=>r.json()).then(j=>{if(!j.ok)throw new Error(j.message||'Verification failed');load(true);}).catch(e=>alert(e.message||'Verification failed'));}
 function updateMetrics(){const b=visibleBatches||[];const a=b.reduce((s,x)=>s+((x.appointments||[]).length),0);const p=b.reduce((s,x)=>s+(x.appointments||[]).reduce((k,ap)=>k+((ap.patients||[]).length),0),0);const d=b.reduce((s,x)=>s+(x.appointments||[]).reduce((k,ap)=>k+(ap.patients||[]).reduce((z,pt)=>z+((pt.docs||[]).filter(dd=>Array.isArray(dd.files)&&dd.files.length>0).length),0),0),0);document.getElementById('m-batches').textContent=b.length;document.getElementById('m-appts').textContent=a;document.getElementById('m-patients').textContent=p;document.getElementById('m-docs').textContent=d;}
 function apptHtml(a,b,bi,ai){const ps=a.patients||[];const rt=String(a.rowType||'BOOKING').toUpperCase();const rtLabel=rt==='APPOINTMENT'?'Link Appointment':'New Appointment';const rtClass=rt==='APPOINTMENT'?'rowtype-appointment':'muted';return `<div class="appt-head" data-bs-toggle="collapse" data-bs-target="#a-${bi}-${ai}"><div><i class="bi bi-chevron-right"></i></div><div><div class="code">${esc(a.bookingCode||'')}</div><div class="${rtClass}">${esc(rtLabel)}</div></div><div>${esc(a.colony||'')} / ${esc(a.route||'')} | ${esc(a.slot||'')}</div><div class="text-end">${ps.length} patient(s)</div></div><div id="a-${bi}-${ai}" class="collapse"><div class="patient">${ps.map(p=>patientHtml(p,a,b)).join('')}</div></div>`;}
 function patientHtml(p,a,b){
