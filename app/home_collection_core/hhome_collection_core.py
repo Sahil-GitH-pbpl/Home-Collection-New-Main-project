@@ -340,7 +340,7 @@ class HHomeCollectionCore:
             targets.append(internal_contact)
         return targets
 
-    def _queue_local_whatsapp_message(self, app_obj, *, log_prefix: str, booking_id: int, targets: list[str], message: str) -> int:
+    def _queue_local_whatsapp_message(self, app_obj, *, log_prefix: str, booking_id: int, targets: list[str], message: str, action_type: str = "", related_code: str = "") -> int:
         deduped = []
         seen = set()
         for target in targets or []:
@@ -354,9 +354,23 @@ class HHomeCollectionCore:
 
         def _runner():
             try:
-                from app.alerts import send_whatsapp_to_number
+                from app.alerts import WHATSAPP_ACCOUNT_ID, send_whatsapp_to_number
+                from app.whatsapp_audit import log_whatsapp_send
                 for target in deduped:
                     status, resp = send_whatsapp_to_number(target, message)
+                    ok = status in (200, 201)
+                    if action_type:
+                        log_whatsapp_send(
+                            action_type=action_type,
+                            api_type="local",
+                            related_id=booking_id,
+                            related_code=related_code,
+                            recipient=target,
+                            message_text=message,
+                            payload_json={"accountId": WHATSAPP_ACCOUNT_ID, "target": target, "message": message},
+                            is_success=ok,
+                            error_text=None if ok else f"HTTP {status}: {resp}",
+                        )
                     if app_obj:
                         app_obj.logger.info(
                             "[%s] local send booking_id=%s target=%s status=%s response=%s",
@@ -391,6 +405,8 @@ class HHomeCollectionCore:
                 booking_id=booking_id,
                 targets=list(targets),
                 message=self._assignment_local_whatsapp_message(item),
+                action_type="hcb_phlb_asgn_local",
+                related_code=item.get("booking_code") or "",
             )
         return queued
 
@@ -429,19 +445,14 @@ class HHomeCollectionCore:
         recipient: str,
         template_name: str,
         attributes: list[str],
+        action_type: str = "",
+        message_text: str = "",
+        save_to_chat: bool = False,
+        chat_empname: str = "System",
     ):
-        token = (os.getenv("PEPIPOST_WA_TOKEN") or "").strip()
-        if not self._pepipost_booking_enabled():
-            app_obj.logger.info("[%s] disabled; skipped booking_id=%s booking_code=%s", log_prefix, booking_id, booking_code)
-            return
-        if not token:
-            app_obj.logger.info("[%s] token missing; skipped booking_id=%s", log_prefix, booking_id)
-            return
-        if not recipient:
-            app_obj.logger.info("[%s] recipient missing; skipped booking_id=%s", log_prefix, booking_id)
-            return
+        from app.whatsapp_audit import log_whatsapp_send, save_patient_chat_message
 
-        timeout = self._pepipost_booking_timeout()
+        token = (os.getenv("PEPIPOST_WA_TOKEN") or "").strip()
         request_body = {
             "message": [
                 {
@@ -458,6 +469,36 @@ class HHomeCollectionCore:
                 }
             ]
         }
+
+        def audit_failure(error_text):
+            if action_type:
+                log_whatsapp_send(
+                    action_type=action_type,
+                    api_type="official",
+                    related_id=booking_id,
+                    related_code=booking_code,
+                    recipient=recipient,
+                    message_text=message_text,
+                    template_name=template_name,
+                    payload_json=request_body,
+                    is_success=False,
+                    error_text=error_text,
+                )
+
+        if not self._pepipost_booking_enabled():
+            app_obj.logger.info("[%s] disabled; skipped booking_id=%s booking_code=%s", log_prefix, booking_id, booking_code)
+            audit_failure("Pepipost WhatsApp disabled")
+            return
+        if not token:
+            app_obj.logger.info("[%s] token missing; skipped booking_id=%s", log_prefix, booking_id)
+            audit_failure("Pepipost token missing")
+            return
+        if not recipient:
+            app_obj.logger.info("[%s] recipient missing; skipped booking_id=%s", log_prefix, booking_id)
+            audit_failure("Recipient missing")
+            return
+
+        timeout = self._pepipost_booking_timeout()
         body = json.dumps(request_body).encode("utf-8")
         req = urllib.request.Request(
             "https://waapi.pepipost.com/api/v2/message/",
@@ -472,6 +513,32 @@ class HHomeCollectionCore:
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             with opener.open(req, timeout=timeout) as resp:
                 response_body = resp.read().decode("utf-8", errors="replace")
+                provider_message_id = ""
+                try:
+                    provider_message_id = (json.loads(response_body).get("data") or {}).get("id") or ""
+                except Exception:
+                    provider_message_id = ""
+                if action_type:
+                    log_whatsapp_send(
+                        action_type=action_type,
+                        api_type="official",
+                        related_id=booking_id,
+                        related_code=booking_code,
+                        recipient=recipient,
+                        message_text=message_text,
+                        template_name=template_name,
+                        payload_json=request_body,
+                        is_success=True,
+                    )
+                if save_to_chat:
+                    save_patient_chat_message(
+                        mobile=recipient,
+                        message_text=message_text,
+                        empname=chat_empname,
+                        provider_message_id=provider_message_id or None,
+                        delivery_status="accepted",
+                        delivery_status_remark=response_body,
+                    )
                 app_obj.logger.info(
                     "[%s] sent booking_id=%s booking_code=%s recipient=%s status=%s response=%s",
                     log_prefix,
@@ -483,6 +550,7 @@ class HHomeCollectionCore:
                 )
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace")
+            audit_failure(f"HTTP {exc.code}: {error_body}")
             app_obj.logger.error(
                 "[%s] failed booking_id=%s recipient=%s error=HTTP %s %s",
                 log_prefix,
@@ -492,6 +560,7 @@ class HHomeCollectionCore:
                 error_body,
             )
         except Exception as exc:
+            audit_failure(str(exc))
             app_obj.logger.error(
                 "[%s] failed booking_id=%s recipient=%s error=%s",
                 log_prefix,
@@ -501,6 +570,7 @@ class HHomeCollectionCore:
             )
 
     def _send_booking_whatsapp(self, app_obj, whatsapp_payload: dict):
+        message_text = self._booking_local_whatsapp_message(whatsapp_payload)
         self._send_template_whatsapp(
             app_obj,
             log_prefix="hc booking whatsapp",
@@ -514,9 +584,14 @@ class HHomeCollectionCore:
                 whatsapp_payload.get("preferred_visit_date") or "",
                 whatsapp_payload.get("address") or "",
             ],
+            action_type="hcb_bkg_cnfrm",
+            message_text=message_text,
+            save_to_chat=True,
+            chat_empname="HC Booking",
         )
 
     def _send_assignment_whatsapp(self, app_obj, whatsapp_payload: dict):
+        message_text = self._assignment_local_whatsapp_message(whatsapp_payload)
         self._send_template_whatsapp(
             app_obj,
             log_prefix="hc assignment whatsapp",
@@ -530,6 +605,10 @@ class HHomeCollectionCore:
                 whatsapp_payload.get("phlebo_mobile") or "",
                 whatsapp_payload.get("total_experience") or "",
             ],
+            action_type="hcb_phlb_asgn",
+            message_text=message_text,
+            save_to_chat=True,
+            chat_empname="HC Assignment",
         )
 
     def _queue_assignment_whatsapp(self, app_obj, whatsapp_payload: dict) -> bool:
@@ -5003,6 +5082,8 @@ class HHomeCollectionCore:
                         booking_id=int(booking_id),
                         targets=local_whatsapp_targets,
                         message=self._booking_local_whatsapp_message(local_whatsapp_payload),
+                        action_type="hcb_bkg_cnfrm_local",
+                        related_code=booking_code,
                     )
                 result["whatsapp_queued"] = bool(queued_count)
                 result["whatsapp_queued_count"] = queued_count

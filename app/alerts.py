@@ -29,6 +29,8 @@ WHATSAPP_MOBILE = "917838104597-1635675661@g.us"
 INTERNAL_REPORT_HOST = "10.1.1.252:8000"
 
 # =========================
+
+
 # Logger Setup
 # =========================
 logger = logging.getLogger(__name__)
@@ -240,6 +242,24 @@ def notify_new_lead_async(**lead):
             )
 
             status, resp = send_whatsapp_to_number(WHATSAPP_MOBILE, msg)
+            try:
+                from app.whatsapp_audit import log_whatsapp_send
+
+                ok = status in (200, 201)
+                target = _normalize_wa_target(WHATSAPP_MOBILE)
+                log_whatsapp_send(
+                    action_type="lead_create",
+                    api_type="local",
+                    related_id=lead.get("lead_id", ""),
+                    related_code=lead.get("lead_id", ""),
+                    recipient=target,
+                    message_text=msg,
+                    payload_json={"accountId": WHATSAPP_ACCOUNT_ID, "target": target, "message": msg},
+                    is_success=ok,
+                    error_text=None if ok else f"HTTP {status}: {resp}",
+                )
+            except Exception:
+                logger.exception("LeadAlert audit save failed")
 
             if status in (200, 201):
                 logger.info("LeadAlert ✅ Sent | status=%s | resp=%s", status, (resp[:300] if resp else ""))

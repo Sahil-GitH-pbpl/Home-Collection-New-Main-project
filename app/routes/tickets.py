@@ -11,7 +11,8 @@ import pymysql
 import requests
 from flask import Blueprint, jsonify, session, request, current_app, redirect, url_for
 from app.db.connection import get_db_connection, get_labmate_connection
-from app.alerts import send_whatsapp_to_number, send_whatsapp_document_to_number
+from app.alerts import WHATSAPP_ACCOUNT_ID, send_whatsapp_to_number, send_whatsapp_document_to_number
+from app.whatsapp_audit import log_whatsapp_send
 from pymysql.cursors import DictCursor
 
 tickets_bp = Blueprint("tickets", __name__)
@@ -176,18 +177,70 @@ def _send_cvt_whatsapp_later(app, ticket_id: int, initial_report_url: str = ""):
         for target in _unique_targets(patient_target, doctor_mobile, panel_mobile):
             try:
                 if report_url:
-                    status_code, _ = send_whatsapp_document_to_number(
+                    filename = _safe_report_filename(patient_name)
+                    status_code, resp_text = send_whatsapp_document_to_number(
                         target,
                         message,
                         report_url,
-                        filename=_safe_report_filename(patient_name),
+                        filename=filename,
+                    )
+                    ok = status_code in (200, 201)
+                    log_whatsapp_send(
+                        action_type="tkt_cvt",
+                        api_type="local",
+                        related_id=ticket_id,
+                        related_code=f"TKT-{ticket_id}",
+                        recipient=target,
+                        message_text=message,
+                        payload_json={"accountId": WHATSAPP_ACCOUNT_ID, "target": target, "message": message, "media_url": report_url, "filename": filename},
+                        media_url=report_url,
+                        is_success=ok,
+                        error_text=None if ok else f"HTTP {status_code}: {resp_text}",
                     )
                     if status_code not in (200, 201):
-                        send_whatsapp_to_number(target, f"{message}\n\nReport: {report_url}")
+                        fallback_msg = f"{message}\n\nReport: {report_url}"
+                        fallback_status, fallback_resp = send_whatsapp_to_number(target, fallback_msg)
+                        fallback_ok = fallback_status in (200, 201)
+                        log_whatsapp_send(
+                            action_type="tkt_cvt",
+                            api_type="local",
+                            related_id=ticket_id,
+                            related_code=f"TKT-{ticket_id}",
+                            recipient=target,
+                            message_text=fallback_msg,
+                            payload_json={"accountId": WHATSAPP_ACCOUNT_ID, "target": target, "message": fallback_msg},
+                            media_url=report_url,
+                            is_success=fallback_ok,
+                            error_text=None if fallback_ok else f"HTTP {fallback_status}: {fallback_resp}",
+                        )
                 else:
-                    send_whatsapp_to_number(target, message)
+                    status_code, resp_text = send_whatsapp_to_number(target, message)
+                    ok = status_code in (200, 201)
+                    log_whatsapp_send(
+                        action_type="tkt_cvt",
+                        api_type="local",
+                        related_id=ticket_id,
+                        related_code=f"TKT-{ticket_id}",
+                        recipient=target,
+                        message_text=message,
+                        payload_json={"accountId": WHATSAPP_ACCOUNT_ID, "target": target, "message": message},
+                        is_success=ok,
+                        error_text=None if ok else f"HTTP {status_code}: {resp_text}",
+                    )
             except Exception:
                 app.logger.exception("[tickets_cv_delay] WA send failed ticket_id=%s target=%s", ticket_id, target)
+                log_whatsapp_send(
+                    action_type="tkt_cvt",
+                    api_type="local",
+                    related_id=ticket_id,
+                    related_code=f"TKT-{ticket_id}",
+                    recipient=target,
+                    message_text=message,
+                    payload_json={"accountId": WHATSAPP_ACCOUNT_ID, "target": target, "message": message, "media_url": report_url},
+                    media_url=report_url or None,
+                    is_success=False,
+                    error_text="Exception while sending CVT WhatsApp",
+                )
 
 
 def _schedule_cvt_whatsapp(ticket_id: int, initial_report_url: str = ""):

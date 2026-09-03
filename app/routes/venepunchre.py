@@ -274,7 +274,7 @@ def normalize_whatsapp_target(contact_value):
     return None
 
 
-def send_whatsapp_message(contact_value, record_id, name_hint, message_text=None, target_override=None):
+def send_whatsapp_message(contact_value, record_id, name_hint, message_text=None, target_override=None, action_type=None):
     api_url = WHATSAPP_API_URL
     if not api_url:
         return False, "WHATSAPP_API_URL not configured"
@@ -289,6 +289,25 @@ def send_whatsapp_message(contact_value, record_id, name_hint, message_text=None
         else WHATSAPP_MESSAGE_TEMPLATE.format(name=(name_hint or "User"), record_id=(record_id or "-"))
     )
     payload = {"accountId": WHATSAPP_ACCOUNT_ID, "target": target, "message": final_message}
+    def audit(sent, error_text=None):
+        if not action_type:
+            return
+        try:
+            from app.whatsapp_audit import log_whatsapp_send
+
+            log_whatsapp_send(
+                action_type=action_type,
+                api_type="local",
+                related_id=record_id,
+                related_code=record_id,
+                recipient=target,
+                message_text=final_message,
+                payload_json=payload,
+                is_success=sent,
+                error_text=error_text,
+            )
+        except Exception:
+            pass
     try:
         req = url_request.Request(
             api_url,
@@ -297,13 +316,19 @@ def send_whatsapp_message(contact_value, record_id, name_hint, message_text=None
             headers={"Content-Type": "application/json"},
         )
         with url_request.urlopen(req, timeout=WHATSAPP_TIMEOUT):
+            audit(True)
             return True, ""
     except url_error.HTTPError as exc:
-        return False, f"HTTP {exc.code}"
+        err = f"HTTP {exc.code}"
+        audit(False, err)
+        return False, err
     except url_error.URLError:
+        audit(False, "Network error")
         return False, "Network error"
     except Exception as exc:
-        return False, f"Unexpected error: {exc}"
+        err = f"Unexpected error: {exc}"
+        audit(False, err)
+        return False, err
 
 
 def b64url_encode(raw_bytes):
@@ -408,7 +433,7 @@ def build_assignment_whatsapp_message(case_id, assigned_name, raised_against, cr
 def _send_submission_whatsapp_async(contact, hiccup_id, venepunchre_name, message_text, app_logger):
     """Background sender so form submit is not blocked by WA API latency."""
     try:
-        sent, err = send_whatsapp_message(contact, hiccup_id, venepunchre_name, message_text=message_text)
+        sent, err = send_whatsapp_message(contact, hiccup_id, venepunchre_name, message_text=message_text, action_type="ven_create")
         if not sent and app_logger:
             app_logger.warning("WhatsApp not sent for %s: %s", hiccup_id, err)
     except Exception as exc:
@@ -1207,7 +1232,7 @@ def venepunchre_escalate(hiccup_id):
                     now_dt,
                     row.get("description") if row else None,
                 )
-                sent, err = send_whatsapp_message(contact, hiccup_id, assigned_name, message_text=msg)
+                sent, err = send_whatsapp_message(contact, hiccup_id, assigned_name, message_text=msg, action_type="ven_nc")
                 if not sent:
                     current_app.logger.warning("WA escalate failed for %s to %s: %s", hiccup_id, contact, err)
     except Exception as exc:

@@ -865,6 +865,24 @@ def reopen_closed_conversation_for_incoming(cur, mobile):
     return True
 
 
+def has_recent_conversation_activity(cur, mobile, hours=24):
+    cutoff = datetime.now() - timedelta(hours=hours)
+    cur.execute(
+        f"""
+        SELECT MAX(last_at) AS last_at
+        FROM (
+          SELECT MAX(datetimess) AS last_at FROM {incoming_table()} WHERE mobile = %s
+          UNION ALL
+          SELECT MAX(datetimess) AS last_at FROM {outgoing_table()} WHERE mobile = %s
+        ) activity
+        """,
+        (mobile, mobile),
+    )
+    row = cur.fetchone() or {}
+    last_at = row.get("last_at")
+    return bool(last_at and last_at >= cutoff)
+
+
 def release_unanswered_ownerships():
     cutoff = datetime.now() - timedelta(minutes=15)
     released = []
@@ -1482,6 +1500,23 @@ def whatsapp_create_message(mobile):
             owner_error = ensure_current_owner(state_row, user)
             if owner_error:
                 return jsonify(ok=False, error=owner_error), 403
+            if template_name == "arpra_whatsapp_2" and has_recent_conversation_activity(cur, normalized, 24):
+                log_conversation_action(
+                    cur,
+                    normalized,
+                    "skip_new_conversation_template",
+                    user,
+                    old_state=state_row,
+                    new_value="recent_activity_24h",
+                    payload={"template_name": template_name},
+                )
+                conn.commit()
+                return jsonify(
+                    ok=True,
+                    template_skipped=True,
+                    reason="recent_activity_24h",
+                    message="Recent chat opened without sending template",
+                )
     finally:
         conn.close()
 

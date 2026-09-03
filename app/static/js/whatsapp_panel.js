@@ -1551,7 +1551,7 @@ els.drawerSave.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reopen: true }),
     });
-    await fetchJson(`/api/conversations/${encodeURIComponent(mobile)}/messages`, {
+    const messageResult = await fetchJson(`/api/conversations/${encodeURIComponent(mobile)}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ template_name: "arpra_whatsapp_2" }),
@@ -1560,7 +1560,7 @@ els.drawerSave.addEventListener("click", async () => {
     state.activeMobile = mobile;
     await loadConversations();
     await loadMessages(mobile);
-    showToast("New conversation started", "success");
+    showToast(messageResult.template_skipped ? "Recent chat opened without template" : "New conversation started", "success");
   } else {
   if (!state.activeMobile) return;
   if (state.drawerMode === "Close Conversation") {
