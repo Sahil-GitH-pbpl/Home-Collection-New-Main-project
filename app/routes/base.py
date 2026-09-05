@@ -320,24 +320,15 @@ def tickets_counters():
 def tickets_failed_messages():
     failed_messages = 0
     try:
-        labmate_conn = mysql.connector.connect(
-            host='10.1.1.51',
-            user='sahil',
-            password='sahil@123',
-            database='labmaterecod'
-        )
-        with labmate_conn.cursor(dictionary=True) as cur:
+        labmate_conn = get_whatsapp_panel_connection()
+        with labmate_conn.cursor() as cur:
             cur.execute("""
                 SELECT COUNT(*) as failed_count
-                FROM labmatewhats 
-                WHERE (resstatus = 'failed' 
-                   OR resstatus LIKE '%failed%'
-                   OR resstatusdet LIKE '%failed%'
-                   OR resstatusdet LIKE '%error%')
-                   AND (manual_send = 0 OR manual_send IS NULL)
+                FROM whatsapp_send_logs
+                WHERE is_success = 0
             """)
             result = cur.fetchone()
-            failed_messages = result['failed_count'] if result else 0
+            failed_messages = int((result or {}).get('failed_count') or 0)
         labmate_conn.close()
     except Exception as e:
         current_app.logger.error(f"Failed to fetch failed messages count: {e}")

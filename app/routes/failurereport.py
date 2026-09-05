@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, jsonify, session, request
 from flask_cors import CORS
-from app.db.connection import get_db_connection, get_fail_message_connection, get_whatsapp_groups_connection
+from app.db.connection import get_db_connection, get_whatsapp_panel_connection, get_whatsapp_groups_connection
 from mysql.connector import Error
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -40,7 +40,6 @@ def index():
 
 @failurereport_bp.route('/api/failed-deliveries')
 def get_failed_deliveries():
-    connection = None
     try:
         group_names = {}
         try:
@@ -54,39 +53,38 @@ def get_failed_deliveries():
         except Exception:
             pass
         
-        connection = get_fail_message_connection()
-        if not connection:
-            return jsonify({'error': 'Remote database connection failed'}), 500
-        
-        cursor = connection.cursor(dictionary=True)
-        
-        query = """
-        SELECT 
-            id,
-            labmateid,
-            phone,
-            message,
-            link as report_link,
-            status as send_result,
-            resstatus as provider_status,
-            resstatusdet as error,
-            datetimes as sent_at,
-            manual_send
-        FROM labmatewhats 
-        WHERE (resstatus = 'failed' 
-           OR resstatus LIKE '%failed%'
-           OR resstatusdet LIKE '%failed%'
-           OR resstatusdet LIKE '%error%')
-           AND (manual_send = 0 OR manual_send IS NULL)
-        ORDER BY datetimes DESC
-        """
-        
-        cursor.execute(query)
-        rows = cursor.fetchall()
+        resolved_ids = set()
+        local_conn = None
+        try:
+            local_conn = get_db_connection()
+            with local_conn.cursor() as local_cursor:
+                local_cursor.execute("SELECT main_id FROM failurereport_resolutions")
+                resolved_ids = {int((r or {}).get("main_id") or 0) for r in local_cursor.fetchall() or []}
+        except Exception:
+            resolved_ids = set()
+        finally:
+            if local_conn:
+                local_conn.close()
+
+        connection = get_whatsapp_panel_connection()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, action_type, lab_id, recipient, message_text, media_url, api_type, template_name,
+                       error_text, payload_json, created_at
+                FROM whatsapp_send_logs
+                WHERE is_success = 0
+                ORDER BY created_at DESC, id DESC
+                """
+            )
+            rows = cursor.fetchall() or []
+        connection.close()
         
         transformed_data = []
         for row in rows:
-            phone = str(row['phone']).strip()
+            if int(row.get('id') or 0) in resolved_ids:
+                continue
+            phone = str(row.get('recipient') or '').strip()
             original_phone = phone
             
             display_name = phone
@@ -94,36 +92,33 @@ def get_failed_deliveries():
             if phone in group_names:
                 display_name = group_names[phone]
             
-            # SIMPLE CHANNEL LOGIC - Only 2 channels
-            if phone.startswith('91') and len(phone) == 12:
-                channel = "WABA"  # Changed from "WABA (Individual)"
+            # Official API rows are WABA; local/group API rows are unofficial.
+            if (row.get('api_type') or '').lower() == 'official':
+                channel = "WABA"
             else:
-                channel = "Unofficial"  # WhatsApp Group will also be Unofficial
+                channel = "Unofficial"
             
             transformed_data.append({
                 'id': f"F-{row['id']}",
-                'labmateid': row['labmateid'],
+                'labmateid': row.get('lab_id'),
                 'phone': phone,
                 'display_name': display_name,
                 'original_phone': original_phone,
                 'channel': channel,  # Only WABA or Unofficial
-                'report_link': row['report_link'],
-                'send_result': row['send_result'],
-                'provider_status': row['provider_status'],
-                'error': row['error'] or 'Unknown error',
-                'message': row['message'],
-                'sent_at': row['sent_at'].isoformat() if isinstance(row['sent_at'], datetime) else datetime.now(IST).isoformat(),
+                'report_link': row.get('media_url'),
+                'send_result': 'failed',
+                'provider_status': f"{row.get('action_type') or 'whatsapp'} / {row.get('api_type') or '-'}",
+                'error': row.get('error_text') or 'Unknown error',
+                'message': row.get('message_text'),
+                'payload': row.get('payload_json'),
+                'sent_at': row['created_at'].isoformat() if isinstance(row.get('created_at'), datetime) else datetime.now(IST).isoformat(),
                 'attempts': 1
             })
         
-        cursor.close()
         return jsonify(transformed_data)
     
-    except Error as e:
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
-    finally:
-        if connection and connection.is_connected():
-            connection.close()
 
 @failurereport_bp.route('/api/mark-resolved/<int:message_id>', methods=['POST'])
 def mark_resolved(message_id):
@@ -133,38 +128,29 @@ def mark_resolved(message_id):
     user_id = session.get('user_id')
     username = session.get('username', 'Unknown')
     
-    remote_conn = None
     local_conn = None
     
     try:
-        remote_conn = get_fail_message_connection()
-        if not remote_conn:
-            return jsonify({'error': 'Cannot connect to message database'}), 500
-        
-        remote_cursor = remote_conn.cursor(dictionary=True)
-        
-        remote_cursor.execute("""
-            SELECT labmateid, phone 
-            FROM labmatewhats 
-            WHERE id = %s
-        """, (message_id,))
-        
-        message_data = remote_cursor.fetchone()
-        
+        wa_conn = get_whatsapp_panel_connection()
+        with wa_conn.cursor() as wa_cursor:
+            wa_cursor.execute(
+                """
+                SELECT id, lab_id, recipient
+                FROM whatsapp_send_logs
+                WHERE id = %s
+                  AND is_success = 0
+                LIMIT 1
+                """,
+                (message_id,),
+            )
+            message_data = wa_cursor.fetchone()
+        wa_conn.close()
+
         if not message_data:
             return jsonify({'error': 'Message not found'}), 404
-        
-        labmate_id = message_data['labmateid']
-        phone = message_data['phone']
-        
-        remote_cursor.execute("""
-            UPDATE labmatewhats 
-            SET manual_send = 1 
-            WHERE id = %s
-        """, (message_id,))
-        
-        remote_conn.commit()
-        remote_cursor.close()
+
+        labmate_id = message_data.get('lab_id')
+        phone = message_data.get('recipient')
         
         local_conn = get_db_connection()
         if local_conn:
@@ -206,8 +192,6 @@ def mark_resolved(message_id):
         return jsonify({'error': f'Error: {str(e)}'}), 500
     
     finally:
-        if remote_conn and remote_conn.is_connected():
-            remote_conn.close()
         if local_conn:
             try:
                 local_conn.close()
@@ -216,38 +200,8 @@ def mark_resolved(message_id):
 
 @failurereport_bp.route('/api/auto-mark-failed', methods=['POST'])
 def auto_mark_failed():
-    connection = None
-    try:
-        connection = get_fail_message_connection()
-        if not connection:
-            return jsonify({'error': 'Remote database connection failed'}), 500
-        
-        cursor = connection.cursor()
-        
-        update_query = """
-        UPDATE labmatewhats 
-        SET resstatus = 'failed',
-            resstatusdet = CONCAT(COALESCE(resstatusdet, ''), ' [Auto-marked: No status after 20min]')
-        WHERE (resstatus IS NULL OR resstatus = '')
-        AND datetimes <= NOW() - INTERVAL 20 MINUTE
-        AND (manual_send = 0 OR manual_send IS NULL)
-        ORDER BY datetimes DESC
-        LIMIT 500
-        """
-        
-        cursor.execute(update_query)
-        updated_count = cursor.rowcount
-        connection.commit()
-        cursor.close()
-        
-        return jsonify({
-            'success': True, 
-            'message': f'Automatically marked {updated_count} records as failed',
-            'updated_count': updated_count
-        })
-    
-    except Error as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        if connection and connection.is_connected():
-            connection.close()
+    return jsonify({
+        'success': True,
+        'message': 'No auto-mark needed; failures are written directly to whatsapp_send_logs',
+        'updated_count': 0
+    })

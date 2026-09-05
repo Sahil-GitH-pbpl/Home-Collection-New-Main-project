@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, jsonify, request
-from app.db.connection import get_fail_message_connection, get_whatsapp_groups_connection, get_db_connection
+from app.db.connection import get_whatsapp_groups_connection, get_whatsapp_panel_connection
 from mysql.connector import Error
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -14,11 +14,8 @@ def index():
 @completedreport_bp.route('/api/completed-deliveries')
 def get_completed_deliveries():
     """
-    Fetch all completed/successful deliveries
-    Conditions: resstatus NOT NULL and NOT 'failed'
+    Fetch completed/successful Labmate report WhatsApp sends from audit logs.
     """
-    connection = None
-    
     try:
         # Get date filters from request
         from_date = request.args.get('from', datetime.now(IST).strftime('%Y-%m-%d'))
@@ -47,149 +44,60 @@ def get_completed_deliveries():
         except Exception:
             pass
         
-        # Connect to fail message database
-        connection = get_fail_message_connection()
-        if not connection:
-            return jsonify({'error': 'Remote database connection failed'}), 500
-        
-        cursor = connection.cursor(dictionary=True)
-        
-        # Query to fetch completed deliveries
-        # Conditions: previously successful responses or manual override
-        query = """
-        SELECT 
-            id,
-            labmateid,
-            phone,
-            message,
-            link as report_link,
-            status as send_result,
-            resstatus,
-            resstatusdet as status_details,
-            datetimes as sent_at,
-            manual_send
-        FROM labmatewhats 
-        WHERE (
-              (resstatus IS NOT NULL 
-               AND resstatus != 'failed'
-               AND resstatus NOT LIKE '%failed%'
-               AND resstatusdet NOT LIKE '%failed%'
-               AND resstatusdet NOT LIKE '%error%')
-               OR manual_send = 1
-          )
-          AND datetimes >= %s
-          AND datetimes <= %s
-        ORDER BY datetimes DESC
-        """
-        
-        cursor.execute(query, (from_datetime, to_datetime))
-        rows = cursor.fetchall()
-        
-        # Fetch manual resolution metadata for manual sends
-        manual_meta = {}
-        manual_ids = [row['id'] for row in rows if str(row.get('manual_send') or '').strip() == '1']
-        if manual_ids:
-            local_conn = None
-            try:
-                local_conn = get_db_connection()
-                with local_conn.cursor() as local_cursor:
-                    placeholders = ','.join(['%s'] * len(manual_ids))
-                    local_cursor.execute(
-                        f"""
-                        SELECT main_id, resolved_by_username, resolved_at
-                        FROM failurereport_resolutions
-                        WHERE main_id IN ({placeholders})
-                        ORDER BY resolved_at DESC
-                        """,
-                        manual_ids
-                    )
-                    for info in local_cursor.fetchall():
-                        main_id = info.get('main_id')
-                        if main_id is None or main_id in manual_meta:
-                            continue
-                        resolved_at = info.get('resolved_at')
-                        manual_meta[main_id] = {
-                            'resolved_by': info.get('resolved_by_username'),
-                            'resolved_at': resolved_at.isoformat() if isinstance(resolved_at, datetime) else str(resolved_at) if resolved_at else None
-                        }
-            except Exception:
-                manual_meta = {}
-            finally:
-                if local_conn:
-                    try:
-                        local_conn.close()
-                    except Exception:
-                        pass
+        connection = get_whatsapp_panel_connection()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, lab_id, recipient, message_text, media_url, api_type, template_name,
+                       error_text, payload_json, created_at, sent_at
+                FROM whatsapp_send_logs
+                WHERE action_type = 'labmate_rpt'
+                  AND is_success = 1
+                  AND COALESCE(sent_at, created_at) >= %s
+                  AND COALESCE(sent_at, created_at) <= %s
+                ORDER BY COALESCE(sent_at, created_at) DESC, id DESC
+                """,
+                (from_datetime, to_datetime),
+            )
+            rows = cursor.fetchall() or []
+        connection.close()
         
         transformed_data = []
         for row in rows:
-            phone = str(row['phone']).strip()
+            phone = str(row.get('recipient') or '').strip()
             original_phone = phone
             
             display_name = phone
             if phone in group_names:
                 display_name = group_names[phone]
             
-            # Determine channel
-            if phone.startswith('91') and len(phone) == 12:
+            if row.get('api_type') == 'official':
                 channel = "WABA"
             else:
                 channel = "Unofficial"
             
-            # Determine status (match success keywords or include manual overrides)
-            resstatus = (row['resstatus'] or '').lower()
-            status_details = (row['status_details'] or '').lower()
-            manual_flag = str(row.get('manual_send') or '').strip() == '1'
-            manual_info = manual_meta.get(row['id'], {})
-            combined_status = f"{resstatus} {status_details}".strip()
-            failure_phrases = ['not delivered', 'undeliverable', 'unable to deliver']
-            contains_failure_phrase = any(phrase in combined_status for phrase in failure_phrases)
-            has_success_keyword = (not contains_failure_phrase) and any(
-                keyword in combined_status for keyword in ['sent', 'delivered', 'read']
-            )
-            
-            # Manual overrides should always be included and labelled as manual
-            if manual_flag:
-                status = 'manual'
-            else:
-                # Skip entries that have neither success keywords nor manual override
-                if not has_success_keyword:
-                    continue
-                
-                if 'read' in resstatus or 'read' in status_details:
-                    status = 'read'
-                elif 'delivered' in resstatus or 'delivered' in status_details:
-                    status = 'delivered'
-                elif 'sent' in resstatus or 'sent' in status_details:
-                    status = 'sent'
-                else:
-                    # Should not happen because we already checked keywords, but keep safe default
-                    status = 'sent'
+            sent_at = row.get('sent_at') or row.get('created_at')
             
             transformed_data.append({
                 'id': f"C-{row['id']}",  # C for Completed
-                'labmateid': row['labmateid'],
+                'labmateid': row.get('lab_id'),
                 'phone': phone,
                 'display_name': display_name,
                 'original_phone': original_phone,
                 'channel': channel,
-                'report_link': row['report_link'],
-                'status': status,
-                'status_details': row['status_details'],
-                'send_result': row['send_result'],
-                'message': row['message'],
-                'sent_at': row['sent_at'].isoformat() if isinstance(row['sent_at'], datetime) else datetime.now(IST).isoformat(),
-                'manual_send': row['manual_send'],
-                'manual_flag': manual_flag,
-                'manual_by': manual_info.get('resolved_by') if manual_flag else None,
-                'manual_time': manual_info.get('resolved_at') if manual_flag else None
+                'report_link': row.get('media_url'),
+                'status': 'sent',
+                'status_details': row.get('template_name') or row.get('api_type'),
+                'send_result': 'success',
+                'message': row.get('message_text'),
+                'sent_at': sent_at.isoformat() if isinstance(sent_at, datetime) else datetime.now(IST).isoformat(),
+                'manual_send': 0,
+                'manual_flag': False,
+                'manual_by': None,
+                'manual_time': None
             })
         
-        cursor.close()
         return jsonify(transformed_data)
     
-    except Error as e:
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
-    finally:
-        if connection and connection.is_connected():
-            connection.close()
