@@ -101,54 +101,58 @@
         </div>
     </div>
 
-    <div id="messageModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden">
-            <div class="p-4 border-b bg-gray-50">
+    <div id="messageModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-3 z-50">
+        <div class="bg-white rounded-lg shadow-2xl max-w-xl w-full max-h-[78vh] overflow-hidden">
+            <div class="px-4 py-3 border-b bg-gray-50">
                 <div class="flex items-center justify-between">
-                    <h3 class="text-lg font-bold text-gray-800">Message Details</h3>
+                    <h3 class="text-base font-bold text-gray-800">Message Details</h3>
                     <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-times text-xl"></i>
+                        <i class="fas fa-times text-lg"></i>
                     </button>
                 </div>
             </div>
-            <div class="p-4 overflow-y-auto">
-                <div class="space-y-3">
+            <div class="px-4 py-3 overflow-y-auto">
+                <div class="space-y-2.5">
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">Message Content</label>
-                        <div id="modalMessage" class="p-2 bg-gray-50 rounded border text-gray-800 text-sm max-h-32 overflow-y-auto"></div>
+                        <div id="modalMessage" class="p-2 bg-gray-50 rounded border text-gray-800 text-xs max-h-20 overflow-y-auto"></div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Phone/Group</label>
-                            <div id="modalPhone" class="p-2 bg-gray-50 rounded border font-mono text-sm"></div>
+                            <div id="modalPhone" class="p-2 bg-gray-50 rounded border font-mono text-xs"></div>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Channel</label>
-                            <div id="modalChannel" class="p-2 bg-gray-50 rounded border text-sm"></div>
+                            <div id="modalChannel" class="p-2 bg-gray-50 rounded border text-xs"></div>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Lab ID</label>
-                            <div id="modalLabId" class="p-2 bg-gray-50 rounded border font-mono text-sm"></div>
+                            <div id="modalLabId" class="p-2 bg-gray-50 rounded border font-mono text-xs"></div>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Send Result</label>
-                            <div id="modalSendResult" class="p-2 bg-gray-50 rounded border text-sm"></div>
+                            <div id="modalSendResult" class="p-2 bg-gray-50 rounded border text-xs"></div>
                         </div>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">Error Details</label>
-                        <div id="modalError" class="p-2 bg-red-50 rounded border text-red-700 text-sm max-h-24 overflow-y-auto"></div>
+                        <div id="modalError" class="p-2 bg-red-50 rounded border text-red-700 text-xs max-h-16 overflow-y-auto"></div>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">Report Link</label>
-                        <a id="modalLink" target="_blank" class="text-blue-600 hover:text-blue-800 break-all text-sm"></a>
+                        <a id="modalLink" target="_blank" class="text-blue-600 hover:text-blue-800 break-all text-xs"></a>
                     </div>
+                    <div id="modalRetryStatus" class="hidden p-2 rounded border text-xs"></div>
                 </div>
             </div>
-            <div class="p-4 border-t bg-gray-50 flex justify-end">
-                <button onclick="markAsResolved()" class="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-2 text-sm font-medium">
+            <div class="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
+                <button id="modalRetryBtn" onclick="retryDelivery()" class="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 text-xs font-medium">
+                    <i class="fas fa-rotate-right"></i> Retry
+                </button>
+                <button onclick="markAsResolved()" class="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-2 text-xs font-medium">
                     <i class="fas fa-check"></i> Mark Resolved
                 </button>
             </div>
@@ -272,6 +276,7 @@
         document.getElementById('modalError').textContent = item.error;
         document.getElementById('modalLink').href = item.report_link;
         document.getElementById('modalLink').textContent = item.report_link;
+        setRetryStatus('');
         
         document.getElementById('messageModal').classList.remove('hidden');
         document.getElementById('messageModal').classList.add('flex');
@@ -297,6 +302,62 @@
             }
         } catch (error) {
             alert('Failed to mark as resolved. Please try again.');
+        }
+    }
+
+    function setRetryStatus(message, type = 'info') {
+        const statusBox = document.getElementById('modalRetryStatus');
+        if (!statusBox) return;
+
+        if (!message) {
+            statusBox.className = 'hidden p-2 rounded border text-xs';
+            statusBox.textContent = '';
+            return;
+        }
+
+        const classes = {
+            info: 'bg-blue-50 border-blue-200 text-blue-700',
+            success: 'bg-green-50 border-green-200 text-green-700',
+            error: 'bg-red-50 border-red-200 text-red-700'
+        };
+        statusBox.className = `p-2 rounded border text-xs ${classes[type] || classes.info}`;
+        statusBox.textContent = message;
+    }
+
+    async function retryDelivery() {
+        const rawId = currentModalData ? currentModalData.id : '';
+        if (!rawId) return;
+
+        const messageId = String(rawId).replace('F-', '');
+        const modalBtn = document.getElementById('modalRetryBtn');
+        const oldModalText = modalBtn ? modalBtn.innerHTML : '';
+        if (modalBtn) {
+            modalBtn.disabled = true;
+            modalBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Retrying';
+        }
+        setRetryStatus('Retry sending in progress...', 'info');
+
+        try {
+            const response = await fetch(`/failurereport/api/retry/${messageId}`, {
+                method: 'POST'
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || data.response || 'Retry failed');
+            }
+
+            setRetryStatus('Retry successful. Marked resolved.', 'success');
+            await new Promise(resolve => setTimeout(resolve, 900));
+            closeModal();
+            await loadData();
+        } catch (error) {
+            setRetryStatus(error.message || 'Retry failed. You can mark it resolved manually if needed.', 'error');
+        } finally {
+            if (modalBtn) {
+                modalBtn.disabled = false;
+                modalBtn.innerHTML = oldModalText;
+            }
         }
     }
 

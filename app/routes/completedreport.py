@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, jsonify, request
-from app.db.connection import get_whatsapp_groups_connection, get_whatsapp_panel_connection
+from app.db.connection import get_whatsapp_panel_connection
 from mysql.connector import Error
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -34,7 +34,7 @@ def get_completed_deliveries():
         # Fetch group names for display
         group_names = {}
         try:
-            groups_conn = get_whatsapp_groups_connection()
+            groups_conn = get_whatsapp_panel_connection()
             with groups_conn.cursor() as cursor:
                 cursor.execute("SELECT group_id, group_name FROM whatsapp_groups")
                 for row in cursor.fetchall():

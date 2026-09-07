@@ -100,14 +100,3 @@ def get_venepunchre_connection():
 def get_bhasin7001_connection():
     """Connection helper for Home Collection panel/test catalog DB."""
     return pymysql.connect(**BHASIN7001_DB, cursorclass=pymysql.cursors.DictCursor)
-
-
-def get_whatsapp_groups_connection():
-    """Connection for whatsapp_groups table in whatsapp_group_id database."""
-    return pymysql.connect(
-        host=MAIN_DB["host"],      # Same server
-        user=MAIN_DB["user"],      # Same user  
-        password=MAIN_DB["password"],  # Same password
-        database="whatsapp_group_id",  # ✅ SPECIFIC DATABASE
-        cursorclass=pymysql.cursors.DictCursor
-    )
