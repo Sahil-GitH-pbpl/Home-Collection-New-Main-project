@@ -2,9 +2,11 @@ from flask import Blueprint, current_app, jsonify, render_template, request, ses
 from datetime import date, timedelta
 
 from app.home_collection_core import HHomeCollectionCore
+from app.home_collection_core.hestimate_core import HEstimateCore
 
 hhome_collection_bp = Blueprint("hhome_collection", __name__)
 service = HHomeCollectionCore()
+estimate_service = HEstimateCore()
 
 
 def _is_modify_appointment_context():
@@ -47,6 +49,16 @@ def wizard():
 @hhome_collection_bp.get("/hhome-collection/panel-test-master")
 def panel_test_master_page():
     return render_template("hhome_collection/hpanel_test_master.html")
+
+
+@hhome_collection_bp.get("/hhome-collection/estimate")
+def estimate_page():
+    return render_template("hhome_collection/hestimate.html")
+
+
+@hhome_collection_bp.get("/hhome-collection/estimate-list")
+def estimate_list_page():
+    return render_template("hhome_collection/hestimate_list.html")
 
 
 @hhome_collection_bp.get("/hhome-collection/step/<int:step>")
@@ -598,6 +610,64 @@ def panel_company_show_in_hc():
         panel_name = (data.get("panel_name") or "").strip()
         showin_hc = bool(data.get("showinHC"))
         result = service.update_panel_show_in_hc(comp_cat_id, panel_name, showin_hc)
+        status = 200 if result.get("ok") else 400
+        return jsonify(result), status
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
+@hhome_collection_bp.post("/hhome-collection/estimate-save")
+def save_estimate():
+    try:
+        data = request.get_json(silent=True) or {}
+        result = estimate_service.save_estimate(
+            data,
+            actor_user_id=session.get("user_id"),
+            actor_name=session.get("username") or session.get("name") or session.get("user_name") or "",
+        )
+        status = 200 if result.get("ok") else 400
+        return jsonify(result), status
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
+@hhome_collection_bp.get("/hhome-collection/estimate-list-data")
+def estimate_list_data():
+    try:
+        return jsonify({
+            "ok": True,
+            "items": estimate_service.list_estimates(
+                request.args.get("limit") or 200,
+                estimate_date=request.args.get("date"),
+                date_from=request.args.get("date_from"),
+                date_to=request.args.get("date_to"),
+                search=request.args.get("search"),
+            ),
+        })
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
+@hhome_collection_bp.get("/hhome-collection/estimate/<int:estimate_id>")
+def estimate_detail(estimate_id):
+    try:
+        result = estimate_service.get_estimate(estimate_id)
+        status = 200 if result.get("ok") else 404
+        return jsonify(result), status
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
+@hhome_collection_bp.patch("/hhome-collection/estimate/<int:estimate_id>")
+def update_estimate(estimate_id):
+    try:
+        data = request.get_json(silent=True) or {}
+        result = estimate_service.update_estimate_tests(
+            estimate_id,
+            data,
+            actor_user_id=session.get("user_id"),
+            actor_name=session.get("username") or session.get("name") or session.get("user_name") or "",
+        )
         status = 200 if result.get("ok") else 400
         return jsonify(result), status
     except Exception as exc:

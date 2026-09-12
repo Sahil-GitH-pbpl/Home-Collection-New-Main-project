@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+{% block title %}Home Collection Estimate{% endblock %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/happ.css', v='20260609-1') }}">
+<style>
+  .estimate-page{max-width:none;width:100%;margin:0 auto;padding-left:0!important;padding-right:0!important;}
+  .estimate-toolbar{background:linear-gradient(180deg,#eaf5ff 0%,#eef6fb 100%);border:1px solid #d8e6f4;border-radius:8px;padding:0;box-shadow:none;}
+  .estimate-form-grid{display:grid;grid-template-columns:minmax(0,44%) minmax(0,54%);column-gap:2%;align-items:start;}
+  .estimate-section{background:#fff;border:1px solid #e4edf7;border-radius:7px;padding:10px 12px 12px;box-shadow:inset 0 2px 10px rgba(15,23,42,.18),0 6px 16px rgba(30,64,104,.07);}
+  .estimate-section-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;}
+  .estimate-section-title{font-size:14px;font-weight:800;color:#17233b;margin:0;}
+  .estimate-section-note{font-size:10px;color:#2b73d6;white-space:nowrap;}
+  .estimate-page .form-control,.estimate-page .form-select{height:31px;min-height:31px;padding:3px 9px;font-size:12px;border-radius:6px;}
+  .estimate-page .btn{padding-top:4px;padding-bottom:4px;font-size:13px;font-weight:800;border-radius:7px;}
+  .estimate-inputbox{display:flex;align-items:center;height:33px;border:1px solid #d6e3f2;border-radius:6px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.03);}
+  .estimate-inputbox:focus-within{border-color:#7caaf0;box-shadow:0 0 0 3px rgba(37,99,235,.14);}
+  .estimate-inputbox .form-control,.estimate-inputbox .form-select{border:0;box-shadow:none;background:transparent;height:31px;}
+  .estimate-inputbox .form-control:focus,.estimate-inputbox .form-select:focus{box-shadow:none;}
+  .estimate-search-row{display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:8px;margin-bottom:8px;}
+  .estimate-mini-label{font-size:13px;font-weight:900;color:#17233b;margin-bottom:5px;}
+  .estimate-status{min-height:18px;font-size:12px;font-weight:700;color:#475569;margin-bottom:7px;}
+  .estimate-list{display:grid;gap:5px;max-height:380px;overflow:auto;padding-right:2px;}
+  .estimate-list.compact{max-height:132px;}
+  .estimate-page .patient-form-box,.estimate-page .address-form-box{border-color:#d9e5f3!important;background:#f8fbff!important;border-radius:7px!important;}
+  .estimate-page .patient-form-box .form-label,.estimate-page .address-form-box .form-label{font-size:11px;font-weight:800;color:#17233b;margin-bottom:3px;}
+  .estimate-page textarea.form-control{height:50px;min-height:50px;font-size:12px;}
+  .estimate-pick{border:1px solid #dbe7f5;background:#f8fbff;border-radius:7px;padding:7px 8px;cursor:pointer;display:flex;gap:7px;align-items:flex-start;min-height:58px;box-shadow:inset 0 2px 7px rgba(180,83,9,.15),0 1px 3px rgba(15,23,42,.04);}
+  .estimate-pick:hover{background:#eef6ff;}
+  .estimate-pick.selected{border-color:#126ee8;background:#eaf3ff;box-shadow:inset 0 0 0 1px rgba(18,110,232,.2);}
+  .estimate-pick input{margin-top:3px;accent-color:#126ee8;}
+  .estimate-pick-select{margin:0;}
+  .estimate-pick-main{min-width:0;flex:1;}
+  .estimate-pick-title{font-size:13px;font-weight:900;color:#0f172a;line-height:1.15;}
+  .estimate-pick-meta{font-size:12px;color:#526278;margin-top:1px;line-height:1.2;}
+  .estimate-pick-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:9px;}
+  .estimate-pick-actions button{border:1px solid #bfdbfe;background:#fff;color:#1d4ed8;border-radius:5px;padding:1px 7px;font-size:11px;font-weight:800;line-height:1.5;}
+  .estimate-pick-actions .estimate-patient-inactive-btn{border-color:#fecaca;color:#b91c1c;}
+  .estimate-subgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+  .estimate-form-drawer{grid-column:1 / -1;}
+  .estimate-empty{border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;color:#64748b;padding:16px;text-align:center;font-weight:800;font-size:13px;}
+  .estimate-patient-card{border:1px solid #dbe7f5;border-radius:8px;background:#fff;margin-bottom:10px;box-shadow:0 3px 10px rgba(15,23,42,.06);}
+  .estimate-patient-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #0d2a55;background:#082650;border-radius:8px 8px 0 0;}
+  .estimate-patient-name{font-size:13px;font-weight:900;color:#fff;}
+  .estimate-patient-meta{font-size:11px;color:#dbeafe;font-weight:700;}
+  .estimate-remove-patient{padding:1px 7px!important;font-size:11px!important;line-height:1.4;border-color:#fecaca!important;background:#fff!important;color:#dc2626!important;}
+  .estimate-patient-body{padding:10px;}
+  .estimate-panel-wrap{position:relative;}
+  .estimate-suggest{position:absolute;z-index:20;top:100%;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 12px 24px rgba(15,23,42,.14);max-height:280px;overflow:auto;}
+  .estimate-panel-item{padding:9px 11px;border-bottom:1px solid #eef2f7;cursor:pointer;}
+  .estimate-panel-item:hover{background:#eff6ff;}
+  .estimate-panel-item strong{display:block;font-size:13px;color:#111827;}
+  .estimate-panel-item span{font-size:12px;color:#64748b;}
+  .estimate-patient-controls{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:8px;align-items:end;}
+  .estimate-patient-actions{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:8px;margin-top:8px;}
+  .estimate-tests-table th{background:#0f766e;color:#fff;font-size:12px;white-space:nowrap;}
+  .estimate-tests-table td{font-size:13px;vertical-align:middle;}
+  .estimate-remove-test{padding:0 7px;font-size:12px;line-height:1.6;}
+  .estimate-total{display:flex;justify-content:flex-end;gap:14px;flex-wrap:wrap;font-weight:900;font-size:14px;margin-top:8px;}
+  .estimate-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;}
+  .estimate-chip{border:1px solid #cbd5e1;background:#f8fafc;border-radius:999px;padding:4px 10px;font-weight:800;font-size:12px;color:#334155;}
+  @media (max-width:992px){.estimate-form-grid{grid-template-columns:1fr;gap:10px;}}
+  @media (max-width:576px){.estimate-search-row,.estimate-subgrid,.estimate-patient-controls,.estimate-patient-actions{grid-template-columns:1fr;}.estimate-section-note{display:none;}}
+</style>
+
+<div class="container-fluid py-2 estimate-page">
+  <div class="estimate-toolbar mb-3">
+    <div class="estimate-form-grid">
+      <div class="estimate-section">
+        <div class="estimate-section-head">
+          <h4 class="estimate-section-title">Patient Details</h4>
+          <span class="estimate-section-note">Search caller and select patients</span>
+        </div>
+        <label class="estimate-mini-label" for="estimate-mobile-search">Mobile Number</label>
+        <div class="estimate-search-row">
+          <div class="estimate-inputbox">
+            <input type="tel" class="form-control" id="estimate-mobile-search" placeholder="Search mobile number..." autocomplete="off">
+          </div>
+          <button type="button" class="btn btn-primary" id="estimate-search-caller">Search</button>
+        </div>
+        <div class="estimate-status" id="estimate-caller-status">Search mobile number to load linked patients and addresses.</div>
+        <div class="estimate-subgrid">
+          <div>
+            <div class="estimate-mini-label">Linked Patients</div>
+            <div class="estimate-list" id="estimate-patient-list">
+              <div class="estimate-empty">No patients loaded</div>
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm w-100 mt-2" id="btn-show-patient-form">+ Add New Patient</button>
+          </div>
+          <div>
+            <div class="estimate-mini-label">Address Optional</div>
+            <div class="estimate-list compact" id="estimate-address-list">
+              <div class="estimate-empty">No address selected</div>
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm w-100 mt-2" id="btn-show-address-form">+ Add New Address</button>
+          </div>
+          <div class="estimate-form-drawer">
+            <div id="new-patient-form" class="border rounded p-2 mt-2 d-none bg-light patient-form-box">
+              <div class="row g-2">
+                <div class="col-md-3"><label class="form-label">Title *</label><select id="p-title" class="form-select" required><option value="">Select</option></select></div>
+                <div class="col-md-9"><label class="form-label">Patient Full Name *</label><input id="p-full-name" class="form-control" placeholder="Enter full name" required></div>
+                <div class="col-md-6"><label class="form-label">Labmate PID</label><input id="p-labmate-pid" class="form-control" placeholder="Enter Labmate PID"></div>
+                <div class="col-md-6">
+                  <label class="form-label">Panel Company</label>
+                  <div class="estimate-panel-wrap">
+                    <input id="p-panel-company" class="form-control" placeholder="Enter Panel Company" autocomplete="off">
+                    <div id="p-panel-company-suggest" class="estimate-suggest estimate-panel-suggest d-none"></div>
+                  </div>
+                </div>
+                <div class="col-md-6"><label class="form-label">Card No</label><input id="p-card-number" class="form-control" placeholder="Enter card number"></div>
+                <div class="col-md-6"><label class="form-label">Gender *</label><select id="p-gender" class="form-select" required><option>Male</option><option>Female</option><option>Other</option></select></div>
+                <div class="col-md-6"><label class="form-label">DOB</label><input type="date" id="p-dob" class="form-control"></div>
+                <div class="col-md-6"><label class="form-label">Age Years</label><input type="number" id="p-age-years" class="form-control"></div>
+                <div class="col-md-6"><label class="form-label">Contact No *</label><input id="p-contact-mobile" class="form-control" placeholder="Primary mobile" required></div>
+                <div class="col-md-6"><label class="form-label">Alternative No</label><input id="p-alternate-mobile" class="form-control"></div>
+                <div class="col-md-6"><label class="form-label">Email</label><input id="p-email" type="email" class="form-control"></div>
+              </div>
+              <div class="text-end mt-2"><button type="button" class="btn btn-success btn-sm" id="btn-save-patient">Save Patient</button></div>
+            </div>
+            <div id="new-address-form" class="border rounded p-2 mt-2 d-none bg-light address-form-box">
+              <div class="row g-2">
+                <div class="col-md-6"><label class="form-label">Type</label><select id="a-type" class="form-select"><option>Home</option><option>Office</option><option>Temporary</option><option>Other</option></select></div>
+                <div class="col-md-6"><label class="form-label">House/Flat No *</label><input id="a-house" class="form-control" required></div>
+                <div class="col-md-7"><label class="form-label">Floor *</label><div class="d-flex gap-2 align-items-center"><input id="a-floor" class="form-control" type="text" inputmode="numeric" maxlength="2" placeholder="1 - 99" style="min-width:56px;"><select id="a-floor-special" class="form-select form-select-sm flex-shrink-0" style="max-width:140px;"><option value="">Select</option><option value="Ground_F">Ground_F</option><option value="Basement">Basement</option><option value="Upper_F">Upper_F</option><option value="Top_Floor">Top Floor</option><option value="Full_hous">Full_hous</option></select></div></div>
+                <div class="col-md-5"><label class="form-label">Block / Tower No</label><input id="a-block" class="form-control" placeholder="Optional"></div>
+                <div class="col-md-6"><label class="form-label">Street / Sector</label><input id="a-street" class="form-control" placeholder="Optional"></div>
+                <div class="col-md-6"><label class="form-label">Landmark</label><input id="a-landmark" class="form-control" placeholder="Optional"></div>
+                <div class="col-md-6"><label class="form-label">City *</label><select id="a-city" class="form-select" required><option value="">Select City</option><option>Delhi</option><option>Faridabad</option><option>Gurugram</option><option>Noida</option><option>Ghaziabad</option><option>Uttar Pradesh</option></select></div>
+                <div class="col-md-6"><label class="form-label">Colony *</label><select id="a-colony" class="form-select" required></select><input id="a-colony-free" class="form-control mt-1 d-none" placeholder="Enter colony name"></div>
+                <div class="col-md-6"><div class="d-flex align-items-center gap-1 mb-1"><label class="form-label mb-0">Pincode</label><input id="a-colony-manual" type="checkbox" style="accent-color:#001f54;width:14px;height:14px;"></div><input id="a-pincode" class="form-control" readonly></div>
+                <div class="col-md-6"><label class="form-label">Route</label><input id="a-route" class="form-control" readonly></div>
+                <div class="col-md-6"><label class="form-label">Google Location</label><input id="a-google-location" class="form-control" placeholder="Google Maps URL"></div>
+                <div class="col-12"><label class="form-label">Access Notes</label><textarea id="a-access" class="form-control" placeholder="Optional"></textarea></div>
+              </div>
+              <div class="text-end mt-2"><button type="button" class="btn btn-success btn-sm" id="btn-save-address">Save Address</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="estimate-section">
+        <div class="estimate-section-head">
+          <h4 class="estimate-section-title">Estimate Details</h4>
+          <span class="estimate-section-note">Patient-wise panel and tests</span>
+        </div>
+        <div id="estimate-patient-estimates">
+          <div class="estimate-empty">Select one or more patients to create estimate.</div>
+        </div>
+        <div class="estimate-footer">
+          <div class="d-flex gap-2 flex-wrap">
+            <span class="estimate-chip" id="estimate-selected-count">Patients: 0</span>
+            <span class="estimate-chip" id="estimate-selected-tests">Tests: 0</span>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="estimate-reset">Reset</button>
+            <button type="button" class="btn btn-success btn-sm" id="estimate-save" disabled>Save Estimate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% include 'hhome_collection/_hpanel_tests_modal.html' %}
+
+<script defer src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script>
+  window.HC_ESTIMATE_LOGO_URL = "{{ url_for('static', filename='assets/Logo1.png') }}";
+  window.HC_ESTIMATE_ID = Number(new URLSearchParams(window.location.search).get("estimate_id") || 0);
+</script>
+<script defer src="{{ url_for('static', filename='js/hestimate.js') }}"></script>
+{% endblock %}
