@@ -359,7 +359,7 @@ th.actions-col, td.actions-col { width:170px; }
       {% set seen_categories = [] %}
       {% for t in tickets %}
         {% set cat = (t.ticket_category or '')|trim %}
-        {% if cat and cat not in seen_categories %}
+        {% if cat and cat|lower != 'report courier' and cat not in seen_categories %}
           {% set _ = seen_categories.append(cat) %}
           <option value="{{ cat }}">{{ cat }}</option>
         {% endif %}

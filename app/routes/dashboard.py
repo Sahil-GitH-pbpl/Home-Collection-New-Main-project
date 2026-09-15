@@ -348,6 +348,7 @@ def fetch_all_stats(date_range="today", start_date=None, end_date=None):
                         FROM ofc_waba_outgoing
                         WHERE empname IS NOT NULL 
                             AND empname != ''
+                            AND UPPER(TRIM(empname)) NOT IN ('HC ASSIGNMENT', 'HC BOOKING', 'APK COMPLETE')
                             AND (msg != '' OR img != '' OR pdff != '' OR docid != '' OR imgid != '')
                             AND {whatsapp_date_condition}
                         GROUP BY UPPER(TRIM(empname))

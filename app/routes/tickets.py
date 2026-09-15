@@ -545,6 +545,8 @@ def tickets_create_unified():
         # Common validation
         if not ticket_category:
             return jsonify({"ok": False, "error": "ticket_category is required"}), 400
+        if ticket_category.casefold() == "report courier":
+            return jsonify({"ok": False, "error": "Report Courier is no longer an available ticket category"}), 400
 
         # ✅ FIXED: Patient mode mein client_name optional, Client mode mein required
         if source == "patient":

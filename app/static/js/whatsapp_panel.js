@@ -299,6 +299,14 @@ function mediaUrl(value) {
   if (!text.startsWith("http://") && !text.startsWith("https://")) return "";
   try {
     const url = new URL(text);
+    const panelHost = window.location.hostname;
+    const isLanPanel =
+      /^10\./.test(panelHost) ||
+      /^192\.168\./.test(panelHost) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(panelHost);
+    if (isLanPanel && url.pathname.startsWith("/static/generated/service_notes/")) {
+      return `https://${panelHost}:2010${url.pathname}${url.search}${url.hash}`;
+    }
     // Keep panel previews on the same host the user opened, even when Netcore
     // stores an externally reachable public URL for attachment delivery.
     if (url.pathname.startsWith("/uploads/")) return `${url.pathname}${url.search}${url.hash}`;
@@ -455,12 +463,12 @@ function isOpenConversation(row) {
 }
 
 function isArchivedForSelectedDate(row) {
-  if (!isClosed(row) || !row.closed_at) return false;
+  if (!isClosed(row) || !row.datetimess) return false;
   const selectedDate = els.dateInput?.value;
   if (!selectedDate) return false;
-  const closedAt = validDate(row.closed_at);
+  const lastMessageAt = validDate(row.datetimess);
   const selectedAt = validDate(`${selectedDate}T00:00:00`);
-  return Boolean(closedAt && selectedAt && dateKey(closedAt) === dateKey(selectedAt));
+  return Boolean(lastMessageAt && selectedAt && dateKey(lastMessageAt) === dateKey(selectedAt));
 }
 
 function tagClass(label) {

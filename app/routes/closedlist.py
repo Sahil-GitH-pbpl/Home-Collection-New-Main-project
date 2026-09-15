@@ -99,9 +99,10 @@ def closed_list():
     date_to = (request.args.get("date_to") or default_to).strip()
 
     q = (request.args.get("q") or "").strip()
-    origin = (request.args.get("origin") or "").strip().upper()
+    category = (request.args.get("category") or "").strip()
 
     rows = []
+    categories = []
     total = 0
     conn = None
     try:
@@ -124,9 +125,26 @@ def closed_list():
                 where.append("(t.mobile_number LIKE %s OR t.patient_labmate_id LIKE %s)")
                 like = f"%{q}%"
                 params.extend([like, like])
-            if origin:
-                where.append("t.ticket_origin = %s")
-                params.append(origin)
+
+            category_where = list(where)
+            category_params = list(params)
+            cur.execute(
+                f"""
+                SELECT DISTINCT TRIM(t.ticket_category) AS ticket_category
+                FROM tickets t
+                WHERE {" AND ".join(category_where)}
+                  AND t.ticket_category IS NOT NULL
+                  AND TRIM(t.ticket_category) <> ''
+                  AND LOWER(TRIM(t.ticket_category)) <> 'report courier'
+                ORDER BY ticket_category
+                """,
+                category_params,
+            )
+            categories = [row["ticket_category"] for row in (cur.fetchall() or [])]
+
+            if category:
+                where.append("TRIM(t.ticket_category) = %s")
+                params.append(category)
 
             sql = f"""
                 SELECT
@@ -172,7 +190,8 @@ def closed_list():
         date_from=date_from,
         date_to=date_to,
         q=q,
-        origin=origin,
+        category=category,
+        categories=categories,
         fmt_dt_ist=_fmt_dt_ist,
         closure_badge=_closure_badge,
         is_special_user=is_special_user,  # 🆕 Pass to template

@@ -81,13 +81,12 @@ th.actions-col, td.actions-col { width:120px; text-align:center; }
   </label>
   <input type="text" name="q" placeholder="Search Mobile / Labmate" value="{{ q or '' }}">
   <label>
-    Type
-    <select name="origin">
-      <option value="">All</option>
-      <option value="CCE" {% if origin == 'CCE' %}selected{% endif %}>CCE</option>
-      <option value="ODT" {% if origin == 'ODT' %}selected{% endif %}>ODT</option>
-      <option value="CVT" {% if origin == 'CVT' %}selected{% endif %}>CVT</option>
-      <option value="RST" {% if origin == 'RST' %}selected{% endif %}>RST</option>
+    Ticket Category
+    <select name="category">
+      <option value="">All Categories</option>
+      {% for ticket_category in categories %}
+        <option value="{{ ticket_category }}" {% if category == ticket_category %}selected{% endif %}>{{ ticket_category }}</option>
+      {% endfor %}
     </select>
   </label>
   <button class="btn" type="submit">Apply</button>
@@ -146,11 +145,11 @@ th.actions-col, td.actions-col { width:120px; text-align:center; }
 
 <div style="display:flex; gap:8px; align-items:center; margin-top:10px; justify-content:flex-end;">
   {% if has_prev %}
-    <a class="pager-btn" href="{{ url_for('closedlist.closed_list', page=page-1, page_size=page_size, date_from=date_from, date_to=date_to, q=q, origin=origin) }}">Prev</a>
+    <a class="pager-btn" href="{{ url_for('closedlist.closed_list', page=page-1, page_size=page_size, date_from=date_from, date_to=date_to, q=q, category=category) }}">Prev</a>
   {% endif %}
   <div>Page {{ page }}</div>
   {% if has_next %}
-    <a class="pager-btn" href="{{ url_for('closedlist.closed_list', page=page+1, page_size=page_size, date_from=date_from, date_to=date_to, q=q, origin=origin) }}">Next</a>
+    <a class="pager-btn" href="{{ url_for('closedlist.closed_list', page=page+1, page_size=page_size, date_from=date_from, date_to=date_to, q=q, category=category) }}">Next</a>
   {% endif %}
 </div>
 {% endblock %}

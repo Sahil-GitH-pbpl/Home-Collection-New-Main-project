@@ -323,9 +323,14 @@ def tickets_failed_messages():
         labmate_conn = get_whatsapp_panel_connection()
         with labmate_conn.cursor() as cur:
             cur.execute("""
-                SELECT COUNT(*) as failed_count
-                FROM whatsapp_send_logs
-                WHERE is_success = 0
+                SELECT COUNT(*) AS failed_count
+                FROM whatsapp_send_logs w
+                WHERE w.is_success = 0
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM lead_management.failurereport_resolutions r
+                      WHERE r.main_id = w.id
+                  )
             """)
             result = cur.fetchone()
             failed_messages = int((result or {}).get('failed_count') or 0)

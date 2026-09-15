@@ -1120,29 +1120,16 @@ def whatsapp_conversations():
     params = []
     if date_arg:
         start_date, end_date = day_bounds(date_arg)
-        filters.append("""
+        conversation_filter = """
         (
-            mobile NOT IN (
-                SELECT mobile
-                FROM ofc_conversation_live_state
-                WHERE status = 'closed'
-            )
-            OR mobile IN (
-                SELECT mobile
-                FROM ofc_conversation_live_state
-                WHERE status = 'closed' AND closed_at >= %s AND closed_at < %s
-            )
+            COALESCE(cs.status, 'open') <> 'closed'
+            OR (cs.status = 'closed' AND w.datetimess >= %s AND w.datetimess < %s)
         )
-        """)
-        params = [start_date, end_date]
+        """
+        conversation_params = [start_date, end_date]
     else:
-        filters.append("""
-            mobile NOT IN (
-                SELECT mobile
-                FROM ofc_conversation_live_state
-                WHERE status = 'closed'
-            )
-        """)
+        conversation_filter = "COALESCE(cs.status, 'open') <> 'closed'"
+        conversation_params = []
     if query:
         patient_mobile_variants = patient_mobile_variants_for_name_search(query)
         search_filters = ["mobile LIKE %s"]
@@ -1196,13 +1183,14 @@ def whatsapp_conversations():
           ) user_reply ON user_reply.mobile = contacts.mobile
         ) activity ON activity.mobile = w.mobile
         LEFT JOIN ofc_conversation_live_state cs ON cs.mobile = w.mobile
+        WHERE {conversation_filter}
         ORDER BY w.datetimess DESC
         LIMIT 300
     """
     conn = get_whatsapp_panel_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute(sql, params + [user["display_name"]])
+            cur.execute(sql, params + [user["display_name"]] + conversation_params)
             rows = cur.fetchall()
     finally:
         conn.close()

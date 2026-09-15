@@ -171,28 +171,60 @@ def build_daily_ticket_summary_combined(conn, date_str: str | None = None) -> st
     start_ist, end_ist, pretty_date = _ist_day_window(date_str)
 
     # Call Metrics (Issabel) - align with UI logic
-    total_calls = _q_scalar(
-        conn,
-        """
-        SELECT COUNT(*)
-        FROM exotel_incoming_calls
-        WHERE COALESCE(received_at, created_at) BETWEEN %s AND %s
-        """,
-        (start_ist, end_ist),
-    ) or 0
-
-    completed_live_calls = _q_scalar(
+    incoming_completed = _q_scalar(
         conn,
         """
         SELECT COUNT(*)
         FROM exotel_incoming_calls i
         WHERE COALESCE(i.received_at, i.created_at) BETWEEN %s AND %s
-          AND LOWER(i.call_type) = 'completed'
+          AND COALESCE(
+                i.call_category,
+                CASE
+                  WHEN LOWER(COALESCE(i.call_type, '')) = 'completed' THEN 1
+                  WHEN LOWER(REPLACE(COALESCE(i.call_type, ''), '_', '-')) = 'force-removed' THEN 5
+                  ELSE NULL
+                END
+              ) = 1
+          AND COALESCE(TRIM(i.to_number), '') <> ''
         """,
         (start_ist, end_ist),
     ) or 0
 
-    callbacks_outgoing = 0
+    missed_call_reverts = _q_scalar(
+        conn,
+        """
+        SELECT COUNT(*)
+        FROM exotel_outgoing_calls o
+        WHERE o.created_at BETWEEN %s AND %s
+          AND COALESCE(
+                o.call_category,
+                CASE
+                  WHEN CHAR_LENGTH(COALESCE(o.from_number, '')) <= 4
+                   AND CHAR_LENGTH(COALESCE(o.to_number, '')) <= 4 THEN 4
+                  ELSE 3
+                END
+              ) = 2
+        """,
+        (start_ist, end_ist),
+    ) or 0
+
+    direct_outgoing = _q_scalar(
+        conn,
+        """
+        SELECT COUNT(*)
+        FROM exotel_outgoing_calls o
+        WHERE o.created_at BETWEEN %s AND %s
+          AND COALESCE(
+                o.call_category,
+                CASE
+                  WHEN CHAR_LENGTH(COALESCE(o.from_number, '')) <= 4
+                   AND CHAR_LENGTH(COALESCE(o.to_number, '')) <= 4 THEN 4
+                  ELSE 3
+                END
+              ) = 3
+        """,
+        (start_ist, end_ist),
+    ) or 0
 
     # Lead Metrics
     leads_created = _q_scalar(
@@ -433,9 +465,9 @@ def build_daily_ticket_summary_combined(conn, date_str: str | None = None) -> st
     lines.append(f"📅 Date: {pretty_date} (IST)")
     lines.append("")
     lines.append("📞 *Calls (CCE Desk):*")
-    lines.append(f" Total Incoming: {total_calls}")
-    lines.append(f" Completed (Live Pick): {completed_live_calls}")
-    lines.append(f" Callbacks Initiated (Outgoing): {callbacks_outgoing}")
+    lines.append(f" Incoming Completed: {incoming_completed}")
+    lines.append(f" Missed Call Revert: {missed_call_reverts}")
+    lines.append(f" Direct Outgoing: {direct_outgoing}")
     lines.append("")
     lines.append("----------------------------------------")
     lines.append("📝 *Daily Failure Summary - CCE & ODT*")

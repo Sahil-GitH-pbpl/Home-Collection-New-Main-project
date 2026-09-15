@@ -2593,6 +2593,18 @@ class HHomeCollectionCore:
                     )
                 )
 
+            # Search results are stored separately from the group/subgroup lists.
+            # Keep their profile flag in sync so profiles found through search also
+            # expose the Child Tests button in the UI.
+            for arr in tests_search_by_comp.values():
+                for item in arr:
+                    parent_key = (
+                        self._norm_code(item.get("gcode")),
+                        self._norm_code(item.get("scode")),
+                        self._norm_code(item.get("test_code")),
+                    )
+                    item["has_children"] = bool(profile_children_map.get(parent_key))
+
             self._panel_catalog = {
                 "panels": panels,
                 "prefix2": prefix2,
@@ -5156,7 +5168,6 @@ class HHomeCollectionCore:
             filters.append(
                 """(
                     CAST(hcb.id AS CHAR) LIKE %s
-                    OR cm.primary_mobile LIKE %s
                     OR TRIM(COALESCE(u.name, '')) LIKE %s
                     OR TRIM(COALESCE(up.name, '')) LIKE %s
                     OR EXISTS (
@@ -5164,7 +5175,10 @@ class HHomeCollectionCore:
                       FROM hhome_collection_booking_patient hbp2
                       INNER JOIN hpatient_master p2 ON p2.id = hbp2.patient_id
                       WHERE hbp2.booking_id = hcb.id
-                        AND CONCAT_WS(' ', p2.title, p2.full_name) LIKE %s
+                        AND (
+                          CONCAT_WS(' ', p2.title, p2.full_name) LIKE %s
+                          OR TRIM(COALESCE(p2.contact_mobile, '')) LIKE %s
+                        )
                     )
                 )"""
             )

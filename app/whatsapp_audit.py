@@ -93,6 +93,14 @@ def save_patient_chat_message(
                     (delivery_status_remark or "")[:1000],
                 ),
             )
+            cur.execute(
+                """
+                INSERT IGNORE INTO ofc_conversation_live_state
+                  (mobile, status, closed_by_name, closed_at, closure_note)
+                VALUES (%s, 'closed', 'System', NOW(), 'Automated home collection message')
+                """,
+                (str(mobile or ""),),
+            )
         conn.commit()
     finally:
         conn.close()
