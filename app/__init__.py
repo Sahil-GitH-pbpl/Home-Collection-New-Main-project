@@ -48,6 +48,7 @@ def create_app():
     from app.routes.hbatch_handover_ui import hbatch_handover_ui_bp
     from app.routes.cghs_api import cghs_api_bp
     from app.routes.whatsapp_panel import whatsapp_panel_bp
+    from app.routes.labmate_api import labmate_api_bp
     
 
     app.register_blueprint(auth_bp)
@@ -79,6 +80,7 @@ def create_app():
     app.register_blueprint(hbatch_handover_ui_bp)
     app.register_blueprint(cghs_api_bp)
     app.register_blueprint(whatsapp_panel_bp)
+    app.register_blueprint(labmate_api_bp)
 
     # Warm once on server start: panel/company + GST catalog for fast HC test booking.
     try:

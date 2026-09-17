@@ -323,16 +323,17 @@ document.getElementById('btnFetch').onclick = async () => {
     });
     const j = await r.json();
     if (j.ok) {
-      document.getElementById('patient_name').value = j.name || '';
-      document.getElementById('mobile_number').value = j.mobileno || '';
-      document.getElementById('doctor_name').value = j.doctor || '';
-      document.getElementById('doctor_mobile').value = j.doctormobile || '';
-      document.getElementById('panel_name').value = j.panel || '';
+      const patient = j.patient || j;
+      document.getElementById('patient_name').value = patient.patientname || '';
+      document.getElementById('mobile_number').value = patient.mobileno || '';
+      document.getElementById('doctor_name').value = patient.doctor || '';
+      document.getElementById('doctor_mobile').value = patient.doctormobile || '';
+      document.getElementById('panel_name').value = patient.panel || '';
       // panel mobile -> whatsapp field (API gives panel contact here)
-      document.getElementById('panel_mobile').value = j.whatsapp || '';
+      document.getElementById('panel_mobile').value = patient.whatsapp || '';
       // patient mobile -> mobileno; if blank, keep empty (no whatsapp fallback)
-      document.getElementById('mobile_number').value = j.mobileno || '';
-      cvReportUrl = j.report_url || j.report_link || j.link || j.url || j.pdffile || j.report || '';
+      document.getElementById('mobile_number').value = patient.mobileno || '';
+      cvReportUrl = patient.report_url || '';
     } else { alert(j.error || 'No data found'); }
   } catch(err) { alert('Fetch failed'); }
   finally { btn.textContent = prevTxt; btn.disabled = false; }

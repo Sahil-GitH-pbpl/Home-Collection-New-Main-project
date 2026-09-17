@@ -1140,8 +1140,8 @@
         
         if (data.ok === false) {
           alert('Error: ' + data.error);
-        } else if (data.data && data.data.length > 0) {
-          const patient = data.data[0];
+        } else if (data.patient || (data.data && data.data.length > 0)) {
+          const patient = data.patient || data.data[0];
           
           patientNameField.value = patient.patientname || '';
           mobileField.value = patient.mobileno || '';
@@ -1331,8 +1331,8 @@ if (labmateId) {
        if (response.ok) {
     const data = await response.json();
     
-        if (data && data.data && data.data.length > 0) {
-            const patient = data.data[0];
+        if (data && (data.patient || (data.data && data.data.length > 0))) {
+            const patient = data.patient || data.data[0];
             body.panel_name = (patient.panel || '').trim();
             
             if (patient.doctor && patient.doctor !== 'SELF' && patient.doctor.trim() !== '') {

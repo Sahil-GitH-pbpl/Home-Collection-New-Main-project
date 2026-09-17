@@ -130,12 +130,13 @@ document.getElementById('rs_btnFetch').onclick = async () => {
     });
     const j = await r.json();
     if (j.ok) {
-      document.getElementById('rs_patient_name').value = j.name || '';
-  document.getElementById('rs_mobile_number').value = j.mobileno || '';
-  document.getElementById('rs_doctor').value = j.doctor || '';
-  document.getElementById('rs_doctor_mobile').value = j.doctormobile || '';
-  document.getElementById('rs_panel').value = j.panel || '';
-  document.getElementById('rs_panel_mobile').value = j.whatsapp || '';
+      const patient = j.patient || j;
+      document.getElementById('rs_patient_name').value = patient.patientname || '';
+  document.getElementById('rs_mobile_number').value = patient.mobileno || '';
+  document.getElementById('rs_doctor').value = patient.doctor || '';
+  document.getElementById('rs_doctor_mobile').value = patient.doctormobile || '';
+  document.getElementById('rs_panel').value = patient.panel || '';
+  document.getElementById('rs_panel_mobile').value = patient.whatsapp || '';
     } else {
       alert(j.error || 'No data found');
     }

@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 import pymysql
-import requests
 from flask import Blueprint, jsonify, session, request, current_app, redirect, url_for
 from app.db.connection import get_db_connection, get_labmate_connection
 from app.alerts import WHATSAPP_ACCOUNT_ID, send_whatsapp_to_number, send_whatsapp_document_to_number
+from app.routes.labmate_api import get_labmate_patient_by_id
 from app.whatsapp_audit import log_whatsapp_send
 from pymysql.cursors import DictCursor
 
@@ -57,36 +57,15 @@ def _safe_report_filename(patient_name: str) -> str:
     return f"{cleaned or 'Patient'}_Report.pdf"
 
 
-def _extract_report_url(row: dict) -> str:
-    return (
-        row.get("report_url")
-        or row.get("report_link")
-        or row.get("link")
-        or row.get("url")
-        or row.get("pdffile")
-        or row.get("report")
-        or ""
-    ).strip()
-
-
 def _fetch_labmate_report_url(patient_labmate_id: str, mobile_number: str = "") -> str:
     patient_labmate_id = (patient_labmate_id or "").strip()
-    mobile_number = (mobile_number or "").strip()
-    if not patient_labmate_id and not mobile_number:
+    if not patient_labmate_id:
         return ""
-
-    labmate_url = "http://10.1.1.252:8000/reportapi/LabmatePatRegistration.svc/Getpatientdatabymobileno"
-    response = requests.post(
-        labmate_url,
-        json={"mobileno": mobile_number, "patientid": patient_labmate_id},
-        timeout=10,
-    )
-    if response.status_code != 200:
+    try:
+        patient = get_labmate_patient_by_id(patient_labmate_id)
+    except Exception:
         return ""
-    payload = response.json() or {}
-    rows = payload.get("data") or []
-    first = rows[0] if rows else {}
-    return _extract_report_url(first) if isinstance(first, dict) else ""
+    return (patient or {}).get("report_url") or ""
 
 
 def _cvt_message(patient_name: str, test_name: str) -> str:
@@ -1198,57 +1177,3 @@ def tickets_rs_create():
 def debug_session():
     return jsonify(_session_snapshot())
 
-@tickets_bp.route("/api/proxy/labmate-patient", methods=["POST"])
-def proxy_labmate_patient():
-    try:
-        import requests 
-        
-        data = request.get_json()
-        patient_id = (data.get("patientid") or "").strip()
-        
-        if not patient_id:
-            return jsonify({"ok": False, "error": "Patient ID required"}), 400
-
-        # Updated Labmate patient fetch endpoint (internal)
-        labmate_url = "http://10.1.1.252:8000/reportapi/LabmatePatRegistration.svc/Getpatientdatabymobileno"
-        
-        response = requests.post(
-            labmate_url,
-            json={"mobileno": "", "patientid": patient_id},
-            timeout=10
-        )
-        
-        if response.status_code != 200:
-            return jsonify({"ok": False, "error": f"API returned {response.status_code}"}), 500
-
-        j = response.json() or {}
-        data_arr = j.get("data") or []
-        first = data_arr[0] if data_arr else {}
-        payload = {
-            "ok": True,
-            "raw": first,
-            "data": data_arr,  # backward compatibility for old JS expecting data.data
-            "name": first.get("patientname") or first.get("name"),
-            "mobile": first.get("mobileno") or first.get("mobile") or first.get("whatsapp"),
-            "patientid": first.get("patientid"),
-            "patientname": first.get("patientname"),
-            "mobileno": first.get("mobileno"),
-            "doctor": first.get("doctor"),
-            "doctormobile": first.get("doctormobile"),
-            "panel": first.get("panel"),
-            "whatsapp": first.get("whatsapp"),  # panel contact (used as panel mobile)
-            "report_url": (
-                first.get("report_url")
-                or first.get("report_link")
-                or first.get("link")
-                or first.get("url")
-                or first.get("pdffile")
-                or first.get("report")
-            ),
-        }
-        return jsonify(payload)
-            
-    except requests.exceptions.RequestException as e:
-        return jsonify({"ok": False, "error": f"API connection failed"}), 500
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"Server error"}), 500
