@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import threading
 import logging
 import uuid
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 alerts_bp = Blueprint('alerts', __name__)
 IST = ZoneInfo("Asia/Kolkata")
@@ -26,7 +26,7 @@ WHATSAPP_API_URL = os.getenv(
 WHATSAPP_ACCOUNT_ID = 1
 # Group ID ya mobile (local WA API format)
 WHATSAPP_MOBILE = "917838104597-1635675661@g.us"
-INTERNAL_REPORT_HOST = "10.1.1.252:8000"
+INTERNAL_REPORT_HOST = "10.1.1.178:8000"
 
 # =========================
 
@@ -70,6 +70,19 @@ def _prefer_internal_report_url(file_url: str) -> str:
     except Exception:
         pass
     return (file_url or "").strip()
+
+
+def _extract_report_pdf_url(html: bytes, base_url: str) -> str:
+    try:
+        text = html.decode("utf-8", errors="ignore")
+    except Exception:
+        return ""
+    match = re.search(r'<iframe[^>]+src=["\']([^"\']+\.pdf)["\']', text, flags=re.IGNORECASE)
+    if not match:
+        match = re.search(r'(PatientReport/[^"\'>\s]+\.pdf)', text, flags=re.IGNORECASE)
+    if not match:
+        return ""
+    return urljoin(base_url, match.group(1).replace("&amp;", "&"))
 
 
 def send_whatsapp_to_number(phone: str, message: str):
@@ -132,9 +145,24 @@ def send_whatsapp_document_to_number(phone: str, message: str, file_url: str, fi
                 req_id, download_url, url, dl.status_code
             )
             return dl.status_code, f"Download failed: HTTP {dl.status_code}"
+        content_type = dl.headers.get("Content-Type") or ""
+        if "text/html" in content_type.lower():
+            pdf_url = _extract_report_pdf_url(dl.content or b"", download_url)
+            if pdf_url:
+                download_url = _prefer_internal_report_url(pdf_url)
+                dl = requests.get(download_url, timeout=25)
+                if dl.status_code != 200:
+                    logger.error(
+                        "WA[%s] âŒ report PDF download failed | download_url=%s | original_url=%s | status=%s",
+                        req_id, download_url, url, dl.status_code
+                    )
+                    return dl.status_code, f"PDF download failed: HTTP {dl.status_code}"
+                content_type = dl.headers.get("Content-Type") or ""
         content = dl.content or b""
         if not content:
             return 400, "Downloaded file is empty"
+        if not content.startswith(b"%PDF") and "pdf" not in content_type.lower():
+            return 415, f"Downloaded file is not a PDF/document: {content_type or 'unknown content type'}"
         if len(content) > 15 * 1024 * 1024:
             return 413, "File too large (>15MB) for WhatsApp send"
 

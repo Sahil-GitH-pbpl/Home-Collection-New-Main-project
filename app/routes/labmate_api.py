@@ -6,7 +6,10 @@ from flask import Blueprint, current_app, jsonify, request
 
 labmate_api_bp = Blueprint("labmate_api", __name__)
 
-REPORT_BASE_URL = os.getenv("LABMATE_REPORT_BASE_URL", "http://10.1.1.178:8000/WhatsAppImage").rstrip("/")
+REPORT_BASE_URL = os.getenv(
+    "LABMATE_REPORT_BASE_URL",
+    "http://10.1.1.178:8000/downloadnew/PatientReportDirectView.aspx",
+).rstrip("/")
 
 SQLSERVER_CONFIG = {
     "server": os.getenv("LABMATE_MSSQL_HOST", "10.1.1.252"),
@@ -25,9 +28,12 @@ def _clean(value):
     return str(value).strip()
 
 
-def _report_url(filename):
-    name = _clean(filename)
-    return f"{REPORT_BASE_URL}/{name}" if name else ""
+def _report_url(patient_id, net_user_pass):
+    pid = _clean(patient_id)
+    password = _clean(net_user_pass)
+    if not pid or not password:
+        return ""
+    return f"{REPORT_BASE_URL}?UserIDPassword={pid},{password}"
 
 
 def _connect_sqlserver():
@@ -61,7 +67,9 @@ def get_labmate_patient_by_id(patient_id):
                     Patientname,
                     MobileNo,
                     refbyDr,
-                    company
+                    company,
+                    NetUserId,
+                    NetUserPass
                 FROM dbo.patient
                 WHERE PatientID = %s
                 ORDER BY Bdate DESC
@@ -93,6 +101,8 @@ def get_labmate_patient_by_id(patient_id):
         conn.close()
 
     filename = _clean(report.get("WhatsAppFileName"))
+    net_user_id = _clean(patient.get("NetUserId")) or _clean(patient.get("PatientID"))
+    net_user_pass = _clean(patient.get("NetUserPass"))
     return {
         "patientid": _clean(patient.get("PatientID")),
         "patientname": _clean(patient.get("Patientname")),
@@ -102,8 +112,10 @@ def get_labmate_patient_by_id(patient_id):
         "panel": _clean(patient.get("company")),
         "whatsapp": _clean(report.get("PhoneNo")) or mobile,
         "ordertest": "",
+        "net_user_id": net_user_id,
+        "net_user_pass": net_user_pass,
         "report_filename": filename,
-        "report_url": _report_url(filename),
+        "report_url": _report_url(net_user_id, net_user_pass),
         "whatsapp_send_time": _clean(report.get("WhatsAppSendTime")),
     }
 
@@ -138,6 +150,8 @@ def proxy_labmate_patient():
             "panel": patient["panel"],
             "whatsapp": patient["whatsapp"],
             "ordertest": patient["ordertest"],
+            "net_user_id": patient["net_user_id"],
+            "net_user_pass": patient["net_user_pass"],
             "report_url": patient["report_url"],
         },
     })
