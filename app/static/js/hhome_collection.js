@@ -29,6 +29,8 @@ let slotSelectedRoute = '';
 let summaryRequestSeq = 0;
 let testSpecimenCatalog = null;
 let testSpecimenCatalogPromise = null;
+let panelProfileHierarchy = null;
+let panelProfileHierarchyPromise = null;
 let panelTestSearchTimer = null;
 let panelTestSearchQuery = '';
 let panelTestSearchSeq = 0;
@@ -2578,6 +2580,96 @@ function testSelKey(t) {
   return String(t?.booked_code || '').trim().toUpperCase();
 }
 
+function panelProfileKey(t) {
+  const g = String(t?.gcode || '').trim();
+  const s = String(t?.scode || '').trim();
+  const tc = String(t?.test_code || '').trim();
+  return (g && s && tc) ? `${g}|${s}|${tc}` : '';
+}
+
+function loadPanelProfileHierarchy(done) {
+  if (panelProfileHierarchy) {
+    if (typeof done === 'function') done(panelProfileHierarchy);
+    return;
+  }
+  if (panelProfileHierarchyPromise) {
+    panelProfileHierarchyPromise
+      .always(() => {
+        if (typeof done === 'function') done(panelProfileHierarchy || { profile_descendants: {}, profile_key_by_booked_code: {} });
+      });
+    return;
+  }
+  panelProfileHierarchyPromise = $.get('/hhome-collection/panel-profile-hierarchy', function (res) {
+    panelProfileHierarchy = {
+      profile_descendants: res?.profile_descendants || {},
+      profile_key_by_booked_code: res?.profile_key_by_booked_code || {}
+    };
+  }).fail(function () {
+    panelProfileHierarchy = { profile_descendants: {}, profile_key_by_booked_code: {} };
+  }).always(function () {
+    if (typeof done === 'function') done(panelProfileHierarchy);
+  });
+}
+
+function profileHierarchyKeyForTest(t) {
+  const h = panelProfileHierarchy || {};
+  const directKey = panelProfileKey(t);
+  if (directKey && h.profile_descendants && h.profile_descendants[directKey]) return directKey;
+  const booked = testSelKey(t);
+  return booked ? String((h.profile_key_by_booked_code || {})[booked] || '') : '';
+}
+
+function profileDescendantCodes(t) {
+  const h = panelProfileHierarchy || {};
+  const key = profileHierarchyKeyForTest(t);
+  const rows = key ? (h.profile_descendants || {})[key] : [];
+  return Array.isArray(rows) ? rows.map((x) => String(x || '').trim().toUpperCase()).filter(Boolean) : [];
+}
+
+function activePickerSelectedRows(skipBookedCode = '') {
+  const rows = [];
+  const pid = String(activePanelPicker?.patientId || '');
+  const currentIdx = Number(activePanelPicker?.panelIndex || 0);
+  const skip = String(skipBookedCode || '').trim().toUpperCase();
+  getPatientPanels(pid).forEach((section, idx) => {
+    if (Number(idx) === currentIdx) return;
+    (section.selected_tests || []).forEach((t) => {
+      if (testSelKey(t) !== skip) rows.push(t);
+    });
+  });
+  Object.values(activePanelPicker?.tempSelected || {}).forEach((t) => {
+    if (testSelKey(t) !== skip) rows.push(t);
+  });
+  return rows;
+}
+
+function panelSelectionConflictReason(candidate) {
+  const candidateCode = testSelKey(candidate);
+  if (!candidateCode) return '';
+  const selectedRows = activePickerSelectedRows(candidateCode);
+  const candidateDesc = new Set(profileDescendantCodes(candidate));
+
+  for (const selected of selectedRows) {
+    const selectedCode = testSelKey(selected);
+    if (!selectedCode) continue;
+    const selectedLabel = String(selected.description || selectedCode || 'selected profile').trim();
+
+    if (selectedCode === candidateCode) {
+      return `Already selected: ${selectedLabel}`;
+    }
+
+    const selectedDesc = new Set(profileDescendantCodes(selected));
+    if (selectedDesc.has(candidateCode)) {
+      return `Included inside selected profile: ${selectedLabel}`;
+    }
+
+    if (candidateDesc.has(selectedCode)) {
+      return `Selected child already exists: ${selectedLabel}`;
+    }
+  }
+  return '';
+}
+
 function autoResolveBillingFromPanel(patientId, panelName, panelIndex = 0) {
   const pid = String(patientId || '');
   const idx = Number(panelIndex || 0);
@@ -2988,7 +3080,9 @@ function legacyOpenPanelTestsModal(patientId) {
   const modalEl = document.getElementById('panelTestsModal');
   panelTestsModal = new bootstrap.Modal(modalEl);
   panelTestsModal.show();
-  loadPanelGroups();
+  loadPanelProfileHierarchy(function () {
+    loadPanelGroups();
+  });
 }
 
 function renderPanelTestsList(tests, emptyMessage) {
@@ -3008,10 +3102,15 @@ function renderPanelTestsList(tests, emptyMessage) {
     const key = testSelKey(t);
     const owner = selectedOwners[key];
     const disabledByOtherPanel = owner && !owner.isCurrent;
+    const hierarchyReason = !modalSelected[key] ? panelSelectionConflictReason(t) : '';
+    const disabledByHierarchy = !!hierarchyReason;
     const checked = modalSelected[key] ? 'checked' : '';
-    const disabled = disabledByOtherPanel ? 'disabled' : '';
+    const disabled = (disabledByOtherPanel || disabledByHierarchy) ? 'disabled' : '';
     const alreadyLine = disabledByOtherPanel
       ? `<div class="panel-test-meta text-danger">Already selected in ${escHtml(owner.panelName || 'another panel')}</div>`
+      : '';
+    const hierarchyLine = disabledByHierarchy
+      ? `<div class="panel-test-meta text-danger">${escHtml(hierarchyReason)}</div>`
       : '';
     const childBtn = t.has_children
       ? `<button type="button" class="panel-child-btn"
@@ -3021,7 +3120,7 @@ function renderPanelTestsList(tests, emptyMessage) {
             Child Tests
          </button>`
       : '';
-    const groupLine = [t.group_description, t.subgroup_description].filter(Boolean).join(' / ');
+    const codeLine = [t.booked_code, t.ctest_code, t.ctest_name].filter(Boolean).join(' | ');
     return `
       <label class="panel-test-item">
         <input type="checkbox" class="panel-test-check" ${checked} ${disabled}
@@ -3036,15 +3135,17 @@ function renderPanelTestsList(tests, emptyMessage) {
           data-mrp="${escHtml(mrp)}"
           data-max-discount="${escHtml(discount)}"
           data-max-allowed-discount="${escHtml(t.max_allowed_discount || '')}"
+          data-is-profile="${escHtml(t.is_profile ? 1 : 0)}"
+          data-has-children="${escHtml(t.has_children ? 1 : 0)}"
         />
           <div class="panel-test-main">
             <div><strong>${escHtml(t.description || '')}</strong></div>
             <div class="panel-test-meta">
-              <span>${escHtml(t.booked_code || '')}</span>
-              ${groupLine ? `| <span>${escHtml(groupLine)}</span>` : ''}
+              ${codeLine ? `<span>${escHtml(codeLine)}</span>` : ''}
             </div>
             <div class="panel-test-meta">MRP: ${escHtml(formatCharge(mrp))} | Discount: ${escHtml(formatCharge(discount))} | Charge: ${escHtml(formatCharge(finalCharge))}</div>
             ${alreadyLine}
+            ${hierarchyLine}
           </div>
           ${childBtn ? `<div class="panel-test-actions">${childBtn}</div>` : ''}
         </label>
@@ -3065,15 +3166,24 @@ function renderPanelTestsList(tests, emptyMessage) {
       charge: Number($(this).data('charge') || 0),
       mrp: Number($(this).data('mrp') || 0),
       max_discount: Number($(this).data('max-discount') || 0),
-      max_allowed_discount: Number($(this).data('max-allowed-discount') || 0)
+      max_allowed_discount: Number($(this).data('max-allowed-discount') || 0),
+      is_profile: Number($(this).data('is-profile') || 0) === 1,
+      has_children: Number($(this).data('has-children') || 0) === 1
     };
     const key = testSelKey(pick);
     activePanelPicker.tempSelected = activePanelPicker.tempSelected || {};
     if ($(this).is(':checked')) {
+      const reason = panelSelectionConflictReason(pick);
+      if (reason) {
+        alert(reason);
+        $(this).prop('checked', false);
+        return;
+      }
       activePanelPicker.tempSelected[key] = pick;
     } else {
       delete activePanelPicker.tempSelected[key];
     }
+    renderPanelTestsList(list, emptyMessage);
   });
 
   $('#panel-tests-list .panel-child-btn').off('click').on('click', function (e) {
@@ -3363,7 +3473,9 @@ function openPanelTestsModal(patientId, panelIndex = 0) {
   const modalEl = document.getElementById('panelTestsModal');
   panelTestsModal = new bootstrap.Modal(modalEl);
   panelTestsModal.show();
-  loadPanelGroups();
+  loadPanelProfileHierarchy(function () {
+    loadPanelGroups();
+  });
 }
 
 function applySelectedPanelTests() {
@@ -3376,11 +3488,17 @@ function applySelectedPanelTests() {
     const priced = pricedForPanel(t, activePanelPicker?.showMrp);
     return {
       booked_code: String(t.booked_code || t.testcode1 || t.test_code || '').trim(),
+      gcode: String(t.gcode || '').trim(),
+      scode: String(t.scode || '').trim(),
+      test_code: String(t.test_code || '').trim(),
+      testcode1: String(t.testcode1 || '').trim(),
       description: String(t.description || '').trim(),
       charge: Number(priced.charge || 0),
       mrp: Number(priced.mrp || 0),
       max_discount: Number(priced.max_discount || 0),
-      max_allowed_discount: Number(priced.max_allowed_discount || 0)
+      max_allowed_discount: Number(priced.max_allowed_discount || 0),
+      is_profile: !!t.is_profile,
+      has_children: !!t.has_children
     };
   }).filter((t) => !!t.booked_code);
   syncPrimaryPanelFields(tb);

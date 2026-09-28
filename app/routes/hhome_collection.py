@@ -714,6 +714,14 @@ def panel_child_tests():
         return jsonify({"ok": False, "message": str(exc)}), 500
 
 
+@hhome_collection_bp.get("/hhome-collection/panel-profile-hierarchy")
+def panel_profile_hierarchy():
+    try:
+        return jsonify({"ok": True, **service.panel_profile_hierarchy()})
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
 @hhome_collection_bp.get("/hhome-collection/test-specimen-catalog")
 def test_specimen_catalog():
     try:

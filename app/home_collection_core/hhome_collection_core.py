@@ -2513,12 +2513,16 @@ class HHomeCollectionCore:
                     "scode": s,
                     "test_code": test_code,
                     "testcode1": testcode1,
+                    "ctest_code": panel_ctest_code,
+                    "ctest_name": panel_ctest_name,
                     "booked_code": booked_code,
                     "gender_rule": self._norm_code((meta or {}).get("gender_rule")),
                     "description": description,
                     "description_lc": description.lower(),
                     "shortname": self._norm_code((meta or {}).get("shortname")),
                     "shortname_lc": self._norm_code((meta or {}).get("shortname")).lower(),
+                    "ctest_code_lc": panel_ctest_code.lower(),
+                    "ctest_name_lc": panel_ctest_name.lower(),
                     "group_description": group_desc,
                     "subgroup_description": subgroup_desc,
                     "charge": calc_final_charge,
@@ -4744,7 +4748,9 @@ class HHomeCollectionCore:
         for row in rows:
             desc_lc = self._norm_code(row.get("description_lc")).lower()
             shortname_lc = self._norm_code(row.get("shortname_lc")).lower()
-            if q not in desc_lc and q not in shortname_lc:
+            ctest_code_lc = self._norm_code(row.get("ctest_code_lc")).lower()
+            ctest_name_lc = self._norm_code(row.get("ctest_name_lc")).lower()
+            if q not in desc_lc and q not in shortname_lc and q not in ctest_code_lc and q not in ctest_name_lc:
                 continue
             matches.append(dict(row))
 
@@ -4776,6 +4782,64 @@ class HHomeCollectionCore:
             r["has_children"] = bool(self._panel_catalog["profile_children_map"].get(child_key))
             out.append(r)
         return out
+
+    def panel_profile_hierarchy(self):
+        self.preload_panel_catalog()
+        children_map = self._panel_catalog.get("profile_children_map") or {}
+        test_by_gst = self._panel_catalog.get("test_by_g_s_testcode") or {}
+        profile_key_by_booked_code = {}
+
+        def key_to_str(key):
+            return "|".join(self._norm_code(x) for x in key)
+
+        for parent_key in children_map.keys():
+            parent = test_by_gst.get(parent_key) or {}
+            booked_code = self._norm_code(parent.get("testcode1")) or self._norm_code(parent.get("test_code"))
+            if booked_code:
+                profile_key_by_booked_code[booked_code.upper()] = key_to_str(parent_key)
+
+        visiting = set()
+        memo = {}
+
+        def descendants(parent_key):
+            if parent_key in memo:
+                return memo[parent_key]
+            if parent_key in visiting:
+                return []
+
+            visiting.add(parent_key)
+            out = []
+            seen = set()
+            for child in children_map.get(parent_key, []):
+                booked_code = self._norm_code(child.get("booked_code")).upper()
+                if booked_code and booked_code not in seen:
+                    seen.add(booked_code)
+                    out.append(booked_code)
+
+                child_key = (
+                    self._norm_code(child.get("gcode")),
+                    self._norm_code(child.get("scode")),
+                    self._norm_code(child.get("test_code")),
+                )
+                for code in descendants(child_key):
+                    if code and code not in seen:
+                        seen.add(code)
+                        out.append(code)
+
+            visiting.discard(parent_key)
+            memo[parent_key] = out
+            return out
+
+        profile_descendants = {}
+        for parent_key in children_map.keys():
+            codes = descendants(parent_key)
+            if codes:
+                profile_descendants[key_to_str(parent_key)] = codes
+
+        return {
+            "profile_descendants": profile_descendants,
+            "profile_key_by_booked_code": profile_key_by_booked_code,
+        }
 
     def test_specimen_catalog(self):
         self.preload_panel_catalog()
