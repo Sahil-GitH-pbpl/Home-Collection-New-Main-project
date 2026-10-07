@@ -51,6 +51,11 @@ def panel_test_master_page():
     return render_template("hhome_collection/hpanel_test_master.html")
 
 
+@hhome_collection_bp.get("/hhome-collection/test-tat-master-page")
+def test_tat_master_page():
+    return render_template("hhome_collection/htest_tat_master.html")
+
+
 @hhome_collection_bp.get("/hhome-collection/estimate")
 def estimate_page():
     return render_template("hhome_collection/hestimate.html")
@@ -301,6 +306,24 @@ def create_patient():
     return jsonify(result), status
 
 
+@hhome_collection_bp.post("/hhome-collection/ensure-without-patient")
+def ensure_without_patient():
+    payload = request.get_json(silent=True) or {}
+    mobile = (
+        payload.get("mobile")
+        or payload.get("searched_mobile")
+        or session.get("search_mobile")
+        or ""
+    )
+    result = service.ensure_without_patient_booking_patient(
+        mobile,
+        session,
+        actor_user_id=session.get("user_id"),
+    )
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
 @hhome_collection_bp.get("/hhome-collection/patient/<int:patient_id>")
 def patient_detail(patient_id: int):
     caller_id = session.get("hcaller_id")
@@ -392,6 +415,17 @@ def reference_addresses():
 
 @hhome_collection_bp.post("/hhome-collection/create-address")
 def create_address():
+    payload = request.get_json(silent=True) or {}
+    if payload.get("without_patient_booking"):
+        mobile = payload.get("mobile") or payload.get("searched_mobile") or session.get("search_mobile") or ""
+        ensured = service.ensure_without_patient_booking_patient(
+            mobile,
+            session,
+            actor_user_id=session.get("user_id"),
+        )
+        if not ensured.get("ok"):
+            return jsonify(ensured), 400
+
     caller_id = session.get("hcaller_id")
     if not caller_id:
         return jsonify({"ok": False, "message": "Caller is required first"}), 400
@@ -401,7 +435,6 @@ def create_address():
     if not patient_ids:
         return jsonify({"ok": False, "message": "Select at least one patient first"}), 400
 
-    payload = request.get_json(silent=True) or {}
     result = service.create_address_for_patients(
         patient_ids, payload, actor_user_id=session.get("user_id")
     )
@@ -616,6 +649,15 @@ def panel_company_show_in_hc():
         return jsonify({"ok": False, "message": str(exc)}), 500
 
 
+@hhome_collection_bp.post("/hhome-collection/estimate-test-tats")
+def estimate_test_tats():
+    try:
+        data = request.get_json(silent=True) or {}
+        return jsonify({"ok": True, "items": estimate_service.estimate_test_tat_map(data.get("test_codes") or [])})
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
 @hhome_collection_bp.post("/hhome-collection/estimate-save")
 def save_estimate():
     try:
@@ -722,6 +764,45 @@ def panel_profile_hierarchy():
         return jsonify({"ok": False, "message": str(exc)}), 500
 
 
+@hhome_collection_bp.get("/hhome-collection/test-tat-master")
+def test_tat_master_data():
+    try:
+        return jsonify({"ok": True, "items": service.list_test_tat_master()})
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
+@hhome_collection_bp.get("/hhome-collection/tat-templates")
+def tat_templates_data():
+    try:
+        return jsonify({"ok": True, "items": service.list_tat_templates()})
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 500
+
+
+@hhome_collection_bp.post("/hhome-collection/test-tat-master")
+def test_tat_master_save():
+    payload = request.get_json(silent=True) or {}
+    result = service.update_test_tat_master(
+        test_code=payload.get("test_code"),
+        schedule_type=payload.get("schedule_type"),
+        cutoff_time=payload.get("cutoff_time") or "",
+        process_time_value=payload.get("process_time_value"),
+        process_time_unit=payload.get("process_time_unit") or "hours",
+        report_days=payload.get("report_days") or [],
+        urgent_mode=bool(payload.get("urgent_mode")),
+        actor_name=session.get("username") or "",
+        tat_template_id=payload.get("tat_template_id"),
+    )
+    return jsonify(result), 200 if result.get("ok") else 400
+
+
+@hhome_collection_bp.get("/hhome-collection/test-tat-master/profile/<path:test_code>")
+def test_tat_master_profile(test_code):
+    result = service.profile_test_tat_summary(test_code)
+    return jsonify(result), 200 if result.get("ok") else 400
+
+
 @hhome_collection_bp.get("/hhome-collection/test-specimen-catalog")
 def test_specimen_catalog():
     try:
@@ -806,12 +887,22 @@ def modify_booking():
 
 @hhome_collection_bp.post("/hhome-collection/confirm-booking")
 def confirm_booking():
+    payload = request.get_json(silent=True) or {}
+    if payload.get("without_patient_booking") and not session.get("hselected_patients"):
+        mobile = payload.get("mobile") or payload.get("searched_mobile") or session.get("search_mobile") or ""
+        ensured = service.ensure_without_patient_booking_patient(
+            mobile,
+            session,
+            actor_user_id=session.get("user_id"),
+        )
+        if not ensured.get("ok"):
+            return jsonify(ensured), 400
+
     caller_id = session.get("hcaller_id")
     selected_patients = session.get("hselected_patients", [])
     selected_address_id = session.get("hselected_address_id")
     selected_snapshot = session.get("hselected_address_snapshot")
 
-    payload = request.get_json(silent=True) or {}
     payload["_session_ref"] = session
     payload["_new_caller_created"] = bool(session.get("hnew_caller_created"))
     result = service.confirm_booking(

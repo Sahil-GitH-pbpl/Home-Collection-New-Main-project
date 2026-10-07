@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+{% block title %}Test TAT Master{% endblock %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/happ.css', v='20260905-tat-ui') }}">
+
+<div class="container-fluid pt-1 pb-3 ptm-page">
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <strong>Test TAT Master</strong>
+      <div class="d-flex align-items-center gap-2">
+        <label for="ptm-test-search" class="mb-0 small text-nowrap"><strong>Search Test Name :</strong></label>
+        <input id="ptm-test-search" type="text" class="form-control form-control-sm ptm-test-search-input" placeholder="Search test name (min 2 chars)">
+      </div>
+    </div>
+    <div class="table-responsive ptm-test-wrap">
+      <table class="table table-sm mb-0 ptm-table" id="ptm-test-table">
+        <thead>
+          <tr>
+            <th>SR. NO.</th>
+            <th>Test Code</th>
+            <th>Test Name</th>
+            <th>Schedule Type</th>
+            <th>Cutoff Time</th>
+            <th>Process Time</th>
+            <th>Report Days</th>
+            <th>Final TAT</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="ptm-test-tbody">
+          <tr><td colspan="9" class="text-muted text-center py-3">Loading TAT master...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="ptm-modal-backdrop d-none" id="tat-modal-backdrop"></div>
+<div class="ptm-tat-modal d-none" id="tat-modal" role="dialog" aria-modal="true" aria-labelledby="tat-modal-title">
+  <div class="ptm-tat-modal-head">
+    <div>
+      <strong id="tat-modal-title">Create TAT</strong>
+      <div class="ptm-tat-modal-subtitle">Define turnaround time with schedule and processing details.</div>
+    </div>
+    <div class="ptm-tat-modal-head-actions">
+      <div class="ptm-tat-mode">
+        <button type="button" class="ptm-tat-mode-btn active" data-mode="routine">Base Routine</button>
+        <button type="button" class="ptm-tat-mode-btn" data-mode="urgent">Base Urgent</button>
+      </div>
+      <button type="button" class="btn-close" id="tat-modal-close" aria-label="Close"></button>
+    </div>
+  </div>
+  <div class="ptm-tat-modal-body">
+    <div class="ptm-tat-section d-none" id="tat-template-box">
+      <div class="ptm-tat-section-title">Template TAT</div>
+      <div class="table-responsive ptm-template-table-wrap">
+        <table class="table table-sm mb-0 ptm-template-table">
+          <thead>
+            <tr>
+              <th>Template</th>
+              <th>Final TAT</th>
+              <th>Note</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="tat-template-tbody">
+            <tr><td colspan="4" class="text-muted text-center py-2">Loading templates...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ptm-tat-help mt-2" id="tat-template-selected">No template selected.</div>
+    </div>
+
+    <div class="ptm-tat-section ptm-manual-section">
+      <div class="ptm-tat-section-title">Test Information</div>
+      <div class="row g-2">
+        <div class="col-md-5">
+          <label class="form-label small mb-1">Test Code</label>
+          <input id="tat-test-code" class="form-control form-control-sm" readonly>
+        </div>
+        <div class="col-md-7">
+          <label class="form-label small mb-1">Test Name</label>
+          <input id="tat-test-name" class="form-control form-control-sm" readonly>
+        </div>
+      </div>
+    </div>
+
+    <div class="ptm-tat-section ptm-manual-section">
+      <div class="ptm-tat-section-title">Schedule & Reporting</div>
+      <div class="ptm-schedule-row">
+        <div>
+          <label class="form-label small mb-1">Schedule Type</label>
+          <div class="ptm-schedule-options">
+            <label><input type="radio" name="tat_schedule_type" value="all_days"> All Days</label>
+            <label><input type="radio" name="tat_schedule_type" value="scheduled_days"> Scheduled Days</label>
+          </div>
+          <input type="hidden" id="tat-type" value="">
+        </div>
+        <div class="ptm-template-actions">
+          <span id="tat-template-inline-status">Manual TAT</span>
+          <button type="button" class="btn btn-outline-primary btn-sm ms-2" id="tat-template-open">Template TAT</button>
+        </div>
+      </div>
+      <div class="ptm-invisible" id="tat-report-days-wrap">
+        <label class="form-label small mb-1">Report Days</label>
+        <div class="ptm-tat-help">Select the days on which reports will be generated.</div>
+        <div class="ptm-days-grid">
+          {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
+            <label class="ptm-day-pill">
+              <input type="checkbox" class="form-check-input tat-day" value="{{ day }}">
+              <span>{{ day }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="ptm-tat-section ptm-manual-section">
+      <div class="ptm-tat-section-title">Timing</div>
+      <div class="row g-2">
+        <div class="col-md-6">
+          <label for="tat-cutoff-time" class="form-label small mb-1">Cutoff Time (optional)</label>
+          <input id="tat-cutoff-time" type="time" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-6">
+          <label for="tat-process-hours" class="form-label small mb-1">Process Time</label>
+          <div class="input-group input-group-sm">
+            <input id="tat-process-hours" type="number" class="form-control" min="1" step="1" placeholder="Value">
+            <select id="tat-process-unit" class="form-select">
+              <option value="minutes">minutes</option>
+              <option value="hours">hours</option>
+              <option value="days">days</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ptm-tat-section">
+      <div class="ptm-tat-section-title">Final TAT</div>
+      <div class="ptm-final-preview" id="tat-final-preview">Select schedule type and process time.</div>
+    </div>
+  </div>
+  <div class="ptm-tat-modal-foot">
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="tat-modal-cancel">Cancel</button>
+    <button type="button" class="btn btn-primary btn-sm" id="tat-modal-save">Save</button>
+  </div>
+</div>
+
+<div class="ptm-tat-modal d-none" id="profile-tat-modal" role="dialog" aria-modal="true" aria-labelledby="profile-tat-modal-title">
+  <div class="ptm-tat-modal-head">
+    <strong id="profile-tat-modal-title">Profile TAT</strong>
+    <button type="button" class="btn-close" id="profile-tat-modal-close" aria-label="Close"></button>
+  </div>
+  <div class="ptm-tat-modal-body">
+    <div id="profile-tat-list" class="ptm-profile-tat-list"></div>
+  </div>
+  <div class="ptm-tat-modal-foot">
+    <button type="button" class="btn btn-outline-primary btn-sm" id="profile-tat-override">TAT Override</button>
+    <button type="button" class="btn btn-primary btn-sm" id="profile-tat-modal-done">Done</button>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="{{ url_for('static', filename='js/hpanel_test_master.js', v='20260905-tat-ui') }}"></script>
+{% endblock %}

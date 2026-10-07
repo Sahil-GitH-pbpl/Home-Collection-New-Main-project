@@ -1,13 +1,13 @@
 import json
 from datetime import datetime
-import json
 
 from app.db.connection import get_db_connection
+from app.home_collection_core import HHomeCollectionCore
 
 
 class HEstimateCore:
     def __init__(self):
-        pass
+        self.hc_service = HHomeCollectionCore()
 
     def _norm_text(self, value) -> str:
         if value is None:
@@ -30,8 +30,104 @@ class HEstimateCore:
             return value.strftime("%d-%m-%Y %I:%M %p")
         return self._norm_text(value)
 
+    def _tat_text_from_row(self, row: dict) -> str:
+        if not row:
+            return ""
+        return self._norm_text(row.get("final_tat_text")) or self._norm_text(row.get("urgent_tat_text"))
+
+    def _profile_tat_text_for_estimate(self, test_code: str, by_code: dict | None = None) -> str:
+        self.hc_service.preload_panel_catalog()
+        catalog = self.hc_service._panel_catalog
+        test_by_code1 = catalog.get("test_by_testcode1") or {}
+        children_map = catalog.get("profile_children_map") or {}
+        by_code = by_code or {}
+
+        root_code = self._norm_text(test_code).upper()
+        root = test_by_code1.get(root_code) or {}
+        root_key = (
+            self._norm_text(root.get("gcode")),
+            self._norm_text(root.get("scode")),
+            self._norm_text(root.get("test_code")),
+        )
+        if not root or not children_map.get(root_key):
+            return ""
+
+        own_tat = self._tat_text_from_row(by_code.get(root_code) or {})
+        if own_tat:
+            return own_tat
+
+        seen_profiles = set()
+
+        def child_key(child):
+            return (
+                self._norm_text(child.get("gcode")),
+                self._norm_text(child.get("scode")),
+                self._norm_text(child.get("test_code")),
+            )
+
+        def summarize_profile(parent_key, profile_name):
+            if parent_key in seen_profiles:
+                return []
+            seen_profiles.add(parent_key)
+            units = []
+            for child in children_map.get(parent_key, []) or []:
+                code = self._norm_text(child.get("testcode1")).upper()
+                name = self._norm_text(child.get("description")) or code
+                key = child_key(child)
+                is_profile = bool(children_map.get(key))
+                tat_text = self._tat_text_from_row(by_code.get(code) or {})
+                if is_profile:
+                    if tat_text:
+                        units.append({"name": name, "tat_text": tat_text})
+                        continue
+                    nested_units = summarize_profile(key, name)
+                    nested_tats = {self._norm_text(x.get("tat_text")) or "TAT not set" for x in nested_units}
+                    if len(nested_tats) == 1:
+                        units.append({"name": name, "tat_text": nested_tats.pop()})
+                    else:
+                        units.extend(nested_units)
+                    continue
+                units.append({"name": name, "tat_text": tat_text or "TAT not set"})
+            return units
+
+        units = summarize_profile(root_key, self._norm_text(root.get("description")) or root_code)
+        if not units:
+            return ""
+        unique_tats = {self._norm_text(x.get("tat_text")) or "TAT not set" for x in units}
+        if len(unique_tats) == 1:
+            return unique_tats.pop()
+
+        grouped = {}
+        for unit in units:
+            tat_text = self._norm_text(unit.get("tat_text")) or "TAT not set"
+            grouped.setdefault(tat_text, []).append(self._norm_text(unit.get("name")) or "-")
+
+        parts = []
+        for tat_text in sorted(grouped, key=lambda x: (1 if x.lower() == "tat not set" else 0, x.lower())):
+            parts.append("\n".join([tat_text] + [f"- {name}" for name in grouped[tat_text]]))
+        return "\n\n".join(parts)
+
     def estimate_test_tat_map(self, test_codes):
-        return {}
+        codes = []
+        seen = set()
+        for code in test_codes or []:
+            norm = self._norm_text(code).upper()
+            if norm and norm not in seen:
+                seen.add(norm)
+                codes.append(norm)
+        if not codes:
+            return {}
+
+        rows = self.hc_service.list_test_tat_master()
+        by_code = {self._norm_text(row.get("test_code")).upper(): row for row in rows or []}
+        out = {}
+        for code in codes:
+            row = by_code.get(code) or {}
+            text = self._tat_text_from_row(row)
+            if not text and (row.get("is_profile") or row.get("has_children")):
+                text = self._profile_tat_text_for_estimate(code, by_code)
+            out[code] = text
+        return out
 
     def _row_to_dict(self, row):
         patients = self._json_list(row.get("patients_json"))
@@ -102,13 +198,14 @@ class HEstimateCore:
         if not tests:
             return None, None, {"ok": False, "message": "At least one test is required"}
 
+        tat_map = self.estimate_test_tat_map([test.get("booked_code") for test in tests])
         for test in tests:
             code = self._norm_text(test.get("booked_code"))
             test["booked_code"] = code
             test["gender_rule"] = self._norm_text(test.get("gender_rule"))
             test["test_name"] = self._norm_text(test.get("test_name") or test.get("description"))
             test["includes_type"] = self._norm_text(test.get("includes_type") or test.get("includes")) or "Single"
-            test["test_tat"] = ""
+            test["test_tat"] = tat_map.get(code.upper()) or self._norm_text(test.get("test_tat"))
             test["mrp"] = float(test.get("mrp") or 0)
             test["charge"] = float(test.get("charge") or 0)
             test["max_discount"] = float(test.get("max_discount") or 0)

@@ -3975,6 +3975,94 @@ class HHomeCollectionCore:
         finally:
             conn.close()
 
+    def ensure_without_patient_booking_patient(self, mobile, session, actor_user_id=None):
+        actor = self._actor(actor_user_id)
+        mobile_norm = self.normalize_mobile(mobile)
+        if not mobile_norm:
+            return {"ok": False, "message": "Search mobile number is required"}
+
+        caller_id = session.get("hcaller_id")
+        if caller_id and not self.get_caller(caller_id):
+            session.pop("hcaller_id", None)
+            session.pop("hnew_caller_created", None)
+            caller_id = None
+
+        if not caller_id:
+            existing = self.get_caller_by_mobile(mobile_norm)
+            if existing:
+                caller_id = existing["id"]
+                session.pop("hnew_caller_created", None)
+            else:
+                created = self.create_caller(
+                    {
+                        "full_name": "UNKNOWN PATIENT",
+                        "primary_mobile": mobile_norm,
+                        "alternate_mobile": None,
+                        "email": None,
+                    },
+                    actor_user_id=actor,
+                )
+                if not created.get("ok"):
+                    return created
+                caller_id = created["caller"]["id"]
+                session["hnew_caller_created"] = True
+            session["hcaller_id"] = caller_id
+
+        selected = session.get("hselected_patients", [])
+        if selected:
+            result = self.get_step1_bundle(caller_id, session)
+            result.update({
+                "ok": True,
+                "caller": self.get_caller(caller_id),
+                "without_patient_booking": True,
+            })
+            return result
+
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                self._upsert_caller_mobile(
+                    cur, caller_id, mobile_norm, "PatientContact", actor_user_id=actor
+                )
+                temp_code = self._temp_code("HPT-TMP-")
+                cur.execute(
+                    """
+                    INSERT INTO hpatient_master
+                    (patient_code, title, full_name, labmate_pid, panel_company, card_number, tag,
+                     gender, date_of_birth, age_years, contact_mobile, alternate_mobile,
+                     patient_status, created_by, updated_by)
+                    VALUES (%s,NULL,%s,NULL,NULL,NULL,NULL,%s,NULL,NULL,%s,NULL,0,%s,%s)
+                    """,
+                    (
+                        temp_code,
+                        "UNKNOWN PATIENT",
+                        "Other",
+                        mobile_norm,
+                        actor,
+                        actor,
+                    ),
+                )
+                patient_id = cur.lastrowid
+                patient_code = hcode_from_id("HPT-HC-", patient_id)
+                cur.execute("UPDATE hpatient_master SET patient_code=%s WHERE id=%s", (patient_code, patient_id))
+                self._upsert_caller_patient_link(cur, caller_id, patient_id, actor_user_id=actor)
+                conn.commit()
+
+            session["hselected_patients"] = [{"patient_id": patient_id}]
+            result = self.get_step1_bundle(caller_id, session)
+            result.update({
+                "ok": True,
+                "caller": self.get_caller(caller_id),
+                "patient_id": patient_id,
+                "without_patient_booking": True,
+            })
+            return result
+        except Exception as exc:
+            conn.rollback()
+            return {"ok": False, "message": str(exc)}
+        finally:
+            conn.close()
+
     def get_step1_bundle(self, caller_id: int, session):
         selected = session.get("hselected_patients", [])
         if not caller_id:
@@ -4675,30 +4763,565 @@ class HHomeCollectionCore:
         finally:
             conn.close()
 
-    def panel_tests_by_company(self, comp_cat_id: str):
+    def list_test_tat_master(self):
         self.preload_panel_catalog()
-        ccid = self._norm_code(comp_cat_id)
-        if not ccid:
-            return []
-        rows = self._panel_catalog.get("tests_search_by_comp", {}).get(ccid, []) or []
-        seen = set()
-        out = []
-        for row in rows:
-            key = self._norm_code(row.get("booked_code")) or self._norm_code(row.get("testcode1")) or self._norm_code(row.get("test_code"))
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            out.append(
-                {
-                    "test_name": self._norm_code(row.get("description")),
-                    "charge": row.get("charge"),
-                    "mrp": row.get("mrp"),
-                    "max_discount": row.get("max_discount"),
-                    "booked_code": key,
+        test_by_code1 = self._panel_catalog.get("test_by_testcode1") or {}
+        children_map = self._panel_catalog.get("profile_children_map") or {}
+        conn = get_bhasin7001_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        test_code,
+                        test_name,
+                        schedule_type,
+                        TIME_FORMAT(cutoff_time, '%H:%i') AS cutoff_time,
+                        process_time_value,
+                        process_time_unit,
+                        report_days,
+                        final_tat_text,
+                        routine_template_id,
+                        urgent_tat,
+                        urgent_schedule_type,
+                        TIME_FORMAT(urgent_cutoff_time, '%H:%i') AS urgent_cutoff_time,
+                        urgent_process_time_value,
+                        urgent_process_time_unit,
+                        urgent_report_days,
+                        urgent_tat_text,
+                        urgent_template_id
+                    FROM test_tat_master
+                    """
+                )
+                tat_by_code = {
+                    self._norm_code(row.get("test_code")): row
+                    for row in (cur.fetchall() or [])
+                    if self._norm_code(row.get("test_code"))
                 }
-            )
-        out.sort(key=lambda r: self._norm_code(r.get("test_name")).lower())
-        return out
+                rows = []
+                for code, meta in test_by_code1.items():
+                    code = self._norm_code(code)
+                    row = dict(tat_by_code.get(code) or {})
+                    row.setdefault("test_code", code)
+                    row["test_name"] = self._norm_code(row.get("test_name")) or self._norm_code(meta.get("description")) or code
+                    row.setdefault("schedule_type", "")
+                    row.setdefault("cutoff_time", "")
+                    row.setdefault("process_time_value", "")
+                    row.setdefault("process_time_unit", "")
+                    row.setdefault("report_days", "")
+                    row.setdefault("final_tat_text", "")
+                    row.setdefault("routine_template_id", "")
+                    row.setdefault("urgent_tat", 0)
+                    row.setdefault("urgent_schedule_type", "")
+                    row.setdefault("urgent_cutoff_time", "")
+                    row.setdefault("urgent_process_time_value", "")
+                    row.setdefault("urgent_process_time_unit", "")
+                    row.setdefault("urgent_report_days", "")
+                    row.setdefault("urgent_tat_text", "")
+                    row.setdefault("urgent_template_id", "")
+                    meta = test_by_code1.get(code) or {}
+                    child_key = (
+                        self._norm_code(meta.get("gcode")),
+                        self._norm_code(meta.get("scode")),
+                        self._norm_code(meta.get("test_code")),
+                    )
+                    row["gcode"] = child_key[0]
+                    row["scode"] = child_key[1]
+                    row["master_test_code"] = child_key[2]
+                    row["is_profile"] = bool(meta.get("is_profile"))
+                    row["has_children"] = bool(children_map.get(child_key))
+                    rows.append(row)
+                rows.sort(key=lambda row: (
+                    self._tat_code_part(row.get("test_code"), "G"),
+                    self._tat_code_part(row.get("test_code"), "S"),
+                    self._tat_code_part(row.get("test_code"), "T"),
+                    self._norm_code(row.get("test_code")),
+                ))
+                return rows
+        finally:
+            conn.close()
+
+    def _tat_code_part(self, test_code: str, marker: str) -> int:
+        match = re.search(rf"{marker}(\d+)", self._norm_code(test_code).upper())
+        return int(match.group(1)) if match else 9999
+
+    def list_tat_templates(self):
+        conn = get_bhasin7001_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, template_name, final_tat_text, note, sunday_holiday_off,
+                           schedule_type, report_days
+                    FROM tat_template_master
+                    WHERE is_active = 1
+                    ORDER BY template_name
+                    """
+                )
+                return cur.fetchall() or []
+        finally:
+            conn.close()
+
+    def _format_tat_cutoff_time(self, cutoff_time: str) -> str:
+        raw = self._norm_code(cutoff_time)
+        if not raw:
+            return ""
+        for fmt in ("%H:%M", "%H:%M:%S"):
+            try:
+                return datetime.strptime(raw, fmt).strftime("%I:%M %p").lstrip("0")
+            except Exception:
+                pass
+        return raw
+
+    def _format_tat_days_text(self, report_days: list[str] | str) -> str:
+        if isinstance(report_days, str):
+            days = [self._norm_code(x) for x in report_days.split(",")]
+        else:
+            days = [self._norm_code(x) for x in (report_days or [])]
+        days = [d for d in days if d]
+        if not days:
+            return ""
+        if len(days) == 1:
+            return days[0]
+        if len(days) == 2:
+            return f"{days[0]} or {days[1]}"
+        return f"{', '.join(days[:-1])} or {days[-1]}"
+
+    def _format_tat_days_short(self, report_days: list[str] | str) -> str:
+        day_short = {
+            "monday": "Mon",
+            "tuesday": "Tue",
+            "wednesday": "Wed",
+            "thursday": "Thu",
+            "friday": "Fri",
+            "saturday": "Sat",
+            "sunday": "Sun",
+        }
+        if isinstance(report_days, str):
+            days = [self._norm_code(x) for x in report_days.split(",")]
+        else:
+            days = [self._norm_code(x) for x in (report_days or [])]
+        return "/".join(day_short.get(d.lower(), d) for d in days if d)
+
+    def _format_process_time(self, process_time_value, process_time_unit: str = "hours") -> str:
+        try:
+            value = int(process_time_value)
+        except Exception:
+            return ""
+        if value <= 0:
+            return ""
+        unit = self._norm_code(process_time_unit).lower() or "hours"
+        if unit not in {"hours", "days"}:
+            unit = "hours"
+        single = "hour" if unit == "hours" else "day"
+        plural = "hours" if unit == "hours" else "days"
+        return f"{value} {single if value == 1 else plural}"
+
+    def build_final_tat_text(self, schedule_type: str, cutoff_time: str = "", process_time_value=None, report_days: list[str] | str | None = None, process_time_unit: str = "hours") -> str:
+        stype = self._norm_code(schedule_type).lower()
+        cutoff_label = self._format_tat_cutoff_time(cutoff_time)
+        process_label = self._format_process_time(process_time_value, process_time_unit)
+        if not process_label:
+            return ""
+        if stype == "all_days":
+            text = f"Daily | Report after {process_label}"
+            return f"Daily | Cutoff {cutoff_label} | Report after {process_label} | After cutoff: next day" if cutoff_label else text
+        if stype == "scheduled_days":
+            days_text = self._format_tat_days_short(report_days or [])
+            if not days_text:
+                return ""
+            text = f"{days_text} | Report after {process_label}"
+            return f"{days_text} | Cutoff {cutoff_label} | Report after {process_label} | After cutoff: next report day" if cutoff_label else text
+        return ""
+
+    def build_short_tat_text(self, schedule_type: str, cutoff_time: str = "", process_time_value=None, report_days: list[str] | str | None = None, process_time_unit: str = "hours") -> str:
+        return self.build_final_tat_text(schedule_type, cutoff_time, process_time_value, report_days, process_time_unit)
+
+    def profile_test_tat_summary(self, test_code: str):
+        self.preload_panel_catalog()
+        code = self._norm_code(test_code)
+        test_by_code1 = self._panel_catalog.get("test_by_testcode1") or {}
+        children_map = self._panel_catalog.get("profile_children_map") or {}
+        root = test_by_code1.get(code) or {}
+        root_key = (
+            self._norm_code(root.get("gcode")),
+            self._norm_code(root.get("scode")),
+            self._norm_code(root.get("test_code")),
+        )
+        if not code or not root or not children_map.get(root_key):
+            return {"ok": False, "message": "Profile child tests not found"}
+
+        conn = get_bhasin7001_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT test_code, schedule_type, TIME_FORMAT(cutoff_time, '%%H:%%i') AS cutoff_time,
+                           process_time_value, process_time_unit, report_days, final_tat_text, urgent_tat,
+                           urgent_schedule_type,
+                           TIME_FORMAT(urgent_cutoff_time, '%%H:%%i') AS urgent_cutoff_time,
+                           urgent_process_time_value, urgent_process_time_unit, urgent_report_days, urgent_tat_text
+                    FROM test_tat_master
+                    WHERE test_code=%s
+                    LIMIT 1
+                    """,
+                    (code,),
+                )
+                own_tat = cur.fetchone() or {}
+        finally:
+            conn.close()
+
+        own_text = self._norm_code(own_tat.get("final_tat_text"))
+        if own_text:
+            return {
+                "ok": True,
+                "profile": {"test_code": code, "test_name": self._norm_code(root.get("description")) or code},
+                "override_tat_text": own_text,
+                "override_short_tat": self.build_short_tat_text(
+                    own_tat.get("schedule_type"),
+                    own_tat.get("cutoff_time"),
+                    own_tat.get("process_time_value"),
+                    own_tat.get("report_days"),
+                    own_tat.get("process_time_unit"),
+                ),
+                "items": [],
+                "groups": [],
+            }
+
+        items = []
+        leaf_codes = []
+        seen_profiles = set()
+
+        def walk(parent_key, depth=0):
+            if parent_key in seen_profiles:
+                return
+            seen_profiles.add(parent_key)
+            for child in children_map.get(parent_key, []) or []:
+                child_code1 = self._norm_code(child.get("testcode1"))
+                child_key = (
+                    self._norm_code(child.get("gcode")),
+                    self._norm_code(child.get("scode")),
+                    self._norm_code(child.get("test_code")),
+                )
+                child_has_children = bool(children_map.get(child_key))
+                if child_has_children:
+                    items.append({
+                        "test_code": child_code1,
+                        "test_name": self._norm_code(child.get("description")) or child_code1,
+                        "is_profile": True,
+                        "depth": depth,
+                        "tat_text": "",
+                    })
+                    walk(child_key, depth + 1)
+                else:
+                    items.append({
+                        "test_code": child_code1,
+                        "test_name": self._norm_code(child.get("description")) or child_code1,
+                        "is_profile": False,
+                        "depth": depth,
+                        "tat_text": "TAT not set",
+                    })
+                    if child_code1:
+                        leaf_codes.append(child_code1)
+
+        walk(root_key)
+
+        tat_by_code = {}
+        if leaf_codes:
+            conn = get_bhasin7001_connection()
+            try:
+                with conn.cursor() as cur:
+                    placeholders = ",".join(["%s"] * len(set(leaf_codes)))
+                    cur.execute(
+                        f"""
+                        SELECT test_code, schedule_type, TIME_FORMAT(cutoff_time, '%%H:%%i') AS cutoff_time,
+                               process_time_value, process_time_unit, report_days, final_tat_text, urgent_tat,
+                               urgent_schedule_type,
+                               TIME_FORMAT(urgent_cutoff_time, '%%H:%%i') AS urgent_cutoff_time,
+                               urgent_process_time_value, urgent_process_time_unit, urgent_report_days
+                        FROM test_tat_master
+                        WHERE test_code IN ({placeholders})
+                        """,
+                        tuple(sorted(set(leaf_codes))),
+                    )
+                    for row in cur.fetchall() or []:
+                        short_text = self.build_short_tat_text(
+                            row.get("schedule_type"),
+                            row.get("cutoff_time"),
+                            row.get("process_time_value"),
+                            row.get("report_days"),
+                            row.get("process_time_unit"),
+                        )
+                        tat_by_code[self._norm_code(row.get("test_code"))] = self._norm_code(row.get("final_tat_text")) or short_text
+            finally:
+                conn.close()
+
+        for item in items:
+            if not item.get("is_profile"):
+                item["tat_text"] = tat_by_code.get(self._norm_code(item.get("test_code"))) or "TAT not set"
+
+        grouped = {}
+        for item in items:
+            if item.get("is_profile"):
+                continue
+            tat_text = self._norm_code(item.get("tat_text")) or "TAT not set"
+            if tat_text not in grouped:
+                grouped[tat_text] = {"tat_text": tat_text, "tests": []}
+            grouped[tat_text]["tests"].append(self._norm_code(item.get("test_name")) or self._norm_code(item.get("test_code")) or "-")
+
+        return {
+            "ok": True,
+            "profile": {"test_code": code, "test_name": self._norm_code(root.get("description")) or code},
+            "items": items,
+            "groups": sorted(grouped.values(), key=lambda x: (1 if self._norm_code(x.get("tat_text")).lower() == "tat not set" else 0, self._norm_code(x.get("tat_text")).lower())),
+        }
+
+    def update_test_tat_master(self, test_code: str, schedule_type: str, cutoff_time: str = "", process_time_value=None, process_time_unit: str = "hours", report_days: list[str] | str | None = None, urgent_mode: bool = False, actor_name: str = "", tat_template_id=None):
+        code = self._norm_code(test_code)
+        stype = self._norm_code(schedule_type).lower()
+        cutoff = self._norm_code(cutoff_time)
+        if not code:
+            return {"ok": False, "message": "Test code is required"}
+        self.preload_panel_catalog()
+        test_meta = (self._panel_catalog.get("test_by_testcode1") or {}).get(code) or {}
+        test_name = self._norm_code(test_meta.get("description")) or code
+        if not test_meta:
+            return {"ok": False, "message": "Test not found"}
+        actor = self._norm_code(actor_name)
+        template_id = 0
+        try:
+            template_id = int(tat_template_id or 0)
+        except Exception:
+            template_id = 0
+        if template_id > 0:
+            conn = get_bhasin7001_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT id, template_name, final_tat_text, schedule_type, report_days
+                        FROM tat_template_master
+                        WHERE id = %s AND is_active = 1
+                        LIMIT 1
+                        """,
+                        (template_id,),
+                    )
+                    template = cur.fetchone()
+                    if not template:
+                        return {"ok": False, "message": "TAT template not found"}
+                    final_text = self._norm_code(template.get("final_tat_text"))
+                    if not final_text:
+                        return {"ok": False, "message": "TAT template text is blank"}
+                    template_schedule = self._norm_code(template.get("schedule_type")).lower() or "all_days"
+                    template_days = self._norm_code(template.get("report_days")) or None
+                    if urgent_mode:
+                        cur.execute(
+                            """
+                            INSERT INTO test_tat_master
+                                (test_code, test_name, process_time_unit, urgent_tat, urgent_schedule_type,
+                                 urgent_cutoff_time, urgent_process_time_value, urgent_process_time_unit,
+                                 urgent_report_days, urgent_tat_text, urgent_template_id, is_active, created_by, updated_by)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            ON DUPLICATE KEY UPDATE
+                                test_name = VALUES(test_name),
+                                urgent_tat = 1,
+                                urgent_schedule_type = VALUES(urgent_schedule_type),
+                                urgent_cutoff_time = NULL,
+                                urgent_process_time_value = NULL,
+                                urgent_process_time_unit = NULL,
+                                urgent_report_days = VALUES(urgent_report_days),
+                                urgent_tat_text = VALUES(urgent_tat_text),
+                                urgent_template_id = VALUES(urgent_template_id),
+                                is_active = 1,
+                                updated_by = VALUES(updated_by)
+                            """,
+                            (code, test_name, "hours", 1, template_schedule, None, None, None, template_days, final_text, template_id, 1, actor, actor),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            INSERT INTO test_tat_master
+                                (test_code, test_name, schedule_type, cutoff_time, process_time_value,
+                                 process_time_unit, report_days, final_tat_text, routine_template_id, is_active, created_by, updated_by)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            ON DUPLICATE KEY UPDATE
+                                test_name = VALUES(test_name),
+                                schedule_type = VALUES(schedule_type),
+                                cutoff_time = NULL,
+                                process_time_value = NULL,
+                                process_time_unit = VALUES(process_time_unit),
+                                report_days = VALUES(report_days),
+                                final_tat_text = VALUES(final_tat_text),
+                                routine_template_id = VALUES(routine_template_id),
+                                is_active = 1,
+                                updated_by = VALUES(updated_by)
+                            """,
+                            (code, test_name, template_schedule, None, None, "hours", template_days, final_text, template_id, 1, actor, actor),
+                        )
+                conn.commit()
+                item = {"test_code": code}
+                if urgent_mode:
+                    item.update({
+                        "urgent_tat": 1,
+                        "urgent_schedule_type": template_schedule,
+                        "urgent_cutoff_time": "",
+                        "urgent_process_time_value": "",
+                        "urgent_process_time_unit": "",
+                        "urgent_report_days": template_days or "",
+                        "urgent_tat_text": final_text,
+                        "urgent_template_id": template_id,
+                    })
+                else:
+                    item.update({
+                        "schedule_type": template_schedule,
+                        "cutoff_time": "",
+                        "process_time_value": "",
+                        "process_time_unit": "",
+                        "report_days": template_days or "",
+                        "final_tat_text": final_text,
+                        "routine_template_id": template_id,
+                    })
+                return {"ok": True, "item": item}
+            except Exception as exc:
+                conn.rollback()
+                return {"ok": False, "message": str(exc)}
+            finally:
+                conn.close()
+        if stype not in {"all_days", "scheduled_days"}:
+            return {"ok": False, "message": "Schedule type is required"}
+        if cutoff:
+            try:
+                datetime.strptime(cutoff, "%H:%M")
+            except Exception:
+                return {"ok": False, "message": "Valid cutoff time is required"}
+        try:
+            process_value = int(process_time_value)
+        except Exception:
+            return {"ok": False, "message": "Process time is required"}
+        if process_value <= 0:
+            return {"ok": False, "message": "Process time must be greater than 0"}
+        unit = self._norm_code(process_time_unit).lower() or "hours"
+        if unit not in {"hours", "days"}:
+            return {"ok": False, "message": "Process time unit is required"}
+
+        allowed_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        if isinstance(report_days, str):
+            raw_days = [self._norm_code(x) for x in report_days.split(",")]
+        else:
+            raw_days = [self._norm_code(x) for x in (report_days or [])]
+        selected_days = [d for d in allowed_days if d in raw_days]
+        if stype == "scheduled_days" and not selected_days:
+            return {"ok": False, "message": "Select at least one report day"}
+        if stype == "all_days":
+            selected_days = []
+
+        final_text = self.build_final_tat_text(stype, cutoff, process_value, selected_days, unit)
+        if not final_text:
+            return {"ok": False, "message": "Final TAT could not be generated"}
+
+        report_days_text = ",".join(selected_days) if selected_days else None
+        conn = get_bhasin7001_connection()
+        try:
+            with conn.cursor() as cur:
+                if urgent_mode:
+                    cur.execute(
+                        """
+                        UPDATE test_tat_master
+                        SET urgent_tat = 1,
+                            urgent_schedule_type = %s,
+                            urgent_cutoff_time = %s,
+                            urgent_process_time_value = %s,
+                            urgent_process_time_unit = %s,
+                            urgent_report_days = %s,
+                            urgent_tat_text = %s,
+                            urgent_template_id = NULL,
+                            is_active = 1,
+                            updated_by = %s
+                        WHERE test_code = %s
+                        LIMIT 1
+                        """,
+                        (stype, cutoff or None, process_value, unit, report_days_text, final_text, actor, code),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        UPDATE test_tat_master
+                        SET schedule_type = %s,
+                            cutoff_time = %s,
+                            process_time_value = %s,
+                            process_time_unit = %s,
+                            report_days = %s,
+                            final_tat_text = %s,
+                            routine_template_id = NULL,
+                            is_active = 1,
+                            updated_by = %s
+                        WHERE test_code = %s
+                        LIMIT 1
+                        """,
+                        (stype, cutoff or None, process_value, unit, report_days_text, final_text, actor, code),
+                    )
+                affected = int(cur.rowcount or 0)
+                if affected < 1:
+                    if urgent_mode:
+                        cur.execute(
+                            """
+                            INSERT INTO test_tat_master
+                                (test_code, test_name, process_time_unit, urgent_tat, urgent_schedule_type,
+                                 urgent_cutoff_time, urgent_process_time_value, urgent_process_time_unit,
+                                 urgent_report_days, urgent_tat_text, urgent_template_id, is_active, created_by, updated_by)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            """,
+                            (code, test_name, "hours", 1, stype, cutoff or None, process_value, unit, report_days_text, final_text, None, 1, actor, actor),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            INSERT INTO test_tat_master
+                                (test_code, test_name, schedule_type, cutoff_time, process_time_value,
+                                 process_time_unit, report_days, final_tat_text, routine_template_id, is_active, created_by, updated_by)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            """,
+                            (code, test_name, stype, cutoff or None, process_value, unit, report_days_text, final_text, None, 1, actor, actor),
+                        )
+                    exists = True
+                else:
+                    exists = True
+            conn.commit()
+            if not exists:
+                return {"ok": False, "message": "Test not found"}
+            item = {
+                "test_code": code,
+            }
+            if urgent_mode:
+                item.update({
+                    "urgent_tat": 1,
+                    "urgent_schedule_type": stype,
+                    "urgent_cutoff_time": cutoff,
+                    "urgent_process_time_value": process_value,
+                    "urgent_process_time_unit": unit,
+                    "urgent_report_days": report_days_text or "",
+                    "urgent_tat_text": final_text,
+                    "urgent_template_id": "",
+                })
+            else:
+                item.update({
+                    "schedule_type": stype,
+                    "cutoff_time": cutoff,
+                    "process_time_value": process_value,
+                    "process_time_unit": unit,
+                    "report_days": report_days_text or "",
+                    "final_tat_text": final_text,
+                    "routine_template_id": "",
+                })
+            return {
+                "ok": True,
+                "item": item,
+            }
+        except Exception as exc:
+            conn.rollback()
+            return {"ok": False, "message": str(exc)}
+        finally:
+            conn.close()
 
     def _panel_rate_lookup_key(self, comp_cat_id: str, center_id: str | None = None) -> str:
         ccid = self._norm_code(comp_cat_id)

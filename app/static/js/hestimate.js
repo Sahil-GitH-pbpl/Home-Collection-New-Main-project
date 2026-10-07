@@ -313,6 +313,22 @@
     return modes.map((m) => `<option value="${m}" ${m === selectedMode ? "selected" : ""}>${modeLabel(m)}</option>`).join("");
   }
 
+  function renderTatText(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "-";
+    const groups = raw.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
+    if (groups.length <= 1 && !raw.includes("\n") && raw.length < 120) return escHtml(raw);
+    return `<div class="estimate-tat-groups">${groups.map((group) => {
+      const lines = group.split(/\n+/).map((x) => x.trim()).filter(Boolean);
+      const heading = lines[0] || "";
+      const tests = lines.slice(1).map((x) => x.replace(/^[-•]\s*/, "").trim()).filter(Boolean);
+      if (tests.length) {
+        return `<div class="estimate-tat-group"><strong>${escHtml(heading)}</strong><div class="estimate-tat-test-grid">${tests.map((name) => `<span>${escHtml(name)}</span>`).join("")}</div></div>`;
+      }
+      return `<div class="estimate-tat-group"><span>${escHtml(heading)}</span></div>`;
+    }).join("")}</div>`;
+  }
+
   function renderPatientTests(patient) {
     const tests = patient.tests || [];
     if (!tests.length) return '<div class="estimate-empty">No tests added for this patient</div>';
@@ -322,7 +338,7 @@
       return `<tr>
         <td>${idx + 1}</td>
         <td><strong>${escHtml(t.description || "")}</strong><div class="text-muted small">${escHtml(testKey(t))}</div></td>
-        <td>${escHtml(t.test_tat || "-")}</td>
+        <td>${renderTatText(t.test_tat)}</td>
         <td class="text-end">${fmt(p.mrp)}</td>
         <td class="text-end">${remove}</td>
       </tr>`;
@@ -955,8 +971,26 @@
   }
 
   function enrichTestsWithTat(tests, done) {
-    (tests || []).forEach((t) => { t.test_tat = ""; });
-    if (typeof done === "function") done();
+    const rows = tests || [];
+    const codes = rows.map((t) => String(t.booked_code || "").trim()).filter(Boolean);
+    if (!codes.length) {
+      if (typeof done === "function") done();
+      return;
+    }
+    $.ajax({
+      url: "/hhome-collection/estimate-test-tats",
+      method: "POST",
+      contentType: "application/json",
+      data: JSON.stringify({ test_codes: codes })
+    }).done(function (res) {
+      const map = res?.items || {};
+      rows.forEach((t) => {
+        const code = String(t.booked_code || "").trim().toUpperCase();
+        t.test_tat = String(map[code] || t.test_tat || "").trim();
+      });
+    }).always(function () {
+      if (typeof done === "function") done();
+    });
   }
 
   function applySelectedPanelTests() {
